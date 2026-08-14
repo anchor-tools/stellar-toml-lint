@@ -1,0 +1,51 @@
+name: New rule
+description: Propose a check the linter should perform.
+labels: ['rule', 'good first issue']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Adding a rule is the most common contribution here, and it is mostly
+        mechanical — see [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md).
+
+  - type: textarea
+    id: requirement
+    attributes:
+      label: What does SEP-1 require?
+      description: Quote or link the specific requirement. Every rule must trace to the spec.
+    validations:
+      required: true
+
+  - type: textarea
+    id: bad
+    attributes:
+      label: A file that should be flagged
+      render: toml
+    validations:
+      required: true
+
+  - type: textarea
+    id: good
+    attributes:
+      label: A similar file that must stay silent
+      description: This half matters most — it is what stops the rule producing false positives.
+      render: toml
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Proposed severity
+      options:
+        - error — violates SEP-1 or will break a client
+        - warning — valid but likely wrong, or materially incomplete
+        - info — worth knowing, usually an unrecognised field
+    validations:
+      required: true
+
+  - type: input
+    id: message
+    attributes:
+      label: Proposed message and suggestion
+      placeholder: 'X is not Y ↳ Do Z instead.'

@@ -1,0 +1,67 @@
+name: Bug report
+description: The linter got something wrong, crashed, or behaved unexpectedly.
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Please remove any real keys or personal contact
+        details** from the sample below — a redacted file is just as useful.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem is it?
+      options:
+        - False positive — it complains about a file that is actually correct
+        - Miss — it passes a file that is actually broken
+        - Crash or hang
+        - Wrong line or column
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: input
+    attributes:
+      label: Input
+      description: The smallest stellar.toml snippet that reproduces it.
+      render: toml
+      placeholder: |
+        VERSION="2.7.0"
+
+        [[CURRENCIES]]
+        code="USDX"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and output
+      description: What you ran, and what it printed.
+      render: console
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+
+  - type: input
+    id: spec
+    attributes:
+      label: Relevant part of SEP-1
+      description: A link or quote, if you know which requirement is at stake.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `stellar-toml-lint --version`, plus your Node version.
+      placeholder: '0.1.0, Node 22.11.0'
+    validations:
+      required: true

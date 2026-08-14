@@ -1,0 +1,383 @@
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { lint } from '../src/lint.js';
+import { allRules } from '../src/rules/index.js';
+import type { Diagnostic, LintResult, Severity } from '../src/types.js';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const fixture = (name: string): string => readFileSync(join(here, 'fixtures', name), 'utf8');
+
+/** Rule ids reported at or above `severity`. */
+function rules(result: LintResult, severity?: Severity): string[] {
+  return result.diagnostics
+    .filter((d) => severity === undefined || d.severity === severity)
+    .map((d) => d.rule);
+}
+
+function find(result: LintResult, rule: string): Diagnostic[] {
+  return result.diagnostics.filter((d) => d.rule === rule);
+}
+
+/** Wraps a document body so rules that need context are satisfied. */
+function withValidBase(body: string): string {
+  return [
+    'VERSION="2.7.0"',
+    'NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"',
+    '',
+    '[DOCUMENTATION]',
+    'ORG_NAME="Example"',
+    'ORG_URL="https://example.com"',
+    'ORG_DESCRIPTION="Example"',
+    'ORG_LOGO="https://example.com/logo.png"',
+    'ORG_OFFICIAL_EMAIL="ops@example.com"',
+    '',
+    body,
+  ].join('\n');
+}
+
+const ACCOUNT_A = 'GCM5YCQPFIW4ICBPPSKACX56ZTGG6KZ7A53JGUWWAFRZW462YFIK4BZS';
+const ACCOUNT_B = 'GC7T6T56DX23PT7Q6WGCTIJT5O6TP6SJ47RP73JCA3ISLVCCVMGHNSDI';
+const CONTRACT_A = 'CACTZSQPCQSSZ5YG3PI3N7WO6JEERKEUHTPILKB4MBANF2K4D2UHKDDU';
+
+describe('valid fixture', () => {
+  const result = lint(fixture('valid.toml'), { domain: 'example.com' });
+
+  it('reports no diagnostics at all', () => {
+    // Printed on failure so a new false positive is immediately identifiable.
+    expect(result.diagnostics.map((d) => `${d.severity} ${d.rule}: ${d.message}`)).toEqual([]);
+  });
+
+  it('passes in strict mode', () => {
+    expect(result.ok).toBe(true);
+  });
+
+  it('exposes the parsed document', () => {
+    expect(result.parsed?.VERSION).toBe('2.7.0');
+  });
+});
+
+describe('broken fixture', () => {
+  const result = lint(fixture('broken.toml'), { domain: 'example.com' });
+
+  it('fails overall', () => {
+    expect(result.ok).toBe(false);
+    expect(result.counts.error).toBeGreaterThan(0);
+  });
+
+  it.each([
+    'general/version',
+    'network/passphrase',
+    'general/https-endpoints',
+    'general/signing-keys',
+    'general/accounts',
+    'general/sep31-requires-kyc',
+    'general/auth-requires-signing-key',
+    'general/deprecated-field',
+    'general/unknown-field',
+    'documentation/urls',
+    'documentation/emails',
+    'documentation/phone-e164',
+    'documentation/social-handles',
+    'documentation/attestation-domain',
+    'documentation/org-url-matches-domain',
+    'principals/required-fields',
+    'principals/photo-hashes',
+    'principals/social-handles',
+    'currencies/code',
+    'currencies/issuer-or-contract',
+    'currencies/issuance-exclusive',
+    'currencies/enums',
+    'currencies/display-decimals',
+    'currencies/name-length',
+    'currencies/regulated-needs-approval-server',
+    'currencies/collateral-consistency',
+    'validators/alias',
+    'validators/public-key',
+    'validators/host',
+    'validators/history',
+  ])('detects %s', (rule) => {
+    expect(rules(result)).toContain(rule);
+  });
+
+  it('gives every diagnostic a message and a rule id', () => {
+    for (const d of result.diagnostics) {
+      expect(d.message.length).toBeGreaterThan(0);
+      expect(d.rule).toMatch(/^[a-z]+\/[a-z0-9-]+$/);
+    }
+  });
+
+  it('sorts errors before warnings before info', () => {
+    const order = { error: 0, warning: 1, info: 2 } as const;
+    const ranks = result.diagnostics.map((d) => order[d.severity]);
+    expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+  });
+});
+
+describe('parse failures', () => {
+  it('reports a positioned syntax error', () => {
+    const result = lint('VERSION="1.0.0"\nthis is not toml\n');
+    expect(rules(result)).toEqual(['file/parse']);
+    expect(result.diagnostics[0]?.position?.line).toBe(2);
+  });
+
+  it('does not run semantic rules when parsing fails', () => {
+    const result = lint('[[[bad');
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.parsed).toBeUndefined();
+  });
+
+  it('accepts an empty file without crashing', () => {
+    const result = lint('');
+    expect(result.parsed).toEqual({});
+    expect(rules(result, 'error')).toEqual([]);
+  });
+
+  it('flags a byte order mark but still lints the rest', () => {
+    // U+FEFF written as an escape so it stays visible in review.
+    const result = lint(`\uFEFF${fixture('valid.toml')}`, { domain: 'example.com' });
+    expect(rules(result)).toEqual(['file/encoding']);
+  });
+});
+
+describe('network/passphrase', () => {
+  it('accepts the three documented networks', () => {
+    for (const passphrase of [
+      'Public Global Stellar Network ; September 2015',
+      'Test SDF Network ; September 2015',
+      'Test SDF Future Network ; October 2022',
+    ]) {
+      const result = lint(`NETWORK_PASSPHRASE="${passphrase}"`);
+      expect(find(result, 'network/passphrase')).toEqual([]);
+    }
+  });
+
+  it('calls out stray whitespace with the exact replacement', () => {
+    const result = lint('NETWORK_PASSPHRASE="Public Global Stellar Network;September 2015"');
+    const [d] = find(result, 'network/passphrase');
+    expect(d?.message).toContain('stray whitespace');
+    expect(d?.suggestion).toContain('Public Global Stellar Network ; September 2015');
+  });
+
+  it('rejects an unrecognised passphrase', () => {
+    const result = lint('NETWORK_PASSPHRASE="My Private Chain"');
+    expect(find(result, 'network/passphrase')[0]?.severity).toBe('error');
+  });
+});
+
+describe('checksum validation', () => {
+  it('rejects a G-key whose checksum has been altered', () => {
+    const broken = `${ACCOUNT_A.slice(0, -1)}X`;
+    const result = lint(`SIGNING_KEY="${broken}"`);
+    expect(find(result, 'general/signing-keys')).toHaveLength(1);
+  });
+
+  it('tells you when a contract ID was used as an account ID', () => {
+    const result = lint(`SIGNING_KEY="${CONTRACT_A}"`);
+    expect(find(result, 'general/signing-keys')[0]?.message).toContain('contract');
+  });
+
+  it('accepts a correct key', () => {
+    const result = lint(`SIGNING_KEY="${ACCOUNT_A}"`);
+    expect(find(result, 'general/signing-keys')).toEqual([]);
+  });
+});
+
+describe('currencies/issuance-exclusive', () => {
+  it('rejects two issuance policies at once', () => {
+    const result = lint(
+      withValidBase(
+        `[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_A}"\nfixed_number=10\nis_unlimited=true`,
+      ),
+    );
+    const [d] = find(result, 'currencies/issuance-exclusive');
+    expect(d?.severity).toBe('error');
+    expect(d?.message).toContain('mutually exclusive');
+  });
+
+  it('warns when no issuance policy is declared', () => {
+    const result = lint(withValidBase(`[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_A}"`));
+    expect(find(result, 'currencies/issuance-exclusive')[0]?.severity).toBe('warning');
+  });
+
+  it('accepts exactly one', () => {
+    const result = lint(
+      withValidBase(`[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_A}"\nis_unlimited=true`),
+    );
+    expect(find(result, 'currencies/issuance-exclusive')).toEqual([]);
+  });
+});
+
+describe('currencies/issuer-or-contract', () => {
+  it('rejects an entry with neither', () => {
+    const result = lint(withValidBase('[[CURRENCIES]]\ncode="AAA"\nis_unlimited=true'));
+    expect(find(result, 'currencies/issuer-or-contract')[0]?.message).toContain('neither');
+  });
+
+  it('rejects an entry with both', () => {
+    const result = lint(
+      withValidBase(
+        `[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_A}"\ncontract="${CONTRACT_A}"\nis_unlimited=true`,
+      ),
+    );
+    expect(find(result, 'currencies/issuer-or-contract')[0]?.message).toContain(
+      'mutually exclusive',
+    );
+  });
+
+  it('accepts a SEP-41 contract token', () => {
+    const result = lint(
+      withValidBase(`[[CURRENCIES]]\ncode="AAA"\ncontract="${CONTRACT_A}"\nis_unlimited=true`),
+    );
+    expect(find(result, 'currencies/issuer-or-contract')).toEqual([]);
+  });
+});
+
+describe('the native asset', () => {
+  // XLM has no issuing account, so requiring one is a false positive. The SDF's
+  // own reference anchor publishes `code = "native"` with no issuer.
+  const native = '[[CURRENCIES]]\ncode="native"\nstatus="live"\nis_asset_anchored=false';
+
+  it('does not demand an issuer or contract', () => {
+    const result = lint(withValidBase(native));
+    expect(find(result, 'currencies/issuer-or-contract')).toEqual([]);
+  });
+
+  it('does not demand an issuance policy', () => {
+    const result = lint(withValidBase(native));
+    expect(find(result, 'currencies/issuance-exclusive')).toEqual([]);
+  });
+
+  it('flags an issuer wrongly attached to the native asset', () => {
+    const result = lint(withValidBase(`[[CURRENCIES]]\ncode="native"\nissuer="${ACCOUNT_A}"`));
+    expect(find(result, 'currencies/issuer-or-contract')[0]?.message).toContain('native asset');
+  });
+
+  it('treats bare XLM with no issuer as native', () => {
+    const result = lint(withValidBase('[[CURRENCIES]]\ncode="XLM"'));
+    expect(find(result, 'currencies/issuer-or-contract')).toEqual([]);
+  });
+
+  it('still requires an issuer for a non-native code', () => {
+    const result = lint(withValidBase('[[CURRENCIES]]\ncode="USDC"'));
+    expect(find(result, 'currencies/issuer-or-contract')).toHaveLength(1);
+  });
+});
+
+describe('currencies/toml-pointer', () => {
+  it('accepts a pointer-only entry', () => {
+    const result = lint(
+      withValidBase('[[CURRENCIES]]\ntoml="https://example.com/.well-known/USD.toml"'),
+    );
+    expect(find(result, 'currencies/toml-pointer')).toEqual([]);
+    // Field rules must not fire on a pointer entry.
+    expect(find(result, 'currencies/code')).toEqual([]);
+    expect(find(result, 'currencies/issuer-or-contract')).toEqual([]);
+  });
+
+  it('rejects a pointer entry with extra fields', () => {
+    const result = lint(
+      withValidBase('[[CURRENCIES]]\ntoml="https://example.com/USD.toml"\ncode="USD"'),
+    );
+    expect(find(result, 'currencies/toml-pointer')[0]?.message).toContain('code');
+  });
+});
+
+describe('currencies/duplicate-asset', () => {
+  it('flags the same code and issuer twice', () => {
+    const entry = `[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_A}"\nis_unlimited=true`;
+    const result = lint(withValidBase(`${entry}\n\n${entry}`));
+    expect(find(result, 'currencies/duplicate-asset')).toHaveLength(1);
+  });
+
+  it('allows the same code from different issuers', () => {
+    const result = lint(
+      withValidBase(
+        `[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_A}"\nis_unlimited=true\n\n` +
+          `[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_B}"\nis_unlimited=true`,
+      ),
+    );
+    expect(find(result, 'currencies/duplicate-asset')).toEqual([]);
+  });
+});
+
+describe('source positions', () => {
+  it('points at the right line inside an array of tables', () => {
+    const source = [
+      'VERSION="2.7.0"',
+      '',
+      '[[CURRENCIES]]',
+      'code="AAA"',
+      `issuer="${ACCOUNT_A}"`,
+      'is_unlimited=true',
+      '',
+      '[[CURRENCIES]]',
+      'code="BBB"',
+      'issuer="not-a-key"',
+      'is_unlimited=true',
+    ].join('\n');
+
+    const [d] = find(lint(source), 'currencies/issuer-or-contract');
+    expect(d?.path).toBe('CURRENCIES[1].issuer');
+    expect(d?.position?.line).toBe(10);
+  });
+
+  it('ignores a # inside a quoted value', () => {
+    const source = 'VERSION="2.7.0"\nHORIZON_URL="https://h.example.com/#/nope"\n';
+    expect(find(lint(source), 'file/parse')).toEqual([]);
+  });
+
+  it('locates a key inside [DOCUMENTATION]', () => {
+    const source = 'VERSION="2.7.0"\n\n[DOCUMENTATION]\nORG_URL="http://example.com"\n';
+    const [d] = find(lint(source), 'documentation/urls');
+    expect(d?.position?.line).toBe(4);
+  });
+});
+
+describe('rule configuration', () => {
+  it('disables a rule with off', () => {
+    const result = lint(fixture('broken.toml'), { rules: { 'general/version': 'off' } });
+    expect(rules(result)).not.toContain('general/version');
+  });
+
+  it('raises severity', () => {
+    const result = lint(fixture('broken.toml'), {
+      rules: { 'general/unknown-field': 'error' },
+    });
+    expect(find(result, 'general/unknown-field')[0]?.severity).toBe('error');
+  });
+
+  it('treats warnings as errors in strict mode', () => {
+    const source = withValidBase(`[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_A}"`);
+    expect(lint(source).ok).toBe(true);
+    expect(lint(source, { strict: true }).ok).toBe(false);
+  });
+});
+
+describe('rule registry', () => {
+  it('has unique ids', () => {
+    const ids = allRules.map((r) => r.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('gives every rule a description and a namespaced id', () => {
+    for (const rule of allRules) {
+      expect(rule.description.length).toBeGreaterThan(0);
+      expect(rule.id).toMatch(/^[a-z]+\/[a-z0-9-]+$/);
+    }
+  });
+
+  it('survives a rule that throws', () => {
+    // Feed structurally hostile input: correct types in the wrong shapes.
+    const hostile = [
+      'ACCOUNTS="not-an-array"',
+      'DOCUMENTATION="not-a-table"',
+      'CURRENCIES="not-a-list"',
+      'PRINCIPALS=42',
+      'VALIDATORS=[1,2,3]',
+    ].join('\n');
+    const result = lint(hostile);
+    expect(find(result, 'internal/rule-error')).toEqual([]);
+  });
+});

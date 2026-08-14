@@ -1,0 +1,19 @@
+# Valid SEP-1, but with gaps that only warrant warnings.
+# Used to test --strict and --max-warnings, which must distinguish
+# "wrong" from "incomplete".
+
+VERSION="2.7.0"
+NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"
+
+[DOCUMENTATION]
+ORG_NAME="Example Anchor Ltd"
+ORG_URL="https://example.com"
+ORG_DESCRIPTION="A minimal but valid info file."
+ORG_LOGO="https://example.com/logo.png"
+ORG_OFFICIAL_EMAIL="partners@example.com"
+
+[[CURRENCIES]]
+# No issuance policy declared — a warning, not an error.
+code="USDX"
+issuer="GAZ3V7WDE3TADF6UQWU3TAWQPVSW6ZV3NCCW6A7UN6HUDI5WXPMLQDFY"
+display_decimals=2

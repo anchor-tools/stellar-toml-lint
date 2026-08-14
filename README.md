@@ -1,0 +1,256 @@
+# stellar-toml-lint
+
+Validate a Stellar Info File (`stellar.toml`) against **[SEP-1]** — offline, before you deploy it.
+
+[![CI](https://github.com/anchor-tools/stellar-toml-lint/actions/workflows/ci.yml/badge.svg)](https://github.com/anchor-tools/stellar-toml-lint/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/stellar-toml-lint.svg)](https://www.npmjs.com/package/stellar-toml-lint)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+
+```console
+$ npx stellar-toml-lint public/.well-known/stellar.toml
+
+public/.well-known/stellar.toml
+  12:1      error    NETWORK_PASSPHRASE has stray whitespace; it must match the Public passphrase byte for byte  network/passphrase
+            ↳ Replace it with exactly: Public Global Stellar Network ; September 2015
+  31:1      error    CURRENCIES[0].issuer is not a valid Stellar account ID  currencies/issuer-or-contract
+            ↳ Check for a transcription error — the checksum does not match.
+  34:1      error    CURRENCIES[0] sets fixed_number and is_unlimited, but these issuance policies are mutually exclusive  currencies/issuance-exclusive
+            ↳ SEP-1 requires exactly one of fixed_number, max_number, or is_unlimited.
+  19:1      warning  DOCUMENTATION.ORG_PHONE_NUMBER is not in E.164 format  documentation/phone-e164
+            ↳ Use a leading + and digits only, e.g. "+14155552671".
+
+  4 problems (3 errors, 1 warning, 0 infos)
+```
+
+## Why this exists
+
+The official [`@stellar/anchor-tests`][anchor-tests] suite is thorough, but it tests a **live
+domain**. That means you find out your info file is broken _after_ you have shipped it — and you
+cannot run it in the pull request that introduced the mistake.
+
+`stellar-toml-lint` reads a local file. It runs in a pre-commit hook, in CI, or on your laptop before
+a domain exists at all. It is complementary to `anchor-tests`, not a replacement: this catches
+everything checkable from the file itself, then hands off to `anchor-tests` for the parts that need
+running services.
+
+|                                 | `stellar-toml-lint` | `@stellar/anchor-tests` |
+| ------------------------------- | ------------------- | ----------------------- |
+| Lints a local file              | ✅                  | ❌                      |
+| Needs a deployed domain         | ❌                  | ✅                      |
+| Line and column for each fault  | ✅                  | ❌                      |
+| Validates key checksums         | ✅                  | partial                 |
+| SARIF / code scanning output    | ✅                  | ❌                      |
+| Tests live SEP-6/10/24/31 flows | ❌                  | ✅                      |
+
+Because it validates Stellar keys with `@stellar/stellar-base`, it verifies the **CRC16 checksum** —
+so a single transposed character in an issuer address is caught, which a `/^G[A-Z2-7]{55}$/` regex
+would wave straight through.
+
+## Install
+
+```bash
+npm install --save-dev stellar-toml-lint   # project dependency
+npx stellar-toml-lint                      # or just run it
+```
+
+Requires Node.js 20 or newer. Two runtime dependencies: `smol-toml` and `@stellar/stellar-base`.
+
+## Usage
+
+```bash
+# Lint a local file (defaults to ./stellar.toml)
+stellar-toml-lint public/.well-known/stellar.toml
+
+# Fetch and lint a live site, including CORS and content-type checks
+stellar-toml-lint --domain example.com
+
+# Lint a local file *as if* served from a domain, enabling same-domain checks
+stellar-toml-lint public/.well-known/stellar.toml --domain example.com
+
+# Read from stdin
+cat stellar.toml | stellar-toml-lint -
+```
+
+### Options
+
+| Flag                 | Effect                                                           |
+| -------------------- | ---------------------------------------------------------------- |
+| `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, and `ORG_URL` checks |
+| `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`                      |
+| `--strict`           | Treat warnings as errors                                         |
+| `--max-warnings <n>` | Fail if warnings exceed `n`                                      |
+| `--off <rule>`       | Disable a rule (repeatable)                                      |
+| `--error <rule>`     | Raise a rule to error (repeatable)                               |
+| `--warn <rule>`      | Lower a rule to warning (repeatable)                             |
+| `-q, --quiet`        | Show errors only                                                 |
+| `--show-help-urls`   | Print the spec link for each finding                             |
+| `--list-rules`       | Print every rule and exit                                        |
+
+Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failure.
+
+## In CI
+
+### GitHub Action
+
+```yaml
+- uses: anchor-tools/stellar-toml-lint@v1
+  with:
+    file: public/.well-known/stellar.toml
+    strict: true
+```
+
+Findings appear as inline annotations on the pull request diff.
+
+To route them into the Security tab instead:
+
+```yaml
+- uses: anchor-tools/stellar-toml-lint@v1
+  with:
+    file: public/.well-known/stellar.toml
+    sarif-file: stellar-toml.sarif
+  continue-on-error: true
+
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: stellar-toml.sarif
+```
+
+### Pre-commit
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: local
+    hooks:
+      - id: stellar-toml-lint
+        name: Lint stellar.toml
+        entry: npx stellar-toml-lint
+        language: system
+        files: '\.well-known/stellar\.toml$'
+```
+
+### Monitoring a deployed anchor
+
+```yaml
+on:
+  schedule:
+    - cron: '23 7 * * *'
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: anchor-tools/stellar-toml-lint@v1
+        with:
+          domain: example.com
+```
+
+This catches the failure mode nobody notices: a CDN or hosting change quietly dropping the
+`Access-Control-Allow-Origin` header, which makes the file unreadable to every browser-based wallet
+while looking perfectly fine to `curl`.
+
+## Programmatic API
+
+```ts
+import { lint, lintDomain, formatText } from 'stellar-toml-lint';
+import { readFile } from 'node:fs/promises';
+
+const result = lint(await readFile('stellar.toml', 'utf8'), {
+  domain: 'example.com',
+  strict: true,
+  rules: { 'general/unknown-field': 'off' },
+});
+
+if (!result.ok) {
+  console.error(formatText(result, { color: true }));
+  process.exit(1);
+}
+
+// Or check a live site. CORS, content type, and size are checked too.
+const live = await lintDomain('example.com');
+```
+
+Every diagnostic carries a stable `rule` id, a `severity`, a dotted `path` to the offending value, a
+source `position`, a link to the relevant part of the spec, and a concrete `suggestion`.
+
+```ts
+interface Diagnostic {
+  rule: string; // 'currencies/issuance-exclusive'
+  severity: 'error' | 'warning' | 'info';
+  category:
+    'file' | 'general' | 'documentation' | 'principals' | 'currencies' | 'validators' | 'network';
+  message: string;
+  path?: string; // 'CURRENCIES[1].issuer'
+  position?: { line: number; column: number };
+  helpUri?: string;
+  suggestion?: string;
+}
+```
+
+## What it checks
+
+Run `stellar-toml-lint --list-rules` for the authoritative list. In summary:
+
+**File** — 100KB size limit, TOML syntax with line and column, UTF-8 BOM detection.
+
+**General** — `VERSION`; `NETWORK_PASSPHRASE` matched byte-for-byte against the known networks;
+`https://` on every endpoint field; trailing-slash detection; checksum-valid `SIGNING_KEY`,
+`URI_REQUEST_SIGNING_KEY`, `WEB_AUTH_CONTRACT_ID`, and `ACCOUNTS`; deprecated fields; unknown fields.
+
+**Cross-field dependencies** — `DIRECT_PAYMENT_SERVER` (SEP-31) requires `KYC_SERVER` (SEP-12);
+`WEB_AUTH_ENDPOINT` (SEP-10) requires `SIGNING_KEY`; SEP-45 needs both its endpoint and contract ID.
+
+**`[DOCUMENTATION]`** — completeness against what wallets weigh when listing an asset; `https://`
+URLs; `ORG_URL` matching the serving domain; attestation documents hosted on your own domain;
+`ORG_OFFICIAL_EMAIL` at the `ORG_URL` domain; E.164 phone format; handles that are handles, not URLs.
+
+**`[[PRINCIPALS]]`** — name and email present and well-formed; hex photo hashes of plausible length.
+
+**`[[CURRENCIES]]`** — code length and charset; exactly one of `issuer` or `contract`, both checksum
+validated; the native XLM asset handled as the special case it is; exactly one issuance policy;
+`status` and `anchor_asset_type` enums; `display_decimals` in 0–7; anchored assets describing what
+backs them; SEP-8 regulated assets carrying an approval server; collateral address, message, and
+signature lists of equal length; `toml` pointer entries carrying nothing else; duplicate assets.
+
+**`[[VALIDATORS]]`** — `ALIAS` matching `^[a-z0-9-]{2,16}$` and unique; checksum-valid, unique
+`PUBLIC_KEY`; `HOST` as `host:port`; `HISTORY` as an absolute URI.
+
+**Network** (with `--domain`) — reachability, `Access-Control-Allow-Origin: *`, `text/plain` content
+type, size.
+
+### Severity
+
+- **error** — violates SEP-1, or will break a client. Fails the build.
+- **warning** — valid but likely wrong, or materially incomplete.
+- **info** — worth a look; usually an unrecognised field name.
+
+Tune any rule with `--off`, `--warn`, or `--error`.
+
+## Contributing
+
+New contributors are genuinely welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md). Issues labelled
+[`good first issue`][gfi] are scoped to be completable in an afternoon, and adding a rule is mostly a
+matter of appending one object to a list and one fixture to a test.
+
+## Maintainers
+
+- [@Kaybee973](https://github.com/Kaybee973)
+- [@Olasunkanmi975](https://github.com/Olasunkanmi975)
+
+General enquiries: <anchortools23@gmail.com>. Please use
+[issues](https://github.com/anchor-tools/stellar-toml-lint/issues) for bugs and feature requests, and
+a [private advisory](https://github.com/anchor-tools/stellar-toml-lint/security/advisories/new) for
+anything security-related.
+
+## Funding
+
+This project participates in [Drips](https://www.drips.network). See [FUNDING.json](./FUNDING.json).
+
+## License
+
+[Apache-2.0](./LICENSE)
+
+Not affiliated with or endorsed by the Stellar Development Foundation.
+
+[SEP-1]: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md
+[anchor-tests]: https://github.com/stellar/stellar-anchor-tests
+[gfi]: https://github.com/anchor-tools/stellar-toml-lint/labels/good%20first%20issue

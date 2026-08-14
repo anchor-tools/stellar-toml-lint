@@ -1,0 +1,76 @@
+name: 'Stellar Info File (SEP-1) Lint'
+description: 'Validate a stellar.toml against SEP-1, with inline PR annotations and optional SARIF upload.'
+author: 'stellar-toml-lint contributors'
+
+branding:
+  icon: 'check-circle'
+  color: 'blue'
+
+inputs:
+  file:
+    description: 'Path to the stellar.toml to lint.'
+    required: false
+    default: 'stellar.toml'
+  domain:
+    description: >-
+      Domain serving the file. When set without `file`, the action fetches
+      https://<domain>/.well-known/stellar.toml and additionally checks CORS,
+      content type, and that ORG_URL matches the serving host.
+    required: false
+  strict:
+    description: 'Treat warnings as errors.'
+    required: false
+    default: 'false'
+  max-warnings:
+    description: 'Fail if the warning count exceeds this number.'
+    required: false
+  format:
+    description: 'Output format: github, text, json, or sarif.'
+    required: false
+    default: 'github'
+  sarif-file:
+    description: 'Also write SARIF to this path, for upload to code scanning.'
+    required: false
+
+outputs:
+  exit-code:
+    description: 'The linter exit code: 0 clean, 1 problems found.'
+    value: ${{ steps.run.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Run stellar-toml-lint
+      id: run
+      shell: bash
+      env:
+        INPUT_FILE: ${{ inputs.file }}
+        INPUT_DOMAIN: ${{ inputs.domain }}
+        INPUT_STRICT: ${{ inputs.strict }}
+        INPUT_MAX_WARNINGS: ${{ inputs.max-warnings }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_SARIF_FILE: ${{ inputs.sarif-file }}
+      run: |
+        set -uo pipefail
+
+        args=()
+        # A domain on its own means "lint the live site"; with a file it only
+        # supplies the host for the same-domain checks.
+        if [[ -n "$INPUT_DOMAIN" ]]; then
+          args+=(--domain "$INPUT_DOMAIN")
+          [[ -f "$INPUT_FILE" ]] && args+=("$INPUT_FILE")
+        else
+          args+=("$INPUT_FILE")
+        fi
+
+        [[ "$INPUT_STRICT" == "true" ]] && args+=(--strict)
+        [[ -n "$INPUT_MAX_WARNINGS" ]] && args+=(--max-warnings "$INPUT_MAX_WARNINGS")
+
+        if [[ -n "$INPUT_SARIF_FILE" ]]; then
+          npx --yes stellar-toml-lint@latest "${args[@]}" --format sarif > "$INPUT_SARIF_FILE" || true
+        fi
+
+        npx --yes stellar-toml-lint@latest "${args[@]}" --format "$INPUT_FORMAT"
+        code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        exit $code

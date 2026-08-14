@@ -1,0 +1,11 @@
+{
+  // Emit-only settings live here so that `tsc --noEmit` over the base config
+  // can also typecheck `test/`, which sits outside rootDir.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"],
+  "exclude": ["test", "**/*.test.ts"]
+}

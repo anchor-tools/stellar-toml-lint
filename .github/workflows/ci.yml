@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Catches drift when a dependency or the SEP-1 spec changes underneath us.
+  schedule:
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        node: ['20', '22', '24']
+        include:
+          - os: macos-latest
+            node: '22'
+          - os: windows-latest
+            node: '22'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+
+  dogfood:
+    name: Lint our own fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      # The tool must pass its own valid fixture in the strictest mode...
+      - name: Valid fixture must pass strict
+        run: node dist/cli.js test/fixtures/valid.toml --strict
+
+      # ...and must fail the broken one. Without this, a rule that silently
+      # stopped firing would still show a green build.
+      - name: Broken fixture must fail
+        run: |
+          if node dist/cli.js test/fixtures/broken.toml; then
+            echo "::error::broken.toml unexpectedly passed — a rule has stopped firing"
+            exit 1
+          fi

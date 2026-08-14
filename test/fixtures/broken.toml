@@ -1,0 +1,65 @@
+# A deliberately broken Stellar Info File covering one instance of most rules.
+# Each defect below is a real mistake seen in deployed stellar.toml files.
+
+VERSION="two"
+NETWORK_PASSPHRASE="Public Global Stellar Network;September 2015"
+
+# http:// instead of https://, and a trailing slash.
+TRANSFER_SERVER="http://api.example.com/sep6"
+TRANSFER_SERVER_SEP0024="https://api.example.com/sep24/"
+# SEP-31 without the SEP-12 server it depends on.
+DIRECT_PAYMENT_SERVER="https://api.example.com/sep31"
+# SEP-10 endpoint with no SIGNING_KEY to verify challenges against.
+WEB_AUTH_ENDPOINT="https://api.example.com/auth"
+# Deprecated.
+AUTH_SERVER="https://api.example.com/auth-legacy"
+# Last character altered, so the checksum fails.
+URI_REQUEST_SIGNING_KEY="GCM5YCQPFIW4ICBPPSKACX56ZTGG6KZ7A53JGUWWAFRZW462YFIK4BZX"
+# Not a field SEP-1 defines.
+SUPPORT_SERVER="https://api.example.com/support"
+
+ACCOUNTS=[
+"GC7T6T56DX23PT7Q6WGCTIJT5O6TP6SJ47RP73JCA3ISLVCCVMGHNSDI",
+"GC7T6T56DX23PT7Q6WGCTIJT5O6TP6SJ47RP73JCA3ISLVCCVMGHNSDI",
+"not-an-account"
+]
+
+[DOCUMENTATION]
+ORG_NAME="Example Anchor Ltd"
+ORG_URL="http://example-anchor.net"
+ORG_LOGO="https://example.com/logo.svg"
+ORG_PHONE_NUMBER="(415) 555-2671"
+ORG_TWITTER="https://twitter.com/exampleanchor"
+ORG_OFFICIAL_EMAIL="ops@gmail.com"
+ORG_SUPPORT_EMAIL="not-an-email"
+ORG_PHYSICAL_ADDRESS_ATTESTATION="https://cdn.other-domain.net/address.pdf"
+
+[[PRINCIPALS]]
+email="jane@@example.com"
+twitter="https://twitter.com/crypto_jane"
+id_photo_hash="zzzz"
+
+[[CURRENCIES]]
+# Both issuer and contract, plus two issuance policies.
+code="THIS_CODE_IS_TOO_LONG"
+issuer="GAZ3V7WDE3TADF6UQWU3TAWQPVSW6ZV3NCCW6A7UN6HUDI5WXPMLQDFY"
+contract="CACTZSQPCQSSZ5YG3PI3N7WO6JEERKEUHTPILKB4MBANF2K4D2UHKDDU"
+display_decimals=9
+status="active"
+anchor_asset_type="dollars"
+fixed_number=1000
+is_unlimited=true
+name="A name that is very much longer than twenty characters"
+regulated=true
+collateral_addresses=["2C1mCx3ukix1KfegAY5zgQJV7sanAciZpv","1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"]
+collateral_address_signatures=["304502206e21798a42fae0e854281abd38bacd1aeed3ee3738d9e1446618c4571d10"]
+
+[[CURRENCIES]]
+# Neither issuer nor contract, and no issuance policy.
+code="ORPH"
+
+[[VALIDATORS]]
+ALIAS="Example_US_Node"
+HOST="core-us.example.com"
+PUBLIC_KEY="GBXHQL5SHDWJJ2WQXJZOVQBVVIFXLFQQFIKVWMU6XA7YZVMVMB5APS5X"
+HISTORY="not a uri"

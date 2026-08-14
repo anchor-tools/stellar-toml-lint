@@ -1,0 +1,220 @@
+import type { Diagnostic, LintResult, Severity } from './types.js';
+
+/** Minimal ANSI helpers. Avoids a dependency for what is a dozen escape codes. */
+function makeColors(enabled: boolean) {
+  const wrap = (open: number, close: number) => (s: string) =>
+    enabled ? `[${open}m${s}[${close}m` : s;
+  return {
+    red: wrap(31, 39),
+    yellow: wrap(33, 39),
+    blue: wrap(34, 39),
+    grey: wrap(90, 39),
+    bold: wrap(1, 22),
+    underline: wrap(4, 24),
+  };
+}
+
+const SEVERITY_LABEL: Record<Severity, string> = {
+  error: 'error',
+  warning: 'warning',
+  info: 'info',
+};
+
+export interface TextReporterOptions {
+  /** Path shown in the header and in each location line. */
+  filename?: string;
+  color?: boolean;
+  /** Print the `suggestion` line under each diagnostic. */
+  showSuggestions?: boolean;
+  /** Print the spec `helpUri` under each diagnostic. */
+  showHelp?: boolean;
+  /**
+   * Set when non-error diagnostics were filtered out upstream, so the
+   * "nothing found" message can say "no errors" rather than overstating a
+   * clean bill of health.
+   */
+  errorsOnly?: boolean;
+}
+
+/**
+ * Human-readable output, one diagnostic per line, grouped in severity order.
+ *
+ * The format deliberately mirrors ESLint and tsc — `file:line:col severity
+ * message rule` — because editors and terminal emulators already know how to
+ * turn that shape into a clickable link.
+ */
+export function formatText(result: LintResult, options: TextReporterOptions = {}): string {
+  const {
+    filename = 'stellar.toml',
+    color = false,
+    showSuggestions = true,
+    showHelp = false,
+    errorsOnly = false,
+  } = options;
+  const c = makeColors(color);
+  const lines: string[] = [];
+
+  if (result.diagnostics.length === 0) {
+    const verdict = errorsOnly ? 'No SEP-1 errors found.' : 'No SEP-1 issues found.';
+    return `${c.bold(filename)}\n  ${verdict}\n`;
+  }
+
+  lines.push(c.bold(c.underline(filename)));
+
+  // Width the location column to its widest entry. A rule about an absent key
+  // has no line number and falls back to the dotted path, which is longer than
+  // "12:1" — a fixed width would knock every following column out of line.
+  const locations = result.diagnostics.map(locationOf);
+  const width = Math.max(...locations.map((l) => l.length), 9);
+
+  result.diagnostics.forEach((d, i) => {
+    const location = locations[i] ?? '-';
+    lines.push(
+      `  ${c.grey(location.padEnd(width))} ${colorize(c, d.severity)}  ${d.message}  ${c.grey(d.rule)}`,
+    );
+
+    if (showSuggestions && d.suggestion) {
+      lines.push(`  ${' '.repeat(width)} ${c.grey('↳')} ${c.grey(d.suggestion)}`);
+    }
+    if (showHelp && d.helpUri) {
+      lines.push(`  ${' '.repeat(width)} ${c.grey(d.helpUri)}`);
+    }
+  });
+
+  lines.push('');
+  lines.push(summaryLine(result, c));
+  lines.push('');
+  return lines.join('\n');
+}
+
+/** `line:column` when known, else the dotted path, else a placeholder. */
+function locationOf(d: Diagnostic): string {
+  if (d.position) return `${d.position.line}:${d.position.column}`;
+  return d.path ?? '-';
+}
+
+function colorize(c: ReturnType<typeof makeColors>, severity: Severity): string {
+  const label = (SEVERITY_LABEL[severity] ?? severity).padEnd(7);
+  if (severity === 'error') return c.red(label);
+  if (severity === 'warning') return c.yellow(label);
+  return c.blue(label);
+}
+
+function summaryLine(result: LintResult, c: ReturnType<typeof makeColors>): string {
+  const { error, warning, info } = result.counts;
+  const total = error + warning + info;
+  const parts = [
+    `${error} ${plural(error, 'error')}`,
+    `${warning} ${plural(warning, 'warning')}`,
+    `${info} ${plural(info, 'info')}`,
+  ];
+  const text = `  ${total} ${plural(total, 'problem')} (${parts.join(', ')})`;
+  return error > 0 ? c.red(c.bold(text)) : warning > 0 ? c.yellow(text) : c.grey(text);
+}
+
+function plural(n: number, word: string): string {
+  return n === 1 ? word : `${word}s`;
+}
+
+/** Machine-readable output for scripts and dashboards. */
+export function formatJson(result: LintResult, filename = 'stellar.toml'): string {
+  return `${JSON.stringify(
+    {
+      file: filename,
+      ok: result.ok,
+      counts: result.counts,
+      diagnostics: result.diagnostics,
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+/** GitHub Actions workflow commands, which render as inline PR annotations. */
+export function formatGithub(result: LintResult, filename = 'stellar.toml'): string {
+  const lines = result.diagnostics.map((d) => {
+    const level = d.severity === 'info' ? 'notice' : d.severity;
+    const params = [`file=${filename}`];
+    if (d.position) {
+      params.push(`line=${d.position.line}`, `col=${d.position.column}`);
+    }
+    params.push(`title=${escapeProperty(`SEP-1: ${d.rule}`)}`);
+    return `::${level} ${params.join(',')}::${escapeData(d.message)}`;
+  });
+  return lines.length > 0 ? `${lines.join('\n')}\n` : '';
+}
+
+// GitHub's workflow command format reserves these characters.
+function escapeData(s: string): string {
+  return s.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+}
+
+function escapeProperty(s: string): string {
+  return escapeData(s).replace(/:/g, '%3A').replace(/,/g, '%2C');
+}
+
+/**
+ * SARIF 2.1.0, the format GitHub code scanning ingests.
+ *
+ * Uploading this via `github/codeql-action/upload-sarif` puts SEP-1 findings in
+ * the Security tab alongside everything else, with history and dismissal.
+ */
+export function formatSarif(
+  result: LintResult,
+  filename = 'stellar.toml',
+  version = '0.1.0',
+): string {
+  const rules = new Map<string, Diagnostic>();
+  for (const d of result.diagnostics) {
+    if (!rules.has(d.rule)) rules.set(d.rule, d);
+  }
+  const ruleIndex = new Map([...rules.keys()].map((id, i) => [id, i]));
+
+  const sarif = {
+    $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
+    version: '2.1.0',
+    runs: [
+      {
+        tool: {
+          driver: {
+            name: 'stellar-toml-lint',
+            informationUri: 'https://github.com/anchor-tools/stellar-toml-lint',
+            version,
+            rules: [...rules.entries()].map(([id, d]) => ({
+              id,
+              name: id,
+              shortDescription: { text: `SEP-1: ${id}` },
+              ...(d.helpUri ? { helpUri: d.helpUri } : {}),
+              properties: { category: d.category },
+            })),
+          },
+        },
+        results: result.diagnostics.map((d) => ({
+          ruleId: d.rule,
+          ruleIndex: ruleIndex.get(d.rule) ?? 0,
+          level: d.severity === 'info' ? 'note' : d.severity,
+          message: { text: d.suggestion ? `${d.message}. ${d.suggestion}` : d.message },
+          locations: [
+            {
+              physicalLocation: {
+                artifactLocation: { uri: toUri(filename) },
+                region: {
+                  // SARIF requires 1-based positive integers.
+                  startLine: Math.max(d.position?.line ?? 1, 1),
+                  startColumn: Math.max(d.position?.column ?? 1, 1),
+                },
+              },
+            },
+          ],
+        })),
+      },
+    ],
+  };
+
+  return `${JSON.stringify(sarif, null, 2)}\n`;
+}
+
+/** SARIF artifact URIs must be relative and forward-slashed. */
+function toUri(filename: string): string {
+  return filename.replace(/\\/g, '/').replace(/^\.\//, '');
+}

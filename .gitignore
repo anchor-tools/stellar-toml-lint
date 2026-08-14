@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Lint output that CI may produce locally.
+*.sarif
+
+.DS_Store
+.idea/
+.vscode/
+*.log
+npm-debug.log*
+.env
+.env.*
+!.env.example

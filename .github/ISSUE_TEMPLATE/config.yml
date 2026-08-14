@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: SEP-1 specification
+    url: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md
+    about: The specification this linter enforces. Worth checking before filing.
+  - name: Stellar Developer Discord
+    url: https://discord.gg/stellardev
+    about: General questions about anchors, SEPs, and the Stellar ecosystem.
+  - name: Security vulnerability
+    url: https://github.com/anchor-tools/stellar-toml-lint/security/advisories/new
+    about: Please report security issues privately, not as a public issue.

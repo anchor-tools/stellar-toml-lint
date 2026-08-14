@@ -1,0 +1,75 @@
+{
+  "name": "stellar-toml-lint",
+  "version": "0.1.0",
+  "description": "Offline SEP-1 linter for stellar.toml — validate your Stellar Info File before you deploy it.",
+  "keywords": [
+    "stellar",
+    "sep-1",
+    "sep1",
+    "stellar.toml",
+    "anchor",
+    "linter",
+    "toml",
+    "soroban",
+    "validator"
+  ],
+  "license": "Apache-2.0",
+  "author": "anchor-tools <anchortools23@gmail.com> (https://github.com/anchor-tools)",
+  "contributors": [
+    "Kaybee973 (https://github.com/Kaybee973)",
+    "Olasunkanmi975 (https://github.com/Olasunkanmi975)"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "stellar-toml-lint": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@stellar/stellar-base": "^15.0.0",
+    "smol-toml": "^1.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^2.1.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anchor-tools/stellar-toml-lint.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anchor-tools/stellar-toml-lint/issues"
+  },
+  "homepage": "https://github.com/anchor-tools/stellar-toml-lint#readme"
+}
