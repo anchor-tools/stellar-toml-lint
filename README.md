@@ -83,6 +83,7 @@ cat stellar.toml | stellar-toml-lint -
 | `--error <rule>`     | Raise a rule to error (repeatable)                               |
 | `--warn <rule>`      | Lower a rule to warning (repeatable)                             |
 | `-q, --quiet`        | Show errors only                                                 |
+| `--no-suggestions`   | Hide suggestion lines in text output                            |
 | `--show-help-urls`   | Print the spec link for each finding                             |
 | `--list-rules`       | Print every rule and exit                                        |
 

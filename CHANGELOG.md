@@ -7,6 +7,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- Add `--no-suggestions` to hide suggestion lines in text output.
+
 ## [0.1.0]
 
 Initial release.

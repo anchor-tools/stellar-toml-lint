@@ -125,4 +125,12 @@ describe('cli', () => {
     const severities = JSON.parse(stdout).diagnostics.map((d: { severity: string }) => d.severity);
     expect(new Set(severities)).toEqual(new Set(['error']));
   });
+
+  it('hides suggestions with --no-suggestions', async () => {
+    const defaultRun = await cli([fixture('broken.toml')]);
+    const compactRun = await cli([fixture('broken.toml'), '--no-suggestions']);
+
+    expect(defaultRun.stdout).toContain('↳');
+    expect(compactRun.stdout).not.toContain('↳');
+  });
 });

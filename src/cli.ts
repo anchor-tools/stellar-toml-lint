@@ -26,6 +26,7 @@ interface Cli {
   strict: boolean;
   color?: boolean;
   quiet: boolean;
+  showSuggestions: boolean;
   showHelp: boolean;
   rules: RuleOverrides;
   maxWarnings?: number;
@@ -50,6 +51,7 @@ OPTIONS
       --error <rule>      Raise a rule to error (repeatable)
       --warn <rule>       Lower a rule to warning (repeatable)
   -q, --quiet             Report errors only
+      --no-suggestions    Hide suggestion lines in text output
       --show-help-urls    Print the spec link for each finding
       --color / --no-color
       --list-rules        Print every rule and exit
@@ -128,6 +130,7 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
         filename: name,
         color,
         showHelp: cli.showHelp,
+        showSuggestions: cli.showSuggestions,
         errorsOnly: cli.quiet,
       });
   }
@@ -156,6 +159,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     format: 'text',
     strict: false,
     quiet: false,
+    showSuggestions: true,
     showHelp: false,
     rules: {},
   };
@@ -218,6 +222,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '-q':
       case '--quiet':
         cli.quiet = true;
+        break;
+
+      case '--no-suggestions':
+        cli.showSuggestions = false;
         break;
 
       case '--show-help-urls':
