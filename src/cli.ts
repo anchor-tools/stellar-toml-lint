@@ -66,8 +66,9 @@ USAGE
   cat stellar.toml | stellar-toml-lint - Lint stdin
 
 OPTIONS
-  -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
-                          ORG_URL same-domain checks. Fetches unless files are given.
+  -d, --domain <domain>   Domain serving the file. Enables CORS, content-type,
+                          image-asset and ORG_URL same-domain checks. Fetches
+                          unless files are given.
   -f, --format <fmt>      text (default), json, sarif, github, or junit
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n

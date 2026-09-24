@@ -9,6 +9,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `network/image-unreachable`, `network/image-cors`, `network/image-content-type`, and
+  `network/image-max-size` (all warnings) under `--domain`: the branding images wallets actually
+  download — `DOCUMENTATION.ORG_LOGO` and up to ten `[[CURRENCIES]].image` URLs — are probed with
+  an `Origin`-carrying HEAD (falling back to GET when HEAD is rejected), so a logo that 404s, a
+  CDN that withholds `Access-Control-Allow-Origin: *` from browser wallets, an `image` URL served
+  as something other than an `image/*` type, or a `Content-Length` over 500KB is reported before
+  the wallet renders a blank tile. Offline `lint()` runs still never touch the network (#27).
+
 - Text output follows the [NO_COLOR standard](https://no-color.org) explicitly: any non-empty
   `NO_COLOR` disables colour, an empty value counts as unset, and only an explicit `--color`
   overrides it. Covered by `test/no-color.test.ts` (#148).

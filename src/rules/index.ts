@@ -7,6 +7,7 @@ import { validatorRules } from './validators.js';
 import { securityRules } from './security.js';
 import { horizonRules } from './horizon-check.js';
 import { sep38Rules } from './sep38-endpoints.js';
+import { imageAssetRules } from './image-assets.js';
 import { sorobanRules } from '../soroban.js';
 
 /** Every rule, in report order. */
@@ -19,6 +20,7 @@ export const allRules: Rule[] = [
   ...securityRules,
   ...horizonRules,
   ...sep38Rules,
+  ...imageAssetRules,
   ...sorobanRules,
 ];
 
@@ -34,5 +36,6 @@ export {
   securityRules,
   horizonRules,
   sep38Rules,
+  imageAssetRules,
   sorobanRules,
 };

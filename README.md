@@ -63,7 +63,7 @@ Requires Node.js 20 or newer. Two runtime dependencies: `smol-toml` and `@stella
 # Lint a local file (defaults to ./stellar.toml)
 stellar-toml-lint public/.well-known/stellar.toml
 
-# Fetch and lint a live site, including CORS and content-type checks
+# Fetch and lint a live site, including CORS, content-type, and image-asset checks
 stellar-toml-lint --domain example.com
 
 # Lint a local file *as if* served from a domain, enabling same-domain checks
@@ -75,27 +75,27 @@ cat stellar.toml | stellar-toml-lint -
 
 ### Options
 
-| Flag                      | Effect                                                                            |
-| ------------------------- | --------------------------------------------------------------------------------- |
-| `-d, --domain <d>`        | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks             |
-| `-f, --format <fmt>`      | `text` (default), `json`, `sarif`, `github`, `junit`                              |
-| `--strict`                | Treat warnings as errors                                                          |
-| `--max-warnings <n>`      | Fail if warnings exceed `n`                                                       |
-| `--check-network`         | Verify accounts, `HORIZON_URL`, SEP-8 flags, and `ANCHOR_QUOTE_SERVER` online     |
-| `--check-contracts`       | Verify Soroban contract and WASM TTL liveliness online                            |
-| `--soroban-rpc <url>`     | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`) |
-| `--webhook-slack <url>`   | POST a Slack Block Kit card with the run summary                                  |
-| `--webhook-discord <url>` | POST a Discord embed with the run summary                                         |
-| `--off <rule>`            | Disable a rule (repeatable)                                                       |
-| `--error <rule>`          | Raise a rule to error (repeatable)                                                |
-| `--warn <rule>`           | Lower a rule to warning (repeatable)                                              |
-| `-q, --quiet`             | Show errors only                                                                  |
-| `--show-help-urls`        | Print the spec link for each finding                                              |
-| `--list-rules`            | Print every rule and exit                                                         |
-| `--no-suggestions`        | Hide diagnostic suggestions in the output                                         |
-| `--color`                 | Force colour on, overriding `NO_COLOR`                                            |
-| `--no-color`              | Force colour off                                                                  |
-| `-i, --interactive`       | Full-screen dashboard to walk the findings (falls back to text)                   |
+| Flag                      | Effect                                                                             |
+| ------------------------- | ---------------------------------------------------------------------------------- |
+| `-d, --domain <d>`        | Serving domain. Enables CORS, content-type, TLS, image-asset, and `ORG_URL` checks |
+| `-f, --format <fmt>`      | `text` (default), `json`, `sarif`, `github`, `junit`                               |
+| `--strict`                | Treat warnings as errors                                                           |
+| `--max-warnings <n>`      | Fail if warnings exceed `n`                                                        |
+| `--check-network`         | Verify accounts, `HORIZON_URL`, SEP-8 flags, and `ANCHOR_QUOTE_SERVER` online      |
+| `--check-contracts`       | Verify Soroban contract and WASM TTL liveliness online                             |
+| `--soroban-rpc <url>`     | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)  |
+| `--webhook-slack <url>`   | POST a Slack Block Kit card with the run summary                                   |
+| `--webhook-discord <url>` | POST a Discord embed with the run summary                                          |
+| `--off <rule>`            | Disable a rule (repeatable)                                                        |
+| `--error <rule>`          | Raise a rule to error (repeatable)                                                 |
+| `--warn <rule>`           | Lower a rule to warning (repeatable)                                               |
+| `-q, --quiet`             | Show errors only                                                                   |
+| `--show-help-urls`        | Print the spec link for each finding                                               |
+| `--list-rules`            | Print every rule and exit                                                          |
+| `--no-suggestions`        | Hide diagnostic suggestions in the output                                          |
+| `--color`                 | Force colour on, overriding `NO_COLOR`                                             |
+| `--no-color`              | Force colour off                                                                   |
+| `-i, --interactive`       | Full-screen dashboard to walk the findings (falls back to text)                    |
 
 Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failure.
 
@@ -340,8 +340,15 @@ balance.
 
 **Network** (with `--domain`) — reachability, `Access-Control-Allow-Origin: *`, `text/plain` content
 type, size, and the security of the TLS session: a negotiated protocol of TLS 1.0, TLS 1.1, SSLv2,
-or SSLv3, and cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. Nothing here
-fires for a local file, so offline linting never depends on a network connection.
+or SSLv3, and cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. The branding
+images wallets download — `DOCUMENTATION.ORG_LOGO` and up to ten `[[CURRENCIES]].image` URLs — are
+probed too, with an `Origin`-carrying HEAD that falls back to GET when the server rejects HEAD: a
+URL that fails to resolve, times out, or answers with anything but HTTP 200 emits
+`network/image-unreachable`; a response without `Access-Control-Allow-Origin: *` emits
+`network/image-cors`; a Content-Type that is not an `image/*` type emits
+`network/image-content-type`; and a `Content-Length` over 500KB emits `network/image-max-size`.
+All four are warnings — the file itself is fine, the branding is what will break in the wallet.
+Nothing here fires for a local file, so offline linting never depends on a network connection.
 
 **Network** (with `--check-network`) — queries the `HORIZON_URL` endpoint the file advertises and
 asserts it answers with a valid Horizon root document. An endpoint that is offline, misconfigured,
