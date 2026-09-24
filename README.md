@@ -283,6 +283,38 @@ legitimately earns stays silent.
 
 Tune any rule with `--off`, `--warn`, or `--error`.
 
+### Suppressing rules with comments
+
+Some exceptions are deliberate — an unchangeable legacy currency code, a support number that is
+not E.164, a deprecated field a partner still requires. Rather than switch the rule off for the
+whole file with `--off` or `.stellartomlrc.json`, scope the suppression in the source itself:
+
+```toml
+# stellar-toml-lint-disable-next-line currencies/code
+code = "US-DOLLAR"          # legacy code, contractually fixed
+
+SUPPORT_PHONE = "(415) 555-2671"   # stellar-toml-lint-disable-line documentation/phone-e164
+
+# stellar-toml-lint-disable general/unknown-field
+PARTNER_FIELD = "kept for compatibility"
+# stellar-toml-lint-enable general/unknown-field
+```
+
+| Pragma                                        | Suppresses                                             |
+| --------------------------------------------- | ------------------------------------------------------ |
+| `stellar-toml-lint-disable-next-line <rules>` | The immediately following line                         |
+| `stellar-toml-lint-disable-line <rules>`      | The line the comment sits on (trailing comments work)  |
+| `stellar-toml-lint-disable <rules>`           | Every line from here until a matching `enable`, or EOF |
+| `stellar-toml-lint-enable <rules>`            | Ends a `disable` block                                 |
+
+List rules comma-separated (`general/version, currencies/code`), or use `*` to suppress every
+diagnostic: `# stellar-toml-lint-disable-next-line *`. A bare `disable` (no rules) means all rules,
+and a bare `enable` ends every open block.
+
+Suppressed diagnostics do not appear in any output format (`text`, `json`, `sarif`, `github`,
+`junit`) and do not count toward the exit code. Since comments are recovered from the raw source,
+a pragma applies to diagnostics that carry a position on its target line.
+
 ## Contributing
 
 New contributors are genuinely welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md). Issues labelled

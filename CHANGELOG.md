@@ -9,6 +9,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- In-source suppression comments: `# stellar-toml-lint-disable-next-line`, `disable-line`, and
+  `disable`/`enable` blocks scoped to specific rule ids (or `*` for everything), pre-scanned from
+  the raw TOML because `smol-toml` does not expose comments. Suppressed diagnostics disappear from
+  every reporter and from the exit-code counts (#25).
 - `--format junit` emits a JUnit XML test report for CI dashboards that chart test results (Jenkins,
   Bamboo, CircleCI, Azure DevOps). Error-severity findings are reported as `<failure>` elements and
   warnings as `<error>` elements, so a dashboard counting failures matches the exit code (#143).
