@@ -10,9 +10,8 @@ import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import process from 'node:process';
 import { lint, lintDomain, finalize } from './lint.js';
-import { checkNetworkAccounts } from './network-checks.js';
+import { checkNetworkAccounts, checkSep41Contracts } from './network-checks.js';
 import { formatGithub, formatJson, formatJunit, formatSarif, formatText } from './reporters.js';
-import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
 import { allRules } from './rules/index.js';
@@ -58,8 +57,9 @@ OPTIONS
   -q, --quiet             Report errors only
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
-      --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, and
-                          ANCHOR_QUOTE_SERVER against the network
+      --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL,
+                          ANCHOR_QUOTE_SERVER, and SEP-41 contract tokens
+                          against the network
       --color / --no-color
       --list-rules        Print every rule and exit
   -v, --version
@@ -113,7 +113,7 @@ async function main(argv: string[]): Promise<number> {
           const networkDiagnostics = [
             ...(await checkHorizon(fileResult.parsed, fetch, { rules: cli.rules })),
             ...(await checkNetworkAccounts(fileResult.parsed)),
-            ...(await checkDisplayDecimals(fileResult.parsed, fetch, { rules: cli.rules })),
+            ...(await checkSep41Contracts(fileResult.parsed, fetch, { rules: cli.rules })),
             ...(await checkSep38(fileResult.parsed, fetch, { rules: cli.rules })),
           ];
           if (networkDiagnostics.length > 0) {

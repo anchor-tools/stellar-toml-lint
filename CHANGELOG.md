@@ -9,6 +9,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Opt-in SEP-41 contract verification under `--check-network`: each `[[CURRENCIES]].contract` is
+  simulated against the Soroban RPC for the file's network to confirm it exists and answers the
+  SEP-41 `decimals()` accessor (`currencies/sep41-token`, warning), a `display_decimals` that
+  disagrees with the contract reports `currencies/display-decimals-contract-mismatch` (warning),
+  and an unreachable RPC degrades to `currencies/sep41-unverified` (warning) instead of silently
+  skipping — the offline default run is unchanged (#10).
 - `--format junit` emits a JUnit XML test report for CI dashboards that chart test results (Jenkins,
   Bamboo, CircleCI, Azure DevOps). Error-severity findings are reported as `<failure>` elements and
   warnings as `<error>` elements, so a dashboard counting failures matches the exit code (#143).

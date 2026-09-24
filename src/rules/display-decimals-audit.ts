@@ -30,7 +30,8 @@ function networkPassphraseOf(doc: Record<string, unknown>): string | undefined {
   return typeof doc.NETWORK_PASSPHRASE === 'string' ? doc.NETWORK_PASSPHRASE : undefined;
 }
 
-function rpcUrlFor(passphrase: string | undefined): string | undefined {
+/** Soroban RPC endpoint for a known network passphrase, or `undefined`. */
+export function rpcUrlFor(passphrase: string | undefined): string | undefined {
   switch (passphrase) {
     case Networks.PUBLIC:
       return 'https://soroban-rpc.mainnet.stellar.org';

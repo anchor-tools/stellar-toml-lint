@@ -81,7 +81,7 @@ cat stellar.toml | stellar-toml-lint -
 | `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`, `junit`                  |
 | `--strict`           | Treat warnings as errors                                              |
 | `--max-warnings <n>` | Fail if warnings exceed `n`                                           |
-| `--check-network`    | Verify accounts, `HORIZON_URL`, and `ANCHOR_QUOTE_SERVER` online      |
+| `--check-network`    | Verify accounts, contract tokens, `HORIZON_URL`, and quote endpoints  |
 | `--off <rule>`       | Disable a rule (repeatable)                                           |
 | `--error <rule>`     | Raise a rule to error (repeatable)                                    |
 | `--warn <rule>`      | Lower a rule to warning (repeatable)                                  |
@@ -273,7 +273,13 @@ belongs emits `sep38/prices-endpoint-error` or `sep38/malformed-price-response` 
 wallet that cannot negotiate exchange rates fails the run instead of at transfer time. The
 `/quote` route is probed too: a 5xx emits `sep38/quote-endpoint-error`, and a 200 that is not a JSON
 object emits `sep38/malformed-quote-response`, while the 400/401/404 a bare unauthenticated GET
-legitimately earns stays silent.
+legitimately earns stays silent. Contract currencies are verified against **SEP-41**: the linter
+simulates the token's `decimals()` accessor on the Soroban RPC for the file's network, so a typo'd
+contract ID or a contract that is not a token emits `currencies/sep41-token` (warning), a
+`display_decimals` that disagrees with the contract emits
+`currencies/display-decimals-contract-mismatch` (warning), and an unreachable RPC degrades to
+`currencies/sep41-unverified` (warning) rather than failing the run. The offline default never
+queries anything.
 
 ### Severity
 

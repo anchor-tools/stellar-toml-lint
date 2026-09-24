@@ -20,7 +20,7 @@ import {
 } from '../predicates.js';
 
 /** Reads `[[CURRENCIES]]` as a list of tables, ignoring malformed entries. */
-function currenciesOf(doc: Record<string, unknown>): Record<string, unknown>[] {
+export function currenciesOf(doc: Record<string, unknown>): Record<string, unknown>[] {
   const list = doc.CURRENCIES;
   if (!Array.isArray(list)) return [];
   return list.filter(
