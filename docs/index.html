@@ -244,7 +244,10 @@ cat stellar.toml | stellar-toml-lint -</code></pre>
                 <code>-d, --domain &lt;d&gt;</code> — serve from a domain for CORS, TLS, and
                 same-domain checks
               </li>
-              <li><code>-f, --format &lt;fmt&gt;</code> — text, json, sarif, github</li>
+              <li>
+                <code>-f, --format &lt;fmt&gt;</code> — text, json, ndjson, sarif, github, junit,
+                checkstyle
+              </li>
               <li><code>--strict</code> — treat warnings like errors</li>
               <li><code>--show-help-urls</code> — include spec links for each finding</li>
               <li><code>--list-rules</code> — show every built-in rule</li>

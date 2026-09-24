@@ -58,6 +58,11 @@ collateral_address_signatures=["304502206e21798a42fae0e854281abd38bacd1aeed3ee37
 # Neither issuer nor contract, and no issuance policy.
 code="ORPH"
 
+[[CURRENCIES]]
+# The native asset's scale is fixed by the protocol, so this is meaningless.
+code="native"
+display_decimals=2
+
 [[VALIDATORS]]
 ALIAS="Example_US_Node"
 HOST="core-us.example.com"

@@ -9,7 +9,6 @@ import {
 import {
   KNOWN_PASSPHRASES,
   MAX_FILE_BYTES,
-  hasTrailingSlash,
   isAccountId,
   isContractId,
   isHttpsUrl,
@@ -18,9 +17,27 @@ import {
   isUrl,
 } from '../predicates.js';
 import { emptyStringValuesRule } from './empty-values.js';
+import { githubHandleRules } from './github-handle.js';
+import { trailingSlashRule } from './trailing-slash.js';
+import { uppercaseKeyRules } from './uppercase-keys.js';
+
+/**
+ * The `WEB_AUTH_CONTRACT_ID` when it is a valid C... id, with its file path,
+ * so network checks can verify the SEP-45 auth contract's TTL. Invalid ids
+ * are reported offline by `general/web-auth-contract-id` instead.
+ */
+export function webAuthContractIdOf(
+  doc: Record<string, unknown>,
+): { id: string; path: string } | undefined {
+  const value = doc.WEB_AUTH_CONTRACT_ID;
+  if (!isString(value) || !isContractId(value)) return undefined;
+  return { id: value, path: 'WEB_AUTH_CONTRACT_ID' };
+}
 
 /** Rules covering file-level constraints and the global (untabled) fields. */
 export const generalRules: Rule[] = [
+  ...uppercaseKeyRules,
+  trailingSlashRule,
   {
     id: 'file/max-size',
     category: 'file',
@@ -135,6 +152,7 @@ export const generalRules: Rule[] = [
         suggestion: near
           ? `Replace it with exactly: ${normalized}`
           : 'Use the Public, Testnet, or Futurenet passphrase exactly as published.',
+        ...(near ? { fix: { value: normalized } } : {}),
       });
     },
   },
@@ -159,20 +177,6 @@ export const generalRules: Rule[] = [
             position: ctx.locate(field),
             helpUri: specUrl('general-information'),
             suggestion: 'Serve the endpoint over TLS and use its https:// URL here.',
-          });
-          continue;
-        }
-
-        if (hasTrailingSlash(value)) {
-          ctx.report({
-            rule: 'general/https-endpoints',
-            category: 'general',
-            severity: 'warning',
-            message: `${field} has a trailing slash, which can produce double-slash request paths`,
-            path: field,
-            position: ctx.locate(field),
-            helpUri: specUrl('general-information'),
-            suggestion: `Remove the trailing slash: ${String(value).replace(/\/+$/, '')}`,
           });
         }
       }
@@ -384,6 +388,105 @@ export const generalRules: Rule[] = [
   },
 
   {
+    id: 'general/sep24-requires-auth',
+    category: 'general',
+    severity: 'error',
+    description: 'TRANSFER_SERVER_SEP0024 (SEP-24) requires WEB_AUTH_ENDPOINT (SEP-10)',
+    run(ctx) {
+      if (
+        ctx.doc.TRANSFER_SERVER_SEP0024 !== undefined &&
+        ctx.doc.WEB_AUTH_ENDPOINT === undefined
+      ) {
+        ctx.report({
+          rule: 'general/sep24-requires-auth',
+          category: 'general',
+          message: 'TRANSFER_SERVER_SEP0024 is set but WEB_AUTH_ENDPOINT is missing',
+          path: 'TRANSFER_SERVER_SEP0024',
+          position: ctx.locate('TRANSFER_SERVER_SEP0024'),
+          helpUri: specUrl('general-information'),
+          suggestion:
+            'SEP-24 requires SEP-10 authentication before deposit and withdraw flows can start, so add WEB_AUTH_ENDPOINT.',
+        });
+      }
+    },
+  },
+
+  {
+    id: 'general/kyc-requires-auth',
+    category: 'general',
+    severity: 'error',
+    description: 'KYC_SERVER (SEP-12) requires WEB_AUTH_ENDPOINT (SEP-10)',
+    run(ctx) {
+      if (ctx.doc.KYC_SERVER !== undefined && ctx.doc.WEB_AUTH_ENDPOINT === undefined) {
+        ctx.report({
+          rule: 'general/kyc-requires-auth',
+          category: 'general',
+          message: 'KYC_SERVER is set but WEB_AUTH_ENDPOINT is missing',
+          path: 'KYC_SERVER',
+          position: ctx.locate('KYC_SERVER'),
+          helpUri: specUrl('general-information'),
+          suggestion:
+            'SEP-12 endpoints expect a SEP-10 JWT on every request, so add WEB_AUTH_ENDPOINT.',
+        });
+      }
+    },
+  },
+
+  {
+    id: 'general/sep38-requires-auth',
+    category: 'general',
+    severity: 'error',
+    description: 'ANCHOR_QUOTE_SERVER (SEP-38) requires WEB_AUTH_ENDPOINT (SEP-10)',
+    run(ctx) {
+      if (ctx.doc.ANCHOR_QUOTE_SERVER !== undefined && ctx.doc.WEB_AUTH_ENDPOINT === undefined) {
+        ctx.report({
+          rule: 'general/sep38-requires-auth',
+          category: 'general',
+          message: 'ANCHOR_QUOTE_SERVER is set but WEB_AUTH_ENDPOINT is missing',
+          path: 'ANCHOR_QUOTE_SERVER',
+          position: ctx.locate('ANCHOR_QUOTE_SERVER'),
+          helpUri: specUrl('general-information'),
+          suggestion:
+            'SEP-38 firm and retail quote requests authenticate with SEP-10, so add WEB_AUTH_ENDPOINT.',
+        });
+      }
+    },
+  },
+
+  {
+    id: 'general/transfer-server-needs-currencies',
+    category: 'general',
+    severity: 'warning',
+    description: 'A declared transfer server should have a non-empty [[CURRENCIES]] list',
+    run(ctx) {
+      const currencies = ctx.doc.CURRENCIES;
+      // A present-but-malformed CURRENCIES is currencies/entries-are-tables'
+      // finding; only "absent" or "empty" belongs to this rule.
+      const emptyOrAbsent =
+        currencies === undefined || (Array.isArray(currencies) && currencies.length === 0);
+      if (!emptyOrAbsent) return;
+
+      const field =
+        ctx.doc.TRANSFER_SERVER !== undefined
+          ? 'TRANSFER_SERVER'
+          : ctx.doc.TRANSFER_SERVER_SEP0024 !== undefined
+            ? 'TRANSFER_SERVER_SEP0024'
+            : undefined;
+      if (field === undefined) return;
+
+      ctx.report({
+        rule: 'general/transfer-server-needs-currencies',
+        category: 'general',
+        message: `${field} is declared but [[CURRENCIES]] is empty or missing`,
+        path: field,
+        position: ctx.locate(field),
+        helpUri: specUrl('currency-documentation'),
+        suggestion: 'List the assets the transfer server handles as [[CURRENCIES]] entries.',
+      });
+    },
+  },
+
+  {
     id: 'general/deprecated-field',
     category: 'general',
     severity: 'warning',
@@ -425,4 +528,5 @@ export const generalRules: Rule[] = [
     },
   },
   emptyStringValuesRule,
+  ...githubHandleRules,
 ];

@@ -1,5 +1,7 @@
 import type { Diagnostic, LintResult, Severity } from './types.js';
 
+export { formatHtml } from './reporters/html.js';
+
 /** Minimal ANSI helpers. Avoids a dependency for what is a dozen escape codes. */
 function makeColors(enabled: boolean) {
   const wrap = (open: number, close: number) => (s: string) =>
@@ -217,4 +219,170 @@ export function formatSarif(
 /** SARIF artifact URIs must be relative and forward-slashed. */
 function toUri(filename: string): string {
   return filename.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
+/**
+ * JUnit XML, which Jenkins, Bamboo, CircleCI and Azure DevOps parse to draw
+ * pass/fail charts and test suite summaries.
+ *
+ * A lint run maps onto the schema the way a test suite does: the file is the
+ * `<testsuite>`, and every diagnostic is a `<testcase>` named after its rule.
+ *
+ * JUnit has no notion of a non-fatal problem, so the two outcome elements are
+ * split by what actually fails the run: `<failure>` is reserved for the
+ * error-severity findings that drive the exit code, so a dashboard that counts
+ * failures agrees with CI. Warnings and info land in `<error>` entries — still
+ * visible, without claiming the file failed — and carry their severity in the
+ * `type` attribute so the difference is machine-readable.
+ */
+export function formatJunit(result: LintResult, filename = 'stellar.toml'): string {
+  const cases = result.diagnostics.map((d) => {
+    const outcome = d.severity === 'error' ? 'failure' : 'error';
+    const attributes = [
+      `name="${escapeXmlAttribute(d.rule)}"`,
+      `classname="${escapeXmlAttribute(d.category)}"`,
+      `file="${escapeXmlAttribute(filename)}"`,
+      ...(d.position ? [`line="${d.position.line}"`] : []),
+      'time="0"',
+    ].join(' ');
+
+    // The element body carries what the terminal reporter shows under the
+    // message: the concrete next step, and the spec link when one is known.
+    const body = [d.message, d.suggestion, d.helpUri].filter(hasText).join('\n');
+
+    return [
+      `    <testcase ${attributes}>`,
+      `      <${outcome} type="${d.severity}" message="${escapeXmlAttribute(d.message)}">${escapeXml(body)}</${outcome}>`,
+      '    </testcase>',
+    ].join('\n');
+  });
+
+  const counts = [
+    `tests="${result.diagnostics.length}"`,
+    `failures="${result.counts.error}"`,
+    `errors="${result.counts.warning + result.counts.info}"`,
+  ].join(' ');
+
+  const suite = [
+    `  <testsuite name="${escapeXmlAttribute(filename)}" ${counts} skipped="0" time="0">`,
+    ...cases,
+    '  </testsuite>',
+  ];
+
+  // No XML declaration is emitted. A run over several files concatenates one
+  // document per file onto stdout, and a declaration anywhere but the very
+  // first byte is a parse error, so omitting it is the honest option.
+  return [
+    `<testsuites name="${escapeXmlAttribute('stellar-toml-lint')}" ${counts}>`,
+    ...suite,
+    '</testsuites>',
+    '',
+  ].join('\n');
+}
+
+function hasText(value: string | undefined): value is string {
+  return value !== undefined && value !== '';
+}
+
+/**
+ * Escapes XML text, replacing the characters XML 1.0 forbids with U+FFFD.
+ *
+ * Diagnostic messages quote values read out of the linted file, so neither the
+ * markup characters nor stray control bytes can be assumed away. A control
+ * character that survives into the document makes a parser reject all of it,
+ * which in CI looks like the linter failed to run at all.
+ */
+function escapeXml(s: string): string {
+  return sanitizeXmlChars(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * XML 1.0 permits tab, newline, carriage return, and everything from #x20
+ * upward that is not a lone surrogate or a noncharacter. Written as Unicode
+ * property escapes because the literal form is a control-character regex.
+ */
+function sanitizeXmlChars(s: string): string {
+  return s.replace(/[\p{Cc}\p{Cs}\uFFFE\uFFFF]/gu, (char) =>
+    char === '\t' || char === '\n' || char === '\r' ? char : '\uFFFD',
+  );
+}
+
+/** Attributes additionally have to escape both quote characters. */
+function escapeXmlAttribute(s: string): string {
+  return escapeXml(s).replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+/**
+ * Checkstyle XML, the shape Jenkins (Warnings NG), SonarQube-adjacent
+ * dashboards, and Java-adjacent CI pipelines read for static-analysis results.
+ *
+ * The document mirrors what Checkstyle itself emits: one `<file>` per linted
+ * file, one `<error>` per diagnostic carrying `line`, `column`, `severity`,
+ * `message`, and `source`. `source` holds the rule id so a consumer can group,
+ * baseline, or suppress findings the way it would a Checkstyle check.
+ * Severity maps straight across (`error`, `warning`, `info`).
+ *
+ * `line` and `column` are always present, defaulting to 1: the format treats
+ * them as required attributes even for a finding about an absent key that has
+ * no position of its own — the same compromise SARIF makes for the same
+ * diagnostics.
+ *
+ * Like `formatJunit`, no XML declaration is emitted. A run over several files
+ * concatenates one document per file onto stdout, and a declaration anywhere
+ * but the very first byte is a parse error, so omitting it is the honest
+ * option.
+ */
+export function formatCheckstyle(
+  result: LintResult,
+  filename = 'stellar.toml',
+  version = '0.1.0',
+): string {
+  const errors = result.diagnostics.map((d) => {
+    const attributes = [
+      `line="${Math.max(d.position?.line ?? 1, 1)}"`,
+      `column="${Math.max(d.position?.column ?? 1, 1)}"`,
+      `severity="${d.severity}"`,
+      `message="${escapeXmlAttribute(d.message)}"`,
+      `source="${escapeXmlAttribute(d.rule)}"`,
+    ].join(' ');
+    return `    <error ${attributes} />`;
+  });
+
+  return [
+    `<checkstyle version="${escapeXmlAttribute(version)}">`,
+    `  <file name="${escapeXmlAttribute(filename)}">`,
+    ...errors,
+    '  </file>',
+    '</checkstyle>',
+    '',
+  ].join('\n');
+}
+
+/** Newline-delimited JSON for streaming analysis. */
+export function formatNdjson(result: LintResult, filename = 'stellar.toml'): string {
+  const lines: string[] = [];
+
+  for (const d of result.diagnostics) {
+    lines.push(
+      JSON.stringify({
+        type: 'diagnostic',
+        file: filename,
+        rule: d.rule,
+        severity: d.severity,
+        message: d.message,
+        ...(d.position ? { position: d.position } : {}),
+      }),
+    );
+  }
+
+  lines.push(
+    JSON.stringify({
+      type: 'summary',
+      file: filename,
+      ok: result.ok,
+      counts: result.counts,
+    }),
+  );
+
+  return `${lines.join('\n')}\n`;
 }
