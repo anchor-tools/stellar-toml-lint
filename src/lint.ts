@@ -11,6 +11,7 @@ import { allRules } from './rules/index.js';
 import { SourceIndex } from './source-index.js';
 import { MAX_FILE_BYTES, isString } from './predicates.js';
 import { specUrl } from './spec.js';
+import { checkNetworkAccounts } from './network-checks.js';
 
 /** Severity ordering used for sorting and for `--max-warnings` style counts. */
 const SEVERITY_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -187,7 +188,14 @@ export async function lintDomain(
   }
 
   const fileResult = lint(source, { ...options, domain: options.domain ?? host });
-  return finalize([...diagnostics, ...fileResult.diagnostics], options, fileResult.parsed);
+  const finalDiagnostics = [...diagnostics, ...fileResult.diagnostics];
+
+  if (options.checkNetwork && fileResult.parsed) {
+    const networkDiagnostics = await checkNetworkAccounts(fileResult.parsed, fetchImpl);
+    finalDiagnostics.push(...networkDiagnostics);
+  }
+
+  return finalize(finalDiagnostics, options, fileResult.parsed);
 }
 
 /** Converts a `smol-toml` parse failure into a positioned diagnostic. */
@@ -238,8 +246,7 @@ function errorMessage(error: unknown): string {
   return isString(error) ? error : String(error);
 }
 
-/** Sorts diagnostics, tallies severities, and computes the pass/fail verdict. */
-function finalize(
+export function finalize(
   diagnostics: Diagnostic[],
   options: LintOptions,
   parsed: Record<string, unknown> | undefined,

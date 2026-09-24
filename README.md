@@ -86,6 +86,7 @@ cat stellar.toml | stellar-toml-lint -
 | `--warn <rule>`      | Lower a rule to warning (repeatable)                             |
 | `-q, --quiet`        | Show errors only                                                 |
 | `--show-help-urls`   | Print the spec link for each finding                             |
+| `--check-network`    | Verify `SIGNING_KEY` and `ACCOUNTS` against the network          |
 | `--list-rules`       | Print every rule and exit                                        |
 | `--no-suggestions`   | Hide diagnostic suggestions in the output                        |
 
