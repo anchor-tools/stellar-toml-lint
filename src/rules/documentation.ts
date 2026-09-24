@@ -276,7 +276,9 @@ export const documentationRules: Rule[] = [
       const documentation = documentationOf(ctx.doc);
       if (!documentation) return;
 
-      for (const field of ['ORG_TWITTER', 'ORG_GITHUB', 'ORG_KEYBASE']) {
+      // ORG_GITHUB is deliberately absent: a github.com profile URL is an
+      // accepted form, so `general/invalid-github-handle` owns that field.
+      for (const field of ['ORG_TWITTER', 'ORG_KEYBASE']) {
         const value = documentation[field];
         if (!isString(value)) continue;
 

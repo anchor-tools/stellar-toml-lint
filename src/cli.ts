@@ -11,14 +11,17 @@ import { basename } from 'node:path';
 import process from 'node:process';
 import { lint, lintDomain, finalize } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
-import { formatGithub, formatJson, formatSarif, formatText } from './reporters.js';
+import { formatGithub, formatJson, formatJunit, formatSarif, formatText } from './reporters.js';
+import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
+import { checkHorizon } from './rules/horizon-check.js';
+import { checkSep38 } from './rules/sep38-endpoints.js';
 import { allRules } from './rules/index.js';
 import type { LintResult, RuleOverrides, Severity } from './types.js';
 
 const VERSION = '0.1.0';
 const DEFAULT_PATH = 'stellar.toml';
 
-type Format = 'text' | 'json' | 'sarif' | 'github';
+type Format = 'text' | 'json' | 'sarif' | 'github' | 'junit';
 
 interface Cli {
   noSuggestions?: boolean;
@@ -46,7 +49,7 @@ USAGE
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
                           ORG_URL same-domain checks. Fetches unless files are given.
-  -f, --format <fmt>      text (default), json, sarif, or github
+  -f, --format <fmt>      text (default), json, sarif, github, or junit
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
       --off <rule>        Disable a rule (repeatable)
@@ -55,7 +58,8 @@ OPTIONS
   -q, --quiet             Report errors only
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
-      --check-network     Verify SIGNING_KEY and ACCOUNTS against the network
+      --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, and
+                          ANCHOR_QUOTE_SERVER against the network
       --color / --no-color
       --list-rules        Print every rule and exit
   -v, --version
@@ -88,7 +92,11 @@ async function main(argv: string[]): Promise<number> {
     if (cli.domain && cli.paths.length === 0) {
       results.push({
         name: cli.domain,
-        result: await lintDomain(cli.domain, { strict: cli.strict, rules: cli.rules, checkNetwork: cli.checkNetwork }),
+        result: await lintDomain(cli.domain, {
+          strict: cli.strict,
+          rules: cli.rules,
+          checkNetwork: cli.checkNetwork,
+        }),
       });
     } else {
       const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
@@ -100,11 +108,20 @@ async function main(argv: string[]): Promise<number> {
           checkNetwork: cli.checkNetwork,
           ...(cli.domain ? { domain: cli.domain } : {}),
         });
-        
+
         if (cli.checkNetwork && fileResult.parsed) {
-          const networkDiagnostics = await checkNetworkAccounts(fileResult.parsed);
+          const networkDiagnostics = [
+            ...(await checkHorizon(fileResult.parsed, fetch, { rules: cli.rules })),
+            ...(await checkNetworkAccounts(fileResult.parsed)),
+            ...(await checkDisplayDecimals(fileResult.parsed, fetch, { rules: cli.rules })),
+            ...(await checkSep38(fileResult.parsed, fetch, { rules: cli.rules })),
+          ];
           if (networkDiagnostics.length > 0) {
-            fileResult = finalize([...fileResult.diagnostics, ...networkDiagnostics], { strict: cli.strict }, fileResult.parsed);
+            fileResult = finalize(
+              [...fileResult.diagnostics, ...networkDiagnostics],
+              { strict: cli.strict },
+              fileResult.parsed,
+            );
           }
         }
 
@@ -138,6 +155,8 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
       return formatSarif(result, name, VERSION);
     case 'github':
       return formatGithub(result, name);
+    case 'junit':
+      return formatJunit(result, name);
     case 'text':
       return formatText(result, {
         filename: name,
@@ -204,7 +223,9 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--format': {
         const value = requireValue(argv, ++i, arg);
         if (!isFormat(value)) {
-          throw new Error(`Unknown format "${value}". Expected text, json, sarif, or github.`);
+          throw new Error(
+            `Unknown format "${value}". Expected text, json, sarif, github, or junit.`,
+          );
         }
         cli.format = value;
         break;
@@ -275,7 +296,13 @@ function requireValue(argv: string[], index: number, flag: string): string {
 }
 
 function isFormat(value: string): value is Format {
-  return value === 'text' || value === 'json' || value === 'sarif' || value === 'github';
+  return (
+    value === 'text' ||
+    value === 'json' ||
+    value === 'sarif' ||
+    value === 'github' ||
+    value === 'junit'
+  );
 }
 
 /** Rejects typo'd rule ids rather than silently ignoring the override. */
@@ -304,9 +331,20 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-/** Honours NO_COLOR and FORCE_COLOR, falling back to TTY detection. */
+/**
+ * Decides whether the text reporter emits ANSI colour.
+ *
+ * Follows the NO_COLOR standard (https://no-color.org): any non-empty NO_COLOR
+ * value disables colour, whatever it contains, and an empty value counts as
+ * unset. FORCE_COLOR is honoured next, and TTY detection is the fallback.
+ *
+ * An explicit `--color` or `--no-color` is resolved by `main` before this is
+ * consulted, so the flag always wins — that is the only thing that overrides
+ * NO_COLOR.
+ */
 function shouldUseColor(): boolean {
-  if (process.env.NO_COLOR) return false;
+  const noColor = process.env.NO_COLOR;
+  if (noColor !== undefined && noColor !== '') return false;
   if (process.env.FORCE_COLOR && process.env.FORCE_COLOR !== '0') return true;
   return process.stdout.isTTY === true;
 }

@@ -9,7 +9,6 @@ import {
 import {
   KNOWN_PASSPHRASES,
   MAX_FILE_BYTES,
-  hasTrailingSlash,
   isAccountId,
   isContractId,
   isHttpsUrl,
@@ -18,9 +17,14 @@ import {
   isUrl,
 } from '../predicates.js';
 import { emptyStringValuesRule } from './empty-values.js';
+import { githubHandleRules } from './github-handle.js';
+import { trailingSlashRule } from './trailing-slash.js';
+import { uppercaseKeyRules } from './uppercase-keys.js';
 
 /** Rules covering file-level constraints and the global (untabled) fields. */
 export const generalRules: Rule[] = [
+  ...uppercaseKeyRules,
+  trailingSlashRule,
   {
     id: 'file/max-size',
     category: 'file',
@@ -159,20 +163,6 @@ export const generalRules: Rule[] = [
             position: ctx.locate(field),
             helpUri: specUrl('general-information'),
             suggestion: 'Serve the endpoint over TLS and use its https:// URL here.',
-          });
-          continue;
-        }
-
-        if (hasTrailingSlash(value)) {
-          ctx.report({
-            rule: 'general/https-endpoints',
-            category: 'general',
-            severity: 'warning',
-            message: `${field} has a trailing slash, which can produce double-slash request paths`,
-            path: field,
-            position: ctx.locate(field),
-            helpUri: specUrl('general-information'),
-            suggestion: `Remove the trailing slash: ${String(value).replace(/\/+$/, '')}`,
           });
         }
       }
@@ -425,4 +415,5 @@ export const generalRules: Rule[] = [
     },
   },
   emptyStringValuesRule,
+  ...githubHandleRules,
 ];

@@ -1,4 +1,5 @@
 import type { Rule, RuleContext } from '../types.js';
+import { displayDecimalsRules } from './display-decimals-audit.js';
 import { anchoredAssetRules } from './anchored-asset-rules.js';
 import {
   ANCHOR_ASSET_TYPES,
@@ -65,6 +66,8 @@ function eachCurrency(
 
 /** Rules covering the `[[CURRENCIES]]` list. */
 export const currencyRules: Rule[] = [
+  ...displayDecimalsRules,
+
   ...anchoredAssetRules,
 
   {

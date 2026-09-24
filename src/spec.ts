@@ -124,6 +124,47 @@ export const KNOWN_VALIDATOR_FIELDS = new Set<string>([
   'HISTORY',
 ]);
 
+/**
+ * stellar-core config keywords that cannot be reused as a `[[VALIDATORS]]` alias.
+ *
+ * Other operators import a validator's ALIAS into the quorum slices of their own
+ * stellar-core.cfg. Names like `self` or `quorum` are parsed as stellar-core
+ * directives rather than as node names, so an alias colliding with one of these
+ * breaks or surprises other operators' configs. Matched case-insensitively.
+ */
+export const RESERVED_VALIDATOR_ALIASES = new Set<string>([
+  'self',
+  'all',
+  'default',
+  'none',
+  'quorum',
+  'peers',
+  'manual',
+  'auto',
+]);
+
+/**
+ * TLS protocol versions that are no longer considered secure.
+ *
+ * TLS 1.0 and 1.1 were deprecated by RFC 8996; SSLv2/SSLv3 were broken long
+ * before that. SEP-1 itself is silent on TLS versions — it only requires
+ * `https://` — so these are flagged as warnings rather than errors.
+ */
+export const DEPRECATED_TLS_VERSIONS = ['TLSv1', 'TLSv1.1', 'SSLv3', 'SSLv2'] as const;
+
+/**
+ * Markers that identify a weak cipher suite.
+ *
+ * Matched as whole tokens against both the runtime and IANA names, so that a
+ * strong suite is never flagged for merely containing a substring ("DES" in a
+ * hypothetical name, say) while `DES-CBC3-SHA` is still caught.
+ */
+export const WEAK_CIPHER_MARKERS = ['3DES', 'DES', 'RC4', 'CBC', 'NULL', 'EXPORT'] as const;
+
+/** Where to read up on the TLS configuration these rules care about. */
+export const TLS_SECURITY_DOC_URL =
+  'https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Security_Cheat_Sheet.html';
+
 /** Permitted values of `[[CURRENCIES]].status`. */
 export const CURRENCY_STATUSES = ['live', 'dead', 'test', 'private'] as const;
 

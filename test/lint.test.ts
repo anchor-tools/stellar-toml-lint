@@ -70,6 +70,7 @@ describe('broken fixture', () => {
     'general/version',
     'network/passphrase',
     'general/https-endpoints',
+    'general/trailing-slash-in-endpoint',
     'general/signing-keys',
     'general/accounts',
     'general/sep31-requires-kyc',
@@ -96,7 +97,7 @@ describe('broken fixture', () => {
     'validators/alias',
     'validators/public-key',
     'validators/host',
-    'validators/history',
+    'validators/invalid-history-url',
   ])('detects %s', (rule) => {
     expect(rules(result)).toContain(rule);
   });
@@ -335,6 +336,31 @@ describe('source positions', () => {
   });
 });
 
+describe('validators/alias-reserved-keyword', () => {
+  const validator = (alias: string): string =>
+    withValidBase(
+      `[[VALIDATORS]]\nALIAS="${alias}"\nPUBLIC_KEY="${ACCOUNT_A}"\nHOST="core.example.com:11625"`,
+    );
+
+  it.each(['self', 'all', 'default', 'none', 'quorum', 'peers', 'manual', 'auto'])(
+    'flags "%s" as a reserved stellar-core keyword',
+    (alias) => {
+      const result = lint(validator(alias));
+      expect(find(result, 'validators/alias-reserved-keyword')[0]?.message).toContain('reserved');
+    },
+  );
+
+  it('suggests a node-indexed alias', () => {
+    const [d] = find(lint(validator('self')), 'validators/alias-reserved-keyword');
+    expect(d?.suggestion).toContain('self-0');
+  });
+
+  it('leaves an ordinary alias clean', () => {
+    const result = lint(validator('core-1'));
+    expect(find(result, 'validators/alias-reserved-keyword')).toEqual([]);
+  });
+});
+
 describe('rule configuration', () => {
   it('disables a rule with off', () => {
     const result = lint(fixture('broken.toml'), { rules: { 'general/version': 'off' } });
@@ -364,7 +390,8 @@ describe('rule registry', () => {
   it('gives every rule a description and a namespaced id', () => {
     for (const rule of allRules) {
       expect(rule.description.length).toBeGreaterThan(0);
-      expect(rule.id).toMatch(/^[a-z]+\/[a-z0-9-]+$/);
+      // Categories are lowercase; digits are allowed so `sep38/...` matches.
+      expect(rule.id).toMatch(/^[a-z][a-z0-9]*\/[a-z0-9-]+$/);
     }
   });
 

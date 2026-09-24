@@ -6,8 +6,50 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
 ### Added
+
+- Text output follows the [NO_COLOR standard](https://no-color.org) explicitly: any non-empty
+  `NO_COLOR` disables colour, an empty value counts as unset, and only an explicit `--color`
+  overrides it. Covered by `test/no-color.test.ts` (#148).
+
+- `--format junit` emits a JUnit XML test report for CI dashboards that chart test results (Jenkins,
+  Bamboo, CircleCI, Azure DevOps). Error-severity findings are reported as `<failure>` elements and
+  warnings as `<error>` elements, so a dashboard counting failures matches the exit code (#143).
+
+- `validators/invalid-history-url` (error) validates each `[[VALIDATORS]].HISTORY` as a well-formed
+  archive URL, including `{0}` template handling.
+- `validators/stellar-history-json-unreachable` (error) under `--check-network` fetches each
+  validator's archive root and requires it to serve `.well-known/stellar-history.json` with
+  `"version": 1` (#144).
+
 - Opt-in `--check-network` flag to query Horizon and report non-existent `SIGNING_KEY` or `ACCOUNTS` entries as warnings (#7).
+- `network/horizon-unreachable` and `network/horizon-protocol-outdated` under `--check-network`:
+  the linter now GETs `HORIZON_URL` and asserts the response is a valid Horizon root document
+  whose `current_protocol_version` is supported by the instance's `core_supported_protocol_version`,
+  so a misconfigured, offline, or protocol-lagged Horizon endpoint fails the run instead of
+  surfacing later as broken wallet interactions.
+- `sep38/prices-endpoint-error`, `sep38/malformed-price-response`, `sep38/quote-endpoint-error`, and
+  `sep38/malformed-quote-response` under `--check-network`: when `ANCHOR_QUOTE_SERVER` is declared,
+  the linter GETs `/prices?sell_asset=...` for each classic currency and asserts a 200 whose body
+  carries a `buy_assets` array of valid price objects, and probes `/quote` for 5xx or non-JSON 200
+  answers — so a quote server returning 500s or malformed JSON fails the run instead of surfacing
+  later as wallets unable to calculate transaction amounts.
+
+### Changed
+
+- The `validators/history` warning is replaced by `validators/invalid-history-url`, which checks the
+  same field more strictly and reports it as an error. Update any `--off validators/history`
+  configuration to the new id.
+
+### Added
+
+- `security/deprecated-tls-version` and `security/weak-cipher-suite` warnings under `--domain`:
+  the linter now inspects the TLS session the host negotiates and flags TLS 1.0/1.1 (and SSLv2/SSLv3),
+  plus cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. Offline linting is
+  unaffected, and both rules can be tuned with `--off`, `--warn`, and `--error` like any other.
+- `lintDomain` accepts an optional `tlsProbe` so embedders and tests can supply the session instead of
+  having one opened for them. `probeTls` is exported for callers that need to measure it themselves.
 
 ## [0.1.0]
 

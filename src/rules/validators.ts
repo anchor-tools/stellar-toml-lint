@@ -1,6 +1,7 @@
 import type { Rule } from '../types.js';
-import { KNOWN_VALIDATOR_FIELDS, specUrl } from '../spec.js';
-import { isAccountId, isHostPort, isString, isUrl } from '../predicates.js';
+import { KNOWN_VALIDATOR_FIELDS, RESERVED_VALIDATOR_ALIASES, specUrl } from '../spec.js';
+import { isAccountId, isHostPort, isString } from '../predicates.js';
+import { historyUrlRules } from './history-url-check.js';
 
 /** Reads `[[VALIDATORS]]` as a list of tables, ignoring malformed entries. */
 function validatorsOf(doc: Record<string, unknown>): Record<string, unknown>[] {
@@ -113,6 +114,33 @@ export const validatorRules: Rule[] = [
   },
 
   {
+    id: 'validators/alias-reserved-keyword',
+    category: 'validators',
+    severity: 'error',
+    description:
+      'ALIAS must not be a reserved stellar-core config keyword (self, all, default, none, quorum, peers, manual, auto)',
+    run(ctx) {
+      validatorsOf(ctx.doc).forEach((entry, i) => {
+        const path = `VALIDATORS[${i}]`;
+        const alias = entry.ALIAS;
+
+        if (!isString(alias) || !/^[a-z0-9-]{2,16}$/.test(alias)) return;
+        if (!RESERVED_VALIDATOR_ALIASES.has(alias.toLowerCase())) return;
+
+        ctx.report({
+          rule: 'validators/alias-reserved-keyword',
+          category: 'validators',
+          message: `${path}.ALIAS "${alias}" is a reserved stellar-core config keyword`,
+          path: `${path}.ALIAS`,
+          position: ctx.locate(`${path}.ALIAS`),
+          helpUri: specUrl('validator-information'),
+          suggestion: `Other operators import this name into their quorum slices; try "${alias}-${i}".`,
+        });
+      });
+    },
+  },
+
+  {
     id: 'validators/public-key',
     category: 'validators',
     severity: 'error',
@@ -194,35 +222,9 @@ export const validatorRules: Rule[] = [
     },
   },
 
-  {
-    id: 'validators/history',
-    category: 'validators',
-    severity: 'warning',
-    description: 'HISTORY must be a valid archive URI',
-    run(ctx) {
-      validatorsOf(ctx.doc).forEach((entry, i) => {
-        const path = `VALIDATORS[${i}]`;
-        const history = entry.HISTORY;
-        if (history === undefined) return;
-
-        // Archives are commonly served from S3 or GCS, so accept any absolute
-        // URI scheme rather than only http(s).
-        const absolute = isString(history) && /^[a-z][a-z0-9+.-]*:\/\//i.test(history);
-        if (!absolute && !isUrl(history)) {
-          ctx.report({
-            rule: 'validators/history',
-            category: 'validators',
-            message: `${path}.HISTORY must be an absolute URI`,
-            path: `${path}.HISTORY`,
-            position: ctx.locate(`${path}.HISTORY`),
-            helpUri: specUrl('validator-information'),
-            suggestion:
-              'Point at the published history archive root, e.g. "https://history.example.com/prd/core-live/core_live_001/".',
-          });
-        }
-      });
-    },
-  },
+  // HISTORY is validated by `validators/invalid-history-url`, which supersedes
+  // the earlier absolute-URI warning and adds `{0}` template handling.
+  ...historyUrlRules,
 
   {
     id: 'validators/unknown-field',
