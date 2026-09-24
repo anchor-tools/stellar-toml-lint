@@ -9,6 +9,7 @@ import type {
   Severity,
   TlsSession,
 } from './types.js';
+import { isSuppressed, parseSuppressions } from './comments.js';
 import { allRules } from './rules/index.js';
 import { securityRuleIds } from './rules/security.js';
 import { SourceIndex } from './source-index.js';
@@ -51,13 +52,20 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
     source = source.slice(1);
   }
 
+  // `smol-toml` throws comments away, so suppression pragmas are recovered
+  // from the raw source before the rules run, and applied once here — after
+  // every rule has reported — so suppressed findings never reach the counts,
+  // any reporter, or the exit code.
+  const suppressions = parseSuppressions(source);
+  const keep = (d: Diagnostic): boolean => !isSuppressed(suppressions, d.position?.line, d.rule);
+
   let parsed: Record<string, unknown> | undefined;
   try {
     const result = parse(source);
     parsed = result as Record<string, unknown>;
   } catch (error) {
     diagnostics.push(parseDiagnostic(error, source));
-    return finalize(diagnostics, options, undefined);
+    return finalize(diagnostics.filter(keep), options, undefined);
   }
 
   const index = new SourceIndex(source);
@@ -95,7 +103,7 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
     }
   }
 
-  return finalize(diagnostics, options, parsed);
+  return finalize(diagnostics.filter(keep), options, parsed);
 }
 
 /**
