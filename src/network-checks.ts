@@ -5,12 +5,13 @@ const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
 
 export async function checkNetworkAccounts(
   doc: Record<string, unknown>,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
 ): Promise<Diagnostic[]> {
   const diagnostics: Diagnostic[] = [];
-  
-  const passphrase = typeof doc.NETWORK_PASSPHRASE === 'string' ? doc.NETWORK_PASSPHRASE : PUBLIC_PASSPHRASE;
-  
+
+  const passphrase =
+    typeof doc.NETWORK_PASSPHRASE === 'string' ? doc.NETWORK_PASSPHRASE : PUBLIC_PASSPHRASE;
+
   let horizonUrl: string;
   if (passphrase === TESTNET_PASSPHRASE) {
     horizonUrl = 'https://horizon-testnet.stellar.org';

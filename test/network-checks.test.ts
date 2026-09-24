@@ -8,7 +8,7 @@ describe('network-checks', () => {
     const fetchStub = async (/* url */) => {
       return { status: 200 } as Response;
     };
-    
+
     const result = await checkNetworkAccounts(doc, fetchStub as unknown as typeof fetch);
     assert.equal(result.length, 0);
   });
@@ -18,13 +18,13 @@ describe('network-checks', () => {
     const fetchStub = async (/* url */) => {
       return { status: 404 } as Response;
     };
-    
+
     const result = await checkNetworkAccounts(doc, fetchStub as unknown as typeof fetch);
     assert.equal(result.length, 2);
     assert.equal(result[0]?.rule, 'network/account-exists');
     assert.equal(result[0]?.severity, 'warning');
     assert.equal(result[0]?.path, 'SIGNING_KEY');
-    
+
     assert.equal(result[1]?.rule, 'network/account-exists');
     assert.equal(result[1]?.severity, 'warning');
     assert.equal(result[1]?.path, 'ACCOUNTS[0]');
@@ -35,7 +35,7 @@ describe('network-checks', () => {
     const fetchStub = async (/* url */) => {
       throw new Error('Network offline');
     };
-    
+
     const result = await checkNetworkAccounts(doc, fetchStub as unknown as typeof fetch);
     assert.equal(result.length, 1);
     assert.equal(result[0]?.rule, 'network/account-exists');
@@ -44,16 +44,16 @@ describe('network-checks', () => {
   });
 
   it('respects NETWORK_PASSPHRASE for URL selection', async () => {
-    const doc = { 
+    const doc = {
       NETWORK_PASSPHRASE: 'Test SDF Network ; September 2015',
-      SIGNING_KEY: 'G123' 
+      SIGNING_KEY: 'G123',
     };
     let calledUrl = '';
     const fetchStub = async (url: string | URL | globalThis.Request) => {
       calledUrl = url.toString();
       return { status: 200 } as Response;
     };
-    
+
     await checkNetworkAccounts(doc, fetchStub as typeof fetch);
     assert.ok(calledUrl.startsWith('https://horizon-testnet.stellar.org'));
   });
