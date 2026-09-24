@@ -132,7 +132,9 @@ function runBenchmarks(): void {
     results.push(result);
 
     const status = result.passed ? 'PASS' : 'FAIL';
-    console.log(`[${status}] ${result.label.padEnd(10)} | Lines: ${String(result.lineCount).padStart(6)} | Size: ${(result.fileSize / 1024).toFixed(1)}KB | Time: ${result.parseTimeMs.toFixed(2)}ms | Memory: ${result.memoryMb.toFixed(2)}MB`);
+    console.log(
+      `[${status}] ${result.label.padEnd(10)} | Lines: ${String(result.lineCount).padStart(6)} | Size: ${(result.fileSize / 1024).toFixed(1)}KB | Time: ${result.parseTimeMs.toFixed(2)}ms | Memory: ${result.memoryMb.toFixed(2)}MB`,
+    );
   }
 
   console.log('');
@@ -144,7 +146,9 @@ function runBenchmarks(): void {
   const xlargeResult = results.find((r) => r.label === 'xlarge');
   if (xlargeResult) {
     const msPer1000Lines = (xlargeResult.parseTimeMs / xlargeResult.lineCount) * 1000;
-    console.log(`  ${msPer1000Lines.toFixed(2)}ms per 1,000 lines (threshold: ${LINE_THRESHOLD_MS}ms)`);
+    console.log(
+      `  ${msPer1000Lines.toFixed(2)}ms per 1,000 lines (threshold: ${LINE_THRESHOLD_MS}ms)`,
+    );
     const linePassed = msPer1000Lines < LINE_THRESHOLD_MS;
     if (!linePassed) {
       console.log('  WARNING: Performance regression detected!');

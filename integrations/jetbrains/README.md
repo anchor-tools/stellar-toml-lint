@@ -13,9 +13,11 @@ Official JetBrains plugin for IntelliJ IDEA and WebStorm with real-time SEP-1 li
 ## Installation
 
 ### From JetBrains Marketplace
+
 Install the "Stellar TOML Lint" plugin from the JetBrains Marketplace.
 
 ### Manual Installation
+
 1. Build the plugin: `./gradlew buildPlugin`
 2. Install the resulting ZIP from `build/distributions/` via `Settings > Plugins > Install Plugin from Disk`
 

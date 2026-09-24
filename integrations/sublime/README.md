@@ -12,9 +12,11 @@ Official Sublime Text LSP helper package for `stellar.toml` files.
 ## Installation
 
 ### Package Control
+
 Install via Package Control by searching for `LSP-stellar-toml`.
 
 ### Manual
+
 1. Clone this repository to `Packages/LSP-stellar-toml`
 2. Install the [LSP](https://packagecontrol.io/packages/LSP) package via Package Control
 3. Configure `LSP.sublime-settings` to include the stellar.toml server

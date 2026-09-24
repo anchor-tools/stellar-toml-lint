@@ -28,7 +28,7 @@ export default tseslint.config(
     // LSP module has parameters that are intentionally unused in function signatures.
     files: ['src/lsp.ts'],
     rules: {
-      '@typescript-eslint/no-unused-vars': ['error', { 'argsIgnorePattern': '^_' }],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
   {

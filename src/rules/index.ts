@@ -13,7 +13,6 @@ import { horizonRules } from './horizon-check.js';
 import { sep38Rules } from './sep38-endpoints.js';
 import { sorobanRules } from '../soroban.js';
 
-
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
   ...generalRules,

@@ -10,7 +10,7 @@ describe('GitHub App', () => {
       (f) =>
         f.filename === 'stellar.toml' ||
         f.filename === '.well-known/stellar.toml' ||
-        f.filename.endsWith('/stellar.toml')
+        f.filename.endsWith('/stellar.toml'),
     );
     expect(modifiesStellarToml).toBe(true);
   });
@@ -21,7 +21,7 @@ describe('GitHub App', () => {
       (f) =>
         f.filename === 'stellar.toml' ||
         f.filename === '.well-known/stellar.toml' ||
-        f.filename.endsWith('/stellar.toml')
+        f.filename.endsWith('/stellar.toml'),
     );
     expect(modifiesStellarToml).toBe(false);
   });
@@ -30,7 +30,11 @@ describe('GitHub App', () => {
     const mockChecksCreate = vi.fn().mockResolvedValue({ data: { id: 1 } });
     const mockRest = {
       checks: { create: mockChecksCreate, update: vi.fn() },
-      pulls: { listFiles: vi.fn().mockResolvedValue({ data: [{ filename: 'stellar.toml', status: 'modified' }] }) },
+      pulls: {
+        listFiles: vi
+          .fn()
+          .mockResolvedValue({ data: [{ filename: 'stellar.toml', status: 'modified' }] }),
+      },
       repos: { getContent: vi.fn() },
       issues: { createComment: vi.fn() },
     };

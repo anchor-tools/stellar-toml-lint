@@ -5,7 +5,7 @@ export const emailMxRule: Rule = {
   category: 'general',
   severity: 'warning',
   description: 'ORG_OFFICIAL_EMAIL domain must have MX records for email deliverability',
-  run: async ctx => {
+  run: async (ctx) => {
     // Guard: only run under --check-network
     if (!ctx.options.checkNetwork) return;
 

@@ -17,7 +17,7 @@ export function createGitHubApp(app: Probot): void {
       (file) =>
         file.filename === 'stellar.toml' ||
         file.filename === '.well-known/stellar.toml' ||
-        file.filename.endsWith('/stellar.toml')
+        file.filename.endsWith('/stellar.toml'),
     );
 
     if (!modifiesStellarToml) {
@@ -43,9 +43,10 @@ export function createGitHubApp(app: Probot): void {
       const fileContent = await context.octokit.rest.repos.getContent({
         owner,
         repo,
-        path: pull_request.head.repo?.full_name === `${owner}/${repo}`
-          ? '.well-known/stellar.toml'
-          : 'stellar.toml',
+        path:
+          pull_request.head.repo?.full_name === `${owner}/${repo}`
+            ? '.well-known/stellar.toml'
+            : 'stellar.toml',
         ref: pull_request.head.ref,
       });
       void fileContent;
@@ -86,7 +87,9 @@ export function createGitHubApp(app: Probot): void {
           status: 'completed',
           conclusion: hasErrors ? 'failure' : 'neutral',
           output: {
-            title: hasErrors ? 'stellar.toml lint failed' : 'stellar.toml lint passed with warnings',
+            title: hasErrors
+              ? 'stellar.toml lint failed'
+              : 'stellar.toml lint passed with warnings',
             summary: hasErrors
               ? `${diagnostics.filter((d) => d.severity === 'error').length} error(s) found.`
               : `${diagnostics.filter((d) => d.severity === 'warning').length} warning(s) found.`,

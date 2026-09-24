@@ -19,12 +19,12 @@ npm run bench
 
 Performance thresholds are defined in `benchmarks/runner.ts`:
 
-| File Size  | Threshold |
-| ---------- | --------- |
-| < 10KB     | 5ms       |
-| < 100KB    | 20ms      |
-| < 1MB      | 50ms      |
-| < 5MB      | 200ms     |
+| File Size | Threshold |
+| --------- | --------- |
+| < 10KB    | 5ms       |
+| < 100KB   | 20ms      |
+| < 1MB     | 50ms      |
+| < 5MB     | 200ms     |
 
 ## Output
 

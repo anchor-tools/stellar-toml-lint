@@ -9,6 +9,6 @@
   "run_on_save": true,
   "debug": false,
   "settings": {
-    "users": []
-  }
+    "users": [],
+  },
 }

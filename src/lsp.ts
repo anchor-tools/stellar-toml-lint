@@ -154,17 +154,32 @@ function positionToRange(pos?: { line: number; column: number }): Range {
   };
 }
 
-function getCompletions(_source: string, _position: Position): Array<{
+function getCompletions(
+  _source: string,
+  _position: Position,
+): Array<{
   label: string;
   kind: number;
   detail: string;
 }> {
   const topKeys = [
-    'VERSION', 'NETWORK_PASSPHRASE', 'DOMAIN', 'SIGNING_KEY',
-    'CURRENCIES', 'VALIDATORS', 'DOCUMENTATION', 'PRINCIPALS',
-    'ORG_NAME', 'ORG_URL', 'ORG_EMAIL', 'ORG_GITHUB',
-    'TRANSFER_SERVER', 'WEB_AUTH_ENDPOINT', 'KYC_SERVER',
-    'HORIZON_URL', 'ANCHOR_QUOTE_SERVER',
+    'VERSION',
+    'NETWORK_PASSPHRASE',
+    'DOMAIN',
+    'SIGNING_KEY',
+    'CURRENCIES',
+    'VALIDATORS',
+    'DOCUMENTATION',
+    'PRINCIPALS',
+    'ORG_NAME',
+    'ORG_URL',
+    'ORG_EMAIL',
+    'ORG_GITHUB',
+    'TRANSFER_SERVER',
+    'WEB_AUTH_ENDPOINT',
+    'KYC_SERVER',
+    'HORIZON_URL',
+    'ANCHOR_QUOTE_SERVER',
   ];
   return topKeys.map((key) => ({
     label: key,
@@ -173,7 +188,10 @@ function getCompletions(_source: string, _position: Position): Array<{
   }));
 }
 
-function getHover(source: string, position: Position): Array<{
+function getHover(
+  source: string,
+  position: Position,
+): Array<{
   kind: string;
   value: string;
 }> {
@@ -182,15 +200,23 @@ function getHover(source: string, position: Position): Array<{
   const trimmed = line.trim();
 
   const specUrls: Record<string, string> = {
-    'NETWORK_PASSPHRASE': 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#network-passphrase',
-    'SIGNING_KEY': 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#signing-key',
-    'DOMAIN': 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#domain',
-    'CURRENCIES': 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currencies',
-    'VALIDATORS': 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#validators',
-    'DOCUMENTATION': 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#documentation',
-    'WEB_AUTH_ENDPOINT': 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0010.md',
-    'TRANSFER_SERVER': 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0024.md',
-    'HORIZON_URL': 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#horizon-url',
+    NETWORK_PASSPHRASE:
+      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#network-passphrase',
+    SIGNING_KEY:
+      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#signing-key',
+    DOMAIN: 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#domain',
+    CURRENCIES:
+      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currencies',
+    VALIDATORS:
+      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#validators',
+    DOCUMENTATION:
+      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#documentation',
+    WEB_AUTH_ENDPOINT:
+      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0010.md',
+    TRANSFER_SERVER:
+      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0024.md',
+    HORIZON_URL:
+      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#horizon-url',
   };
 
   for (const [key, url] of Object.entries(specUrls)) {
@@ -199,5 +225,11 @@ function getHover(source: string, position: Position): Array<{
     }
   }
 
-  return [{ kind: 'markdown', value: '**SEP-1 stellar.toml**\n\nSee the [SEP-1 specification](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md) for details.' }];
+  return [
+    {
+      kind: 'markdown',
+      value:
+        '**SEP-1 stellar.toml**\n\nSee the [SEP-1 specification](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md) for details.',
+    },
+  ];
 }
