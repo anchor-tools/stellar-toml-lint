@@ -87,7 +87,6 @@ cat stellar.toml | stellar-toml-lint -
 | `-q, --quiet`        | Show errors only                                                 |
 | `--show-help-urls`   | Print the spec link for each finding                             |
 | `--check-network`    | Verify `SIGNING_KEY` and `ACCOUNTS` against the network          |
-| `--follow-links`     | Fetch and lint `toml` pointers in `CURRENCIES`                   |
 | `--list-rules`       | Print every rule and exit                                        |
 | `--no-suggestions`   | Hide diagnostic suggestions in the output                        |
 

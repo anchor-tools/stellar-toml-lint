@@ -9,7 +9,7 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import process from 'node:process';
-import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
+import { lint, lintDomain, finalize } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { formatGithub, formatJson, formatSarif, formatText } from './reporters.js';
 import { allRules } from './rules/index.js';
@@ -32,7 +32,6 @@ interface Cli {
   rules: RuleOverrides;
   maxWarnings?: number;
   checkNetwork: boolean;
-  followLinks: boolean;
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -57,7 +56,6 @@ OPTIONS
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
       --check-network     Verify SIGNING_KEY and ACCOUNTS against the network
-      --follow-links      Fetch and lint toml pointers in CURRENCIES
       --color / --no-color
       --list-rules        Print every rule and exit
   -v, --version
@@ -90,12 +88,7 @@ async function main(argv: string[]): Promise<number> {
     if (cli.domain && cli.paths.length === 0) {
       results.push({
         name: cli.domain,
-        result: await lintDomain(cli.domain, { 
-          strict: cli.strict, 
-          rules: cli.rules, 
-          checkNetwork: cli.checkNetwork,
-          followLinks: cli.followLinks || !!cli.domain,
-        }),
+        result: await lintDomain(cli.domain, { strict: cli.strict, rules: cli.rules, checkNetwork: cli.checkNetwork }),
       });
     } else {
       const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
@@ -105,7 +98,6 @@ async function main(argv: string[]): Promise<number> {
           strict: cli.strict,
           rules: cli.rules,
           checkNetwork: cli.checkNetwork,
-          followLinks: cli.followLinks || !!cli.domain,
           ...(cli.domain ? { domain: cli.domain } : {}),
         });
         
@@ -113,19 +105,6 @@ async function main(argv: string[]): Promise<number> {
           const networkDiagnostics = await checkNetworkAccounts(fileResult.parsed);
           if (networkDiagnostics.length > 0) {
             fileResult = finalize([...fileResult.diagnostics, ...networkDiagnostics], { strict: cli.strict }, fileResult.parsed);
-          }
-        }
-
-        if (cli.followLinks && fileResult.parsed) {
-          const linkDiagnostics = await followTomlPointers(fileResult.parsed, {
-            strict: cli.strict,
-            rules: cli.rules,
-            checkNetwork: cli.checkNetwork,
-            followLinks: cli.followLinks || !!cli.domain,
-            ...(cli.domain ? { domain: cli.domain } : {}),
-          });
-          if (linkDiagnostics.length > 0) {
-            fileResult = finalize([...fileResult.diagnostics, ...linkDiagnostics], { strict: cli.strict }, fileResult.parsed);
           }
         }
 
@@ -196,7 +175,6 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     showHelp: false,
     rules: {},
     checkNetwork: false,
-    followLinks: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -242,10 +220,6 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--check-network':
         cli.checkNetwork = true;
-        break;
-
-      case '--follow-links':
-        cli.followLinks = true;
         break;
 
       case '--max-warnings': {

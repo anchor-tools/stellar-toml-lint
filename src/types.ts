@@ -53,8 +53,6 @@ export interface LintOptions {
   strict?: boolean;
   /** Verify SIGNING_KEY and ACCOUNTS against Horizon. */
   checkNetwork?: boolean;
-  /** Fetch and lint toml pointers in CURRENCIES. */
-  followLinks?: boolean;
 }
 
 export interface LintResult {

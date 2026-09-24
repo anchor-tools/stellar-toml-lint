@@ -195,68 +195,7 @@ export async function lintDomain(
     finalDiagnostics.push(...networkDiagnostics);
   }
 
-  if (options.followLinks && fileResult.parsed) {
-    const linkDiagnostics = await followTomlPointers(fileResult.parsed, options, fetchImpl);
-    finalDiagnostics.push(...linkDiagnostics);
-  }
-
   return finalize(finalDiagnostics, options, fileResult.parsed);
-}
-
-export async function followTomlPointers(
-  doc: Record<string, unknown>,
-  options: LintOptions,
-  fetchImpl: typeof fetch = fetch,
-): Promise<Diagnostic[]> {
-  const diagnostics: Diagnostic[] = [];
-  const list = doc.CURRENCIES;
-  if (!Array.isArray(list)) return diagnostics;
-
-  const pointers = list
-    .map((entry, index) => ({ entry, path: `CURRENCIES[${index}]` }))
-    .filter(({ entry }) => typeof entry === 'object' && entry !== null && typeof (entry as Record<string, unknown>).toml === 'string');
-
-  // Bound fetches to max 20
-  for (const { entry, path } of pointers.slice(0, 20)) {
-    const url = (entry as Record<string, unknown>).toml as string;
-    try {
-      const response = await fetchImpl(url, { redirect: 'follow' });
-      if (!response.ok) {
-        diagnostics.push({
-          rule: 'network/toml-pointer-fetch',
-          severity: 'warning',
-          category: 'network',
-          message: `Could not fetch TOML pointer ${url}: HTTP ${response.status}`,
-          path: `${path}.toml`,
-          helpUri: specUrl('currency-documentation'),
-        });
-        continue;
-      }
-      
-      const source = await response.text();
-      // Lint the linked document
-      const fileResult = lint(source, { ...options, checkNetwork: false, followLinks: false });
-      
-      // We prefix diagnostics with the source URL
-      for (const d of fileResult.diagnostics) {
-        diagnostics.push({
-          ...d,
-          message: `[${url}] ${d.message}`
-        });
-      }
-    } catch (error) {
-      diagnostics.push({
-        rule: 'network/toml-pointer-fetch',
-        severity: 'warning',
-        category: 'network',
-        message: `Could not fetch TOML pointer ${url}: ${errorMessage(error)}`,
-        path: `${path}.toml`,
-        helpUri: specUrl('currency-documentation'),
-      });
-    }
-  }
-
-  return diagnostics;
 }
 
 /** Converts a `smol-toml` parse failure into a positioned diagnostic. */

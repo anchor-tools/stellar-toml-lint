@@ -8,7 +8,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 ### Added
 - Opt-in `--check-network` flag to query Horizon and report non-existent `SIGNING_KEY` or `ACCOUNTS` entries as warnings (#7).
-- Follow and lint `toml` currency pointers when using `--domain` or `--follow-links`, with fetching failures reported as warnings (#6).
 
 ## [0.1.0]
 
