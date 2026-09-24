@@ -23,6 +23,7 @@ import {
 } from './generators/anchor-platform.js';
 import { generateOpenApiSpec } from './generators/openapi.js';
 import { deliverWebhooks, isSupportedWebhookUrl } from './reporters/webhook.js';
+import { runDashboard, supportsDashboard } from './ui/dashboard.js';
 import type { LintResult, RuleOverrides, Severity } from './types.js';
 
 const VERSION = '0.1.0';
@@ -48,6 +49,7 @@ interface Cli {
   generateOpenapi?: string;
   webhookSlack?: string;
   webhookDiscord?: string;
+  interactive?: boolean;
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -68,6 +70,8 @@ OPTIONS
       --off <rule>        Disable a rule (repeatable)
       --error <rule>      Raise a rule to error (repeatable)
       --warn <rule>       Lower a rule to warning (repeatable)
+  -i, --interactive       Full-screen dashboard to walk the findings. Needs a TTY;
+                          without one the text reporter is used instead
   -q, --quiet             Report errors only
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
@@ -192,7 +196,24 @@ async function main(argv: string[]): Promise<number> {
     }
   }
 
-  if (!cli.exportApConfig) {
+  if (cli.interactive && cli.format !== 'text') {
+    process.stderr.write(
+      `--interactive draws its own view of the findings; drop --format ${cli.format}.\n\nRun with --help for usage.\n`,
+    );
+    return 2;
+  }
+
+  // A dashboard written into a pipe or a file would corrupt the output it is
+  // meant to replace, so anything that is not a terminal keeps the text report.
+  const dashboard = cli.interactive === true && supportsDashboard(process.stdout);
+
+  if (!cli.exportApConfig && dashboard) {
+    await runDashboard(
+      results,
+      { stdin: process.stdin, stdout: process.stdout },
+      { color, ...(cli.quiet ? { filter: 'error' as const } : {}) },
+    );
+  } else if (!cli.exportApConfig) {
     for (const { name, result } of results) {
       const filtered = cli.quiet
         ? { ...result, diagnostics: result.diagnostics.filter((d) => d.severity === 'error') }
@@ -309,6 +330,11 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--strict':
         cli.strict = true;
+        break;
+
+      case '-i':
+      case '--interactive':
+        cli.interactive = true;
         break;
 
       case '--no-suggestions':

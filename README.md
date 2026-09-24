@@ -93,12 +93,34 @@ cat stellar.toml | stellar-toml-lint -
 | `--no-suggestions`        | Hide diagnostic suggestions in the output                             |
 | `--color`                 | Force colour on, overriding `NO_COLOR`                                |
 | `--no-color`              | Force colour off                                                      |
+| `-i, --interactive`       | Full-screen dashboard to walk the findings (falls back to text)       |
 
 Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failure.
 
 Colour output follows the [NO_COLOR standard](https://no-color.org): setting `NO_COLOR` to any
 non-empty value disables it, an empty value counts as unset, and stdout not being a terminal
 disables it too. An explicit `--color` is the only thing that overrides `NO_COLOR`.
+
+### Walking the findings in a terminal
+
+```console
+$ stellar-toml-lint public/.well-known/stellar.toml --interactive
+```
+
+A full-screen view for runs with more findings than fit on one screen: `j`/`k` or the arrow keys
+move, `Enter` opens the details panel (message, suggestion, spec link), `s` cycles the severity
+filter, `/` searches rule names, `f` asks for a fix, `q` quits.
+
+It is deliberately quiet about where it cannot work. If stdout is not a terminal — a pipe, a CI log,
+a redirected file — the text reporter is used instead, so nothing ever sprays box-drawing characters
+into a build log. Combining `--interactive` with `--format` is refused for the same reason the flag
+draws its own view: drop the format flag.
+
+`--quiet` opens it already filtered to errors, which is the same view the text reporter gives with that flag.
+
+`f` currently reports that no fix engine is wired up; #9 tracks the mechanical fixes it will call
+into, and the dashboard already routes the keystroke through a callback so that lands as a one-line
+change rather than a rewrite.
 
 ### Alerting a Slack or Discord channel
 
