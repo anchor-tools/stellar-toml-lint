@@ -5,15 +5,25 @@ import type {
   LintResult,
   Position,
   RuleContext,
+  RuleOverrides,
   Severity,
+  TlsSession,
 } from './types.js';
 import { allRules } from './rules/index.js';
+import { securityRuleIds } from './rules/security.js';
 import { SourceIndex } from './source-index.js';
 import { MAX_FILE_BYTES, isString } from './predicates.js';
 import { specUrl } from './spec.js';
+import { probeTls, type TlsProbe } from './tls.js';
 
 /** Severity ordering used for sorting and for `--max-warnings` style counts. */
 const SEVERITY_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
+
+/**
+ * The real transport, captured so {@link lintDomain} can tell whether the
+ * caller replaced it. The parameter of the same name shadows the global.
+ */
+const globalFetch: typeof fetch = fetch;
 
 /**
  * Lints a `stellar.toml` source string against SEP-1.
@@ -90,12 +100,19 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
 /**
  * Lints the file served at `https://<domain>/.well-known/stellar.toml`,
  * additionally checking the HTTP-level requirements SEP-1 imposes: CORS,
- * content type, and size.
+ * content type, size, and the security of the TLS session itself.
+ *
+ * `tlsProbe` is only consulted for the default transport. Once a caller injects
+ * its own `fetchImpl` the transport is theirs to describe, and a probe aimed at
+ * the same host would say nothing about the connection they made — so tests and
+ * embedders inject a probe when they want the audit, and otherwise it is
+ * skipped rather than guessed at.
  */
 export async function lintDomain(
   domain: string,
   options: LintOptions = {},
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = globalFetch,
+  tlsProbe?: TlsProbe,
 ): Promise<LintResult> {
   const host = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   const url = `https://${host}/.well-known/stellar.toml`;
@@ -145,6 +162,10 @@ export async function lintDomain(
     );
   }
 
+  // Anchors sign SEP-10 challenges over this same host, so deprecated protocol
+  // versions and weak cipher suites matter even when the file is flawless.
+  const tls = await observeTls(url, fetchImpl, tlsProbe, options.rules);
+
   // CORS is the single most common deployment failure: the file is valid, but
   // browser-based wallets cannot read it.
   const cors = response.headers.get('access-control-allow-origin');
@@ -186,8 +207,41 @@ export async function lintDomain(
     });
   }
 
-  const fileResult = lint(source, { ...options, domain: options.domain ?? host });
+  const fileResult = lint(source, {
+    ...options,
+    domain: options.domain ?? host,
+    ...(tls ? { tls } : {}),
+  });
   return finalize([...diagnostics, ...fileResult.diagnostics], options, fileResult.parsed);
+}
+
+/**
+ * Measures the TLS session the host negotiates, or `undefined` when there is
+ * nothing to measure.
+ *
+ * Nothing is measured when every rule that consumes the session is switched off
+ * (so `--off security/...` costs no extra connection), or when the caller
+ * supplied a transport this function did not open.
+ */
+async function observeTls(
+  url: string,
+  fetchImpl: typeof fetch,
+  tlsProbe: TlsProbe | undefined,
+  overrides: RuleOverrides | undefined,
+): Promise<TlsSession | undefined> {
+  if (securityRuleIds.every((id) => overrides?.[id] === 'off')) return undefined;
+
+  const probe = tlsProbe ?? (fetchImpl === globalFetch ? probeTls : undefined);
+  if (!probe) return undefined;
+
+  try {
+    const target = new URL(url);
+    const port = target.port ? Number(target.port) : 443;
+    return await probe(target.hostname, port);
+  } catch {
+    // The audit is advisory: a probe that cannot complete is not a finding.
+    return undefined;
+  }
 }
 
 /** Converts a `smol-toml` parse failure into a positioned diagnostic. */

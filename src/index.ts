@@ -13,6 +13,8 @@ export { lint, lintDomain } from './lint.js';
 export { allRules, ruleIds } from './rules/index.js';
 export { formatText, formatJson, formatSarif, formatGithub } from './reporters.js';
 export type { TextReporterOptions } from './reporters.js';
+export { probeTls } from './tls.js';
+export type { TlsProbe } from './tls.js';
 export type {
   Diagnostic,
   LintOptions,
@@ -23,5 +25,6 @@ export type {
   RuleContext,
   RuleOverrides,
   Severity,
+  TlsSession,
 } from './types.js';
 export { SPEC_URL } from './spec.js';

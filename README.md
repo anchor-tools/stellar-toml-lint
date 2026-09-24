@@ -75,19 +75,19 @@ cat stellar.toml | stellar-toml-lint -
 
 ### Options
 
-| Flag                 | Effect                                                           |
-| -------------------- | ---------------------------------------------------------------- |
-| `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, and `ORG_URL` checks |
-| `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`                      |
-| `--strict`           | Treat warnings as errors                                         |
-| `--max-warnings <n>` | Fail if warnings exceed `n`                                      |
-| `--off <rule>`       | Disable a rule (repeatable)                                      |
-| `--error <rule>`     | Raise a rule to error (repeatable)                               |
-| `--warn <rule>`      | Lower a rule to warning (repeatable)                             |
-| `-q, --quiet`        | Show errors only                                                 |
-| `--show-help-urls`   | Print the spec link for each finding                             |
-| `--list-rules`       | Print every rule and exit                                        |
-| `--no-suggestions`   | Hide diagnostic suggestions in the output                        |
+| Flag                 | Effect                                                                |
+| -------------------- | --------------------------------------------------------------------- |
+| `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks |
+| `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`                           |
+| `--strict`           | Treat warnings as errors                                              |
+| `--max-warnings <n>` | Fail if warnings exceed `n`                                           |
+| `--off <rule>`       | Disable a rule (repeatable)                                           |
+| `--error <rule>`     | Raise a rule to error (repeatable)                                    |
+| `--warn <rule>`      | Lower a rule to warning (repeatable)                                  |
+| `-q, --quiet`        | Show errors only                                                      |
+| `--show-help-urls`   | Print the spec link for each finding                                  |
+| `--list-rules`       | Print every rule and exit                                             |
+| `--no-suggestions`   | Hide diagnostic suggestions in the output                             |
 
 Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failure.
 
@@ -168,8 +168,19 @@ if (!result.ok) {
   process.exit(1);
 }
 
-// Or check a live site. CORS, content type, and size are checked too.
+// Or check a live site. CORS, content type, size, and the negotiated TLS
+// session are checked too.
 const live = await lintDomain('example.com');
+```
+
+`lintDomain` inspects the TLS session by opening one extra handshake to the host, because Node's
+`fetch` does not expose the socket it used. A caller that injects its own `fetch` owns the transport,
+so it injects a `tlsProbe` too — otherwise the audit is skipped rather than guessed at:
+
+```ts
+const result = await lintDomain('example.com', {}, myFetch, async (host, port) => {
+  return { protocol: 'TLSv1.3', cipher: 'TLS_AES_256_GCM_SHA384' };
+});
 ```
 
 Every diagnostic carries a stable `rule` id, a `severity`, a dotted `path` to the offending value, a
@@ -218,7 +229,9 @@ signature lists of equal length; `toml` pointer entries carrying nothing else; d
 `PUBLIC_KEY`; `HOST` as `host:port`; `HISTORY` as an absolute URI.
 
 **Network** (with `--domain`) — reachability, `Access-Control-Allow-Origin: *`, `text/plain` content
-type, size.
+type, size, and the security of the TLS session: a negotiated protocol of TLS 1.0, TLS 1.1, SSLv2,
+or SSLv3, and cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. Nothing here
+fires for a local file, so offline linting never depends on a network connection.
 
 ### Severity
 

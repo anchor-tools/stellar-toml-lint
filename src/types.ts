@@ -40,6 +40,27 @@ export interface Diagnostic {
 /** Per-rule severity overrides. `'off'` disables the rule entirely. */
 export type RuleOverrides = Record<string, Severity | 'off'>;
 
+/**
+ * The TLS parameters a host negotiated, as observed on a live connection.
+ *
+ * Wallets and exchanges hand anchors their signing keys over these sessions, so
+ * a host still speaking TLS 1.0 or offering CBC/RC4 suites is a real risk even
+ * when the file itself is perfect.
+ */
+export interface TlsSession {
+  /** Negotiated protocol version, e.g. `TLSv1.3`. `null` when unknown. */
+  protocol: string | null;
+  /** Cipher suite as the runtime names it, e.g. `AES128-SHA256`. `null` when unknown. */
+  cipher: string | null;
+  /**
+   * IANA name for the same suite, e.g. `TLS_RSA_WITH_AES_128_CBC_SHA256`.
+   *
+   * Node reports the OpenSSL name, which omits the mode — `AES128-SHA256` is a
+   * CBC suite without saying so — so weak-cipher detection has to consult both.
+   */
+  cipherStandard?: string | null;
+}
+
 export interface LintOptions {
   /**
    * The domain the file is (or will be) served from, without scheme.
@@ -51,6 +72,14 @@ export interface LintOptions {
   rules?: RuleOverrides;
   /** Treat warnings as errors when computing {@link LintResult.ok}. */
   strict?: boolean;
+  /**
+   * TLS session observed while fetching the file.
+   *
+   * Set by {@link lintDomain} only, so offline runs leave it undefined and the
+   * `security/*` rules stay silent. Exposed on the options so the audit can be
+   * exercised without opening a socket.
+   */
+  tls?: TlsSession;
 }
 
 export interface LintResult {
