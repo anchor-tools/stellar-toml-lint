@@ -408,4 +408,31 @@ export function formatReadinessJson(report: ReadinessReport, filename = 'stellar
     null,
     2,
   )}\n`;
+/** Newline-delimited JSON for streaming analysis. */
+export function formatNdjson(result: LintResult, filename = 'stellar.toml'): string {
+  const lines: string[] = [];
+
+  for (const d of result.diagnostics) {
+    lines.push(
+      JSON.stringify({
+        type: 'diagnostic',
+        file: filename,
+        rule: d.rule,
+        severity: d.severity,
+        message: d.message,
+        ...(d.position ? { position: d.position } : {}),
+      }),
+    );
+  }
+
+  lines.push(
+    JSON.stringify({
+      type: 'summary',
+      file: filename,
+      ok: result.ok,
+      counts: result.counts,
+    }),
+  );
+
+  return `${lines.join('\n')}\n`;
 }

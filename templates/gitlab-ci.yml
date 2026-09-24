@@ -1,0 +1,72 @@
+# GitLab CI job template for stellar-toml-lint.
+# https://github.com/anchor-tools/stellar-toml-lint
+#
+# Include it from your project's .gitlab-ci.yml:
+#
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/anchor-tools/stellar-toml-lint/main/templates/gitlab-ci.yml'
+#
+# The job runs in the `test` stage. If your project overrides the default
+# `stages:`, make sure a stage named `test` exists, or reassign `stage:` by
+# redeclaring the job after the include (the main configuration wins).
+#
+# Every variable below is optional. Set it as a pipeline variable, as a
+# project/group CI/CD variable, or by redeclaring this job's `variables:`
+# block in your .gitlab-ci.yml — job-level defaults beat a top-level
+# `variables:` block, so redeclaring the job is the reliable YAML way.
+
+stellar-toml-lint:
+  stage: test
+  image: node:22-alpine
+  variables:
+    # Path to the file to lint, relative to the project root.
+    STELLAR_TOML_PATH: stellar.toml
+    # Optional serving domain. With a file it supplies the host for the
+    # same-domain, CORS, and reachability checks; without a local file it
+    # fetches https://<domain>/.well-known/stellar.toml instead.
+    STELLAR_TOML_DOMAIN: ''
+    # Treat warnings as errors: true or false.
+    STELLAR_TOML_STRICT: 'false'
+    # Fail when the warning count exceeds this number. Empty means no limit.
+    STELLAR_TOML_MAX_WARNINGS: ''
+    # Output format: text, json, sarif, or github.
+    STELLAR_TOML_FORMAT: text
+    # Keep the npx download cache inside the project directory so the job
+    # cache below can restore it between pipeline runs.
+    npm_config_cache: '$CI_PROJECT_DIR/.npm'
+  cache:
+    key: stellar-toml-lint-npm
+    paths:
+      - .npm/
+  script:
+    - |
+      set -e
+
+      path="${STELLAR_TOML_PATH:-stellar.toml}"
+      format="${STELLAR_TOML_FORMAT:-text}"
+
+      # A domain on its own means "lint the live site"; with a file it only
+      # supplies the host for the same-domain checks. Mirrors action.yml, but
+      # uses positional parameters instead of bash arrays so it also runs in
+      # the POSIX sh that node:*-alpine images ship.
+      if [ -n "${STELLAR_TOML_DOMAIN:-}" ]; then
+        set -- --domain "$STELLAR_TOML_DOMAIN"
+        if [ -f "$path" ]; then
+          set -- "$@" "$path"
+        fi
+      else
+        set -- "$path"
+      fi
+
+      if [ "${STELLAR_TOML_STRICT:-false}" = "true" ]; then
+        set -- "$@" --strict
+      fi
+
+      if [ -n "${STELLAR_TOML_MAX_WARNINGS:-}" ]; then
+        set -- "$@" --max-warnings "$STELLAR_TOML_MAX_WARNINGS"
+      fi
+
+      # The last command's exit code is the job's: 0 clean, 1 problems found,
+      # 2 bad usage or I/O failure. The exit status is never swallowed — a
+      # finding must fail the job.
+      npx --yes stellar-toml-lint@latest "$@" --format "$format"
