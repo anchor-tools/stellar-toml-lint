@@ -119,6 +119,27 @@ exit code always follows the diagnostics and never the webhook: when delivery fa
 reported on stderr and the verdict is unchanged, so a broken alert endpoint cannot turn a clean file
 into a failing build.
 
+## In the browser
+
+The linter itself is free of Node built-ins, so it also runs in a page or a worker, under a separate entry point:
+
+```ts
+import { createVirtualFileSystem, lintBrowserFile } from 'stellar-toml-lint/browser';
+
+const files = createVirtualFileSystem({ 'stellar.toml': textareaValue });
+const result = await lintBrowserFile('stellar.toml', { files });
+```
+
+- `lintBrowser(content, options)` — lint a string.
+- `lintBrowserFile(path, { files })` and `lintBrowserRun(paths, { files })` — lint out of a virtual file system, which is what replaces `node:fs`.
+- `lintBrowserDomain(domain, { fetchImpl })` — fetch `/.well-known/stellar.toml` with the page's own `fetch`. CORS applies here exactly as it does to a wallet, so a host without `Access-Control-Allow-Origin: *` produces the same `network/cors` finding.
+
+A worker wrapper is published as `stellar-toml-lint/worker`. Send `{ type: 'lint', content, options }` and get back `{ type: 'result', result }`, or `{ type: 'error', message }` when the request itself was malformed — the handler answers errors rather than throwing, because a worker that throws loses the request silently. `{ type: 'ping' }` lets a page check the worker is alive before a long run.
+
+One capability does not survive the move: a page cannot observe a TLS session, so the `security/*` audit is skipped in the browser and reported as not observed rather than guessed. `browserCapabilities` says the same thing at runtime, for callers that branch on it.
+
+Both entry points ship their own typings (`dist/browser.d.ts`, `dist/worker.d.ts`), and a test walks the static import graph from them so a `node:` import cannot creep back onto that path.
+
 ## In CI
 
 ### GitHub Action

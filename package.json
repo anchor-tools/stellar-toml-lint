@@ -1,7 +1,7 @@
 {
   "name": "stellar-toml-lint",
   "version": "0.1.0",
-  "description": "Offline SEP-1 linter for stellar.toml — validate your Stellar Info File before you deploy it.",
+  "description": "Offline SEP-1 linter for stellar.toml \u2014 validate your Stellar Info File before you deploy it.",
   "keywords": [
     "stellar",
     "sep-1",
@@ -32,6 +32,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "import": "./dist/worker.js"
     }
   },
   "files": [

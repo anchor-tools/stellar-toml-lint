@@ -10,7 +10,6 @@
  * so the session is measured with a short, separate handshake. This module is
  * never touched by offline linting.
  */
-import { connect } from 'node:tls';
 import type { TlsSession } from './types.js';
 import { DEPRECATED_TLS_VERSIONS, WEAK_CIPHER_MARKERS } from './spec.js';
 
@@ -69,7 +68,14 @@ export function weakCipherSuiteIn(session: TlsSession): string | undefined {
  * fetch has already failed and reported it, so the audit simply yields nothing
  * rather than inventing a second, less useful diagnostic.
  */
-export function probeTls(host: string, port = 443): Promise<TlsSession> {
+export async function probeTls(host: string, port = 443): Promise<TlsSession> {
+  // `node:tls` is loaded lazily on purpose. `lint.ts` imports this module, and
+  // the browser entry point imports `lint.ts` — a static import here would drag
+  // a Node built-in into every browser bundle, which is exactly the boundary
+  // issue #105 exists to fix. A browser can never reach this call: it has no way
+  // to observe a TLS session, so browser callers pass an explicit probe.
+  const { connect } = await import('node:tls');
+
   return new Promise((resolve) => {
     let settled = false;
 
