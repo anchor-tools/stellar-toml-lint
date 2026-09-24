@@ -1,0 +1,30 @@
+name: SchemaStore Sync
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-schema:
+    name: Validate JSON Schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Generate and validate schema
+        run: node -e "
+          import { generateJsonSchema } from './dist/generators/schemastore.js';
+          const schema = generateJsonSchema('07');
+          console.log(JSON.stringify(schema, null, 2));
+          " > schema/stellar-toml.json
+      - name: Run schema tests
+        run: npm test -- --reporter=verbose test/schemastore.test.ts
