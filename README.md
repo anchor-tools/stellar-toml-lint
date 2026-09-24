@@ -75,28 +75,49 @@ cat stellar.toml | stellar-toml-lint -
 
 ### Options
 
-| Flag                 | Effect                                                                |
-| -------------------- | --------------------------------------------------------------------- |
-| `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks |
-| `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`, `junit`                  |
-| `--strict`           | Treat warnings as errors                                              |
-| `--max-warnings <n>` | Fail if warnings exceed `n`                                           |
-| `--check-network`    | Verify accounts, `HORIZON_URL`, and `ANCHOR_QUOTE_SERVER` online      |
-| `--off <rule>`       | Disable a rule (repeatable)                                           |
-| `--error <rule>`     | Raise a rule to error (repeatable)                                    |
-| `--warn <rule>`      | Lower a rule to warning (repeatable)                                  |
-| `-q, --quiet`        | Show errors only                                                      |
-| `--show-help-urls`   | Print the spec link for each finding                                  |
-| `--list-rules`       | Print every rule and exit                                             |
-| `--no-suggestions`   | Hide diagnostic suggestions in the output                             |
-| `--color`            | Force colour on, overriding `NO_COLOR`                                |
-| `--no-color`         | Force colour off                                                      |
+| Flag                      | Effect                                                                |
+| ------------------------- | --------------------------------------------------------------------- |
+| `-d, --domain <d>`        | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks |
+| `-f, --format <fmt>`      | `text` (default), `json`, `sarif`, `github`, `junit`                  |
+| `--strict`                | Treat warnings as errors                                              |
+| `--max-warnings <n>`      | Fail if warnings exceed `n`                                           |
+| `--check-network`         | Verify accounts, `HORIZON_URL`, and `ANCHOR_QUOTE_SERVER` online      |
+| `--webhook-slack <url>`   | POST a Slack Block Kit card with the run summary                      |
+| `--webhook-discord <url>` | POST a Discord embed with the run summary                             |
+| `--off <rule>`            | Disable a rule (repeatable)                                           |
+| `--error <rule>`          | Raise a rule to error (repeatable)                                    |
+| `--warn <rule>`           | Lower a rule to warning (repeatable)                                  |
+| `-q, --quiet`             | Show errors only                                                      |
+| `--show-help-urls`        | Print the spec link for each finding                                  |
+| `--list-rules`            | Print every rule and exit                                             |
+| `--no-suggestions`        | Hide diagnostic suggestions in the output                             |
+| `--color`                 | Force colour on, overriding `NO_COLOR`                                |
+| `--no-color`              | Force colour off                                                      |
 
 Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failure.
 
 Colour output follows the [NO_COLOR standard](https://no-color.org): setting `NO_COLOR` to any
 non-empty value disables it, an empty value counts as unset, and stdout not being a terminal
 disables it too. An explicit `--color` is the only thing that overrides `NO_COLOR`.
+
+### Alerting a Slack or Discord channel
+
+```console
+$ stellar-toml-lint public/.well-known/stellar.toml \
+    --webhook-slack "$SLACK_WEBHOOK" \
+    --webhook-discord "$DISCORD_WEBHOOK"
+```
+
+One `POST` per channel summarises the whole run: a colour bar that follows the worst severity found
+(red for errors, yellow for warnings only, green when clean), the error and warning counts, the most
+frequent rules with a line number each, and links into SEP-1. Slack gets a Block Kit card with spec
+buttons; Discord gets a Rich Embed with the links inline.
+
+Delivery retries network errors, timeouts and 408/425/429/5xx twice with a 250 ms backoff, and every
+request is capped at 5 s. A 4xx is not retried, because a rejected payload will not fix itself. The
+exit code always follows the diagnostics and never the webhook: when delivery fails the problem is
+reported on stderr and the verdict is unchanged, so a broken alert endpoint cannot turn a clean file
+into a failing build.
 
 ## In CI
 

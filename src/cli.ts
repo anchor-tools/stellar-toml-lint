@@ -22,6 +22,7 @@ import {
   formatAnchorPlatformYaml,
 } from './generators/anchor-platform.js';
 import { generateOpenApiSpec } from './generators/openapi.js';
+import { deliverWebhooks, isSupportedWebhookUrl } from './reporters/webhook.js';
 import type { LintResult, RuleOverrides, Severity } from './types.js';
 
 const VERSION = '0.1.0';
@@ -45,6 +46,8 @@ interface Cli {
   badgeJson?: string;
   exportApConfig?: boolean;
   generateOpenapi?: string;
+  webhookSlack?: string;
+  webhookDiscord?: string;
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -70,6 +73,10 @@ OPTIONS
       --no-suggestions    Hide diagnostic suggestions in the output
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, and
                           ANCHOR_QUOTE_SERVER against the network
+      --webhook-slack <url>
+                          POST a Slack Block Kit card with the run summary
+      --webhook-discord <url>
+                          POST a Discord embed with the run summary
       --badge-svg <file>  Generate an SVG compliance badge
       --badge-json <file> Generate a Shields.io JSON endpoint
       --export-ap-config  Export Anchor Platform YAML config to stdout
@@ -195,6 +202,24 @@ async function main(argv: string[]): Promise<number> {
     }
   }
 
+  if (cli.webhookSlack !== undefined || cli.webhookDiscord !== undefined) {
+    const deliveries = await deliverWebhooks(results, {
+      ...(cli.webhookSlack !== undefined ? { slack: cli.webhookSlack } : {}),
+      ...(cli.webhookDiscord !== undefined ? { discord: cli.webhookDiscord } : {}),
+    });
+
+    for (const delivery of deliveries) {
+      if (delivery.ok) continue;
+      // The exit code stays tied to the diagnostics: a broken alert endpoint
+      // must not turn a clean file into a failing build.
+      process.stderr.write(
+        `Warning: ${delivery.channel} webhook failed after ${delivery.attempts} attempt(s)${
+          delivery.error === undefined ? '' : `: ${delivery.error}`
+        }\n`,
+      );
+    }
+  }
+
   return verdict(results, cli) ? 0 : 1;
 }
 
@@ -293,6 +318,17 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--check-network':
         cli.checkNetwork = true;
         break;
+
+      case '--webhook-slack':
+      case '--webhook-discord': {
+        const value = requireValue(argv, ++i, arg);
+        if (!isSupportedWebhookUrl(value)) {
+          throw new Error(`${arg} expects an http or https URL.`);
+        }
+        if (arg === '--webhook-slack') cli.webhookSlack = value;
+        else cli.webhookDiscord = value;
+        break;
+      }
 
       case '--badge-svg':
         cli.badgeSvg = requireValue(argv, ++i, arg);
