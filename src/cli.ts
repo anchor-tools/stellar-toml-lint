@@ -14,6 +14,7 @@ import { checkNetworkAccounts } from './network-checks.js';
 import { formatGithub, formatJson, formatJunit, formatSarif, formatText } from './reporters.js';
 import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
+import { checkSep12Schema } from './rules/sep12-schema.js';
 import { allRules } from './rules/index.js';
 import type { LintResult, RuleOverrides, Severity } from './types.js';
 
@@ -112,6 +113,7 @@ async function main(argv: string[]): Promise<number> {
             ...(await checkHorizon(fileResult.parsed, fetch, { rules: cli.rules })),
             ...(await checkNetworkAccounts(fileResult.parsed)),
             ...(await checkDisplayDecimals(fileResult.parsed, fetch, { rules: cli.rules })),
+            ...(await checkSep12Schema(fileResult.parsed, fetch, { rules: cli.rules })),
           ];
           if (networkDiagnostics.length > 0) {
             fileResult = finalize(

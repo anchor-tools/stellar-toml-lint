@@ -104,7 +104,9 @@ describe('broken fixture', () => {
   it('gives every diagnostic a message and a rule id', () => {
     for (const d of result.diagnostics) {
       expect(d.message.length).toBeGreaterThan(0);
-      expect(d.rule).toMatch(/^[a-z]+\/[a-z0-9-]+$/);
+      // Namespaces may contain digits (sep12/...), so the first segment is
+      // [a-z][a-z0-9]* rather than [a-z]+.
+      expect(d.rule).toMatch(/^[a-z][a-z0-9]*\/[a-z0-9-]+$/);
     }
   });
 
@@ -389,7 +391,7 @@ describe('rule registry', () => {
   it('gives every rule a description and a namespaced id', () => {
     for (const rule of allRules) {
       expect(rule.description.length).toBeGreaterThan(0);
-      expect(rule.id).toMatch(/^[a-z]+\/[a-z0-9-]+$/);
+      expect(rule.id).toMatch(/^[a-z][a-z0-9]*\/[a-z0-9-]+$/);
     }
   });
 
