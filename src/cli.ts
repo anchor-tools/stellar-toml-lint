@@ -7,7 +7,7 @@
  * dependency tree small enough to audit by eye.
  */
 import { readFile, writeFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
 import { lint, lintDomain, finalize } from './lint.js';
@@ -196,17 +196,12 @@ async function main(argv: string[]): Promise<number> {
         result: await lintDomain(
           cli.domain,
           {
-            strict: cli.strict,
-            rules: cli.rules,
+            strict,
+            rules: { ...config.rules, ...cli.rules },
             checkNetwork: cli.checkNetwork,
           },
           fetchImpl,
         ),
-        result: await lintDomain(cli.domain, {
-          strict,
-          rules: { ...config.rules, ...cli.rules },
-          checkNetwork: cli.checkNetwork,
-        }),
       });
     } else {
       const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
@@ -473,8 +468,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         const value = requireValue(argv, ++i, arg);
         if (!isFormat(value)) {
           throw new Error(
-            `Unknown format "${value}". Expected text, json, sarif, github, junit, or html.`,
-            `Unknown format "${value}". Expected text, json, ndjson, sarif, github, junit, or checkstyle.`,
+            `Unknown format "${value}". Expected text, json, ndjson, sarif, github, junit, html, or checkstyle.`,
           );
         }
         cli.format = value;
