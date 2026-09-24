@@ -12,6 +12,7 @@ import process from 'node:process';
 import { lint, lintDomain, finalize } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { formatGithub, formatJson, formatSarif, formatText } from './reporters.js';
+import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { allRules } from './rules/index.js';
 import type { LintResult, RuleOverrides, Severity } from './types.js';
 
@@ -88,7 +89,11 @@ async function main(argv: string[]): Promise<number> {
     if (cli.domain && cli.paths.length === 0) {
       results.push({
         name: cli.domain,
-        result: await lintDomain(cli.domain, { strict: cli.strict, rules: cli.rules, checkNetwork: cli.checkNetwork }),
+        result: await lintDomain(cli.domain, {
+          strict: cli.strict,
+          rules: cli.rules,
+          checkNetwork: cli.checkNetwork,
+        }),
       });
     } else {
       const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
@@ -100,11 +105,18 @@ async function main(argv: string[]): Promise<number> {
           checkNetwork: cli.checkNetwork,
           ...(cli.domain ? { domain: cli.domain } : {}),
         });
-        
+
         if (cli.checkNetwork && fileResult.parsed) {
-          const networkDiagnostics = await checkNetworkAccounts(fileResult.parsed);
+          const networkDiagnostics = [
+            ...(await checkNetworkAccounts(fileResult.parsed)),
+            ...(await checkDisplayDecimals(fileResult.parsed, fetch, { rules: cli.rules })),
+          ];
           if (networkDiagnostics.length > 0) {
-            fileResult = finalize([...fileResult.diagnostics, ...networkDiagnostics], { strict: cli.strict }, fileResult.parsed);
+            fileResult = finalize(
+              [...fileResult.diagnostics, ...networkDiagnostics],
+              { strict: cli.strict },
+              fileResult.parsed,
+            );
           }
         }
 

@@ -86,7 +86,7 @@ cat stellar.toml | stellar-toml-lint -
 | `--warn <rule>`      | Lower a rule to warning (repeatable)                             |
 | `-q, --quiet`        | Show errors only                                                 |
 | `--show-help-urls`   | Print the spec link for each finding                             |
-| `--check-network`    | Verify `SIGNING_KEY` and `ACCOUNTS` against the network          |
+| `--check-network`    | Verify account fields and currency decimals against the network  |
 | `--list-rules`       | Print every rule and exit                                        |
 | `--no-suggestions`   | Hide diagnostic suggestions in the output                        |
 
@@ -225,7 +225,10 @@ emit `currencies/missing-anchor-asset-type` as an error. Missing `anchor_asset` 
 `PUBLIC_KEY`; `HOST` as `host:port`; `HISTORY` as an absolute URI.
 
 **Network** (with `--domain`) — reachability, `Access-Control-Allow-Origin: *`, `text/plain` content
-type, size.
+type, size. With `--check-network`, classic assets with `display_decimals > 7` emit
+`currencies/display-decimals-exceeds-network-limit` as an error. Soroban currencies are checked
+against the contract's `decimals()` value; a difference emits
+`currencies/display-decimals-contract-mismatch` as a warning.
 
 ### Severity
 
