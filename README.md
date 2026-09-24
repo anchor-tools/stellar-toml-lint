@@ -225,8 +225,10 @@ validated; the native XLM asset handled as the special case it is; exactly one i
 backs them; SEP-8 regulated assets carrying an approval server; collateral address, message, and
 signature lists of equal length; `toml` pointer entries carrying nothing else; duplicate assets.
 
-**`[[VALIDATORS]]`** — `ALIAS` matching `^[a-z0-9-]{2,16}$` and unique; checksum-valid, unique
-`PUBLIC_KEY`; `HOST` as `host:port`; `HISTORY` as an absolute URI.
+**`[[VALIDATORS]]`** — `ALIAS` matching `^[a-z0-9-]{2,16}$`, unique, and not colliding with a
+reserved stellar-core config keyword (`self`, `all`, `default`, `none`, `quorum`, `peers`,
+`manual`, `auto`); checksum-valid, unique `PUBLIC_KEY`; `HOST` as `host:port`; `HISTORY` as an
+absolute URI.
 
 **Network** (with `--domain`) — reachability, `Access-Control-Allow-Origin: *`, `text/plain` content
 type, size, and the security of the TLS session: a negotiated protocol of TLS 1.0, TLS 1.1, SSLv2,

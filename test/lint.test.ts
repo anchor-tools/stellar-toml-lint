@@ -335,6 +335,31 @@ describe('source positions', () => {
   });
 });
 
+describe('validators/alias-reserved-keyword', () => {
+  const validator = (alias: string): string =>
+    withValidBase(
+      `[[VALIDATORS]]\nALIAS="${alias}"\nPUBLIC_KEY="${ACCOUNT_A}"\nHOST="core.example.com:11625"`,
+    );
+
+  it.each(['self', 'all', 'default', 'none', 'quorum', 'peers', 'manual', 'auto'])(
+    'flags "%s" as a reserved stellar-core keyword',
+    (alias) => {
+      const result = lint(validator(alias));
+      expect(find(result, 'validators/alias-reserved-keyword')[0]?.message).toContain('reserved');
+    },
+  );
+
+  it('suggests a node-indexed alias', () => {
+    const [d] = find(lint(validator('self')), 'validators/alias-reserved-keyword');
+    expect(d?.suggestion).toContain('self-0');
+  });
+
+  it('leaves an ordinary alias clean', () => {
+    const result = lint(validator('core-1'));
+    expect(find(result, 'validators/alias-reserved-keyword')).toEqual([]);
+  });
+});
+
 describe('rule configuration', () => {
   it('disables a rule with off', () => {
     const result = lint(fixture('broken.toml'), { rules: { 'general/version': 'off' } });

@@ -125,6 +125,25 @@ export const KNOWN_VALIDATOR_FIELDS = new Set<string>([
 ]);
 
 /**
+ * stellar-core config keywords that cannot be reused as a `[[VALIDATORS]]` alias.
+ *
+ * Other operators import a validator's ALIAS into the quorum slices of their own
+ * stellar-core.cfg. Names like `self` or `quorum` are parsed as stellar-core
+ * directives rather than as node names, so an alias colliding with one of these
+ * breaks or surprises other operators' configs. Matched case-insensitively.
+ */
+export const RESERVED_VALIDATOR_ALIASES = new Set<string>([
+  'self',
+  'all',
+  'default',
+  'none',
+  'quorum',
+  'peers',
+  'manual',
+  'auto',
+]);
+
+/**
  * TLS protocol versions that are no longer considered secure.
  *
  * TLS 1.0 and 1.1 were deprecated by RFC 8996; SSLv2/SSLv3 were broken long

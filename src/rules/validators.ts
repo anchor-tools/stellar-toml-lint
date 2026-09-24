@@ -1,5 +1,5 @@
 import type { Rule } from '../types.js';
-import { KNOWN_VALIDATOR_FIELDS, specUrl } from '../spec.js';
+import { KNOWN_VALIDATOR_FIELDS, RESERVED_VALIDATOR_ALIASES, specUrl } from '../spec.js';
 import { isAccountId, isHostPort, isString, isUrl } from '../predicates.js';
 
 /** Reads `[[VALIDATORS]]` as a list of tables, ignoring malformed entries. */
@@ -108,6 +108,33 @@ export const validatorRules: Rule[] = [
         } else {
           seen.set(alias, i);
         }
+      });
+    },
+  },
+
+  {
+    id: 'validators/alias-reserved-keyword',
+    category: 'validators',
+    severity: 'error',
+    description:
+      'ALIAS must not be a reserved stellar-core config keyword (self, all, default, none, quorum, peers, manual, auto)',
+    run(ctx) {
+      validatorsOf(ctx.doc).forEach((entry, i) => {
+        const path = `VALIDATORS[${i}]`;
+        const alias = entry.ALIAS;
+
+        if (!isString(alias) || !/^[a-z0-9-]{2,16}$/.test(alias)) return;
+        if (!RESERVED_VALIDATOR_ALIASES.has(alias.toLowerCase())) return;
+
+        ctx.report({
+          rule: 'validators/alias-reserved-keyword',
+          category: 'validators',
+          message: `${path}.ALIAS "${alias}" is a reserved stellar-core config keyword`,
+          path: `${path}.ALIAS`,
+          position: ctx.locate(`${path}.ALIAS`),
+          helpUri: specUrl('validator-information'),
+          suggestion: `Other operators import this name into their quorum slices; try "${alias}-${i}".`,
+        });
       });
     },
   },
