@@ -423,10 +423,6 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.interactive = true;
         break;
 
-      case '--lsp':
-        cli.lsp = true;
-        break;
-
       case '--no-suggestions':
         cli.noSuggestions = true;
         break;

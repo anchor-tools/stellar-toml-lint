@@ -1,4 +1,3 @@
-import { resolveMx } from 'node:dns/promises';
 import type { Rule } from '../types.js';
 
 export const emailMxRule: Rule = {
@@ -18,6 +17,18 @@ export const emailMxRule: Rule = {
 
     const domain = officialEmail.split('@')[1];
     if (!domain) return;
+
+    // DNS is a Node built-in, but this rule lives in the shared registry the
+    // browser build walks. Load it lazily and stay silent where it cannot
+    // exist — reported as not observed rather than guessed at, the same
+    // bargain `tls.ts` makes for its socket. Typed structurally so the module
+    // is only named in the `import()` call, never in a static import.
+    let resolveMx: (hostname: string) => Promise<{ exchange: string; priority: number }[]>;
+    try {
+      ({ resolveMx } = await import('node:dns/promises'));
+    } catch {
+      return;
+    }
 
     try {
       const mxRecords = await resolveMx(domain);

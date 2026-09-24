@@ -32,7 +32,7 @@ function makeContext(doc: Record<string, unknown>): RuleContext {
     locate: (path: string): { line: number; column: number } | undefined => {
       const line = pathToLine[path];
       if (line === undefined) return undefined;
-      const lineContent = source.split('\n')[line - 1];
+      const lineContent = source.split('\n')[line - 1] ?? '';
       const column = lineContent.indexOf(path.split('.').pop() ?? '') + 1;
       return { line, column };
     },
@@ -42,7 +42,10 @@ function makeContext(doc: Record<string, unknown>): RuleContext {
 
 describe('email-mx', () => {
   it('passes when MX records resolve', async () => {
-    vi.mocked(resolveMx).mockResolvedValue(['alt1.aspmx.l.google.com', 'alt2.aspmx.l.google.com']);
+    vi.mocked(resolveMx).mockResolvedValue([
+      { exchange: 'alt1.aspmx.l.google.com', priority: 1 },
+      { exchange: 'alt2.aspmx.l.google.com', priority: 5 },
+    ]);
 
     const doc = {
       VERSION: '2.7.0',
@@ -64,10 +67,8 @@ describe('email-mx', () => {
 
     await emailMxRule.run(ctx);
 
-    assert.equal(reported.length, 1);
-    assert.equal(reported[0]!.rule, 'general/email-domain-no-mx');
-    assert.equal(reported[0]!.severity, 'warning');
-    assert(reported[0]!.message).includes('has MX records');
+    // A domain with working MX records is not a finding.
+    assert.equal(reported.length, 0);
   });
 
   it('asserts general/email-domain-no-mx when DNS lookup fails with ENOENT', async () => {
@@ -96,7 +97,7 @@ describe('email-mx', () => {
     assert.equal(reported.length, 1);
     assert.equal(reported[0]!.rule, 'general/email-domain-no-mx');
     assert.equal(reported[0]!.severity, 'warning');
-    assert(reported[0]!.message).includes('no MX records');
+    assert(reported[0]!.message.includes('Could not resolve MX records'));
   });
 
   it('asserts general/email-domain-no-mx when DNS lookup fails with NETWORK', async () => {
