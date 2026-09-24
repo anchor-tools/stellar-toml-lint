@@ -44,6 +44,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- SEP-8 regulated issuer flags under `--check-network`: for every `[[CURRENCIES]]` entry marked
+  `regulated=true` with a classic `issuer`, the linter reads the issuer account's flags from Horizon.
+  A missing `AUTH_REQUIRED` flag emits `currencies/regulated-missing-auth-required-flag` (error), a
+  missing `AUTH_REVOCABLE` flag emits `currencies/regulated-missing-auth-revocable-flag` (warning),
+  and a Horizon outage or missing account degrades to
+  `currencies/regulated-issuer-flags-unverifiable` (warning) so the run still fails cleanly on
+  strengthenable-to-fatal findings without depending on network availability.
+- Soroban contract liveliness under `--check-contracts`: `src/soroban.ts` queries the Soroban RPC's
+  `getLedgerEntries` for the contract instance and its WASM behind every `[[CURRENCIES]].contract`
+  and `WEB_AUTH_CONTRACT_ID`, comparing `liveUntilLedgerSeq` against `latestLedger`. Within ~a day of
+  expiry it emits `soroban/contract-ttl-expiring-soon` (warning); expired or archived state emits
+  `soroban/contract-expired` (error); an unreachable RPC degrades to `soroban/contract-ttl-unavailable`
+  (warning). The endpoint is derived from `NETWORK_PASSPHRASE` and overridable with `--soroban-rpc`.
 - `security/deprecated-tls-version` and `security/weak-cipher-suite` warnings under `--domain`:
   the linter now inspects the TLS session the host negotiates and flags TLS 1.0/1.1 (and SSLv2/SSLv3),
   plus cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. Offline linting is

@@ -21,6 +21,19 @@ import { githubHandleRules } from './github-handle.js';
 import { trailingSlashRule } from './trailing-slash.js';
 import { uppercaseKeyRules } from './uppercase-keys.js';
 
+/**
+ * The `WEB_AUTH_CONTRACT_ID` when it is a valid C... id, with its file path,
+ * so network checks can verify the SEP-45 auth contract's TTL. Invalid ids
+ * are reported offline by `general/web-auth-contract-id` instead.
+ */
+export function webAuthContractIdOf(
+  doc: Record<string, unknown>,
+): { id: string; path: string } | undefined {
+  const value = doc.WEB_AUTH_CONTRACT_ID;
+  if (!isString(value) || !isContractId(value)) return undefined;
+  return { id: value, path: 'WEB_AUTH_CONTRACT_ID' };
+}
+
 /** Rules covering file-level constraints and the global (untabled) fields. */
 export const generalRules: Rule[] = [
   ...uppercaseKeyRules,

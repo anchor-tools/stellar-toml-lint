@@ -75,25 +75,27 @@ cat stellar.toml | stellar-toml-lint -
 
 ### Options
 
-| Flag                      | Effect                                                                |
-| ------------------------- | --------------------------------------------------------------------- |
-| `-d, --domain <d>`        | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks |
-| `-f, --format <fmt>`      | `text` (default), `json`, `sarif`, `github`, `junit`                  |
-| `--strict`                | Treat warnings as errors                                              |
-| `--max-warnings <n>`      | Fail if warnings exceed `n`                                           |
-| `--check-network`         | Verify accounts, `HORIZON_URL`, and `ANCHOR_QUOTE_SERVER` online      |
-| `--webhook-slack <url>`   | POST a Slack Block Kit card with the run summary                      |
-| `--webhook-discord <url>` | POST a Discord embed with the run summary                             |
-| `--off <rule>`            | Disable a rule (repeatable)                                           |
-| `--error <rule>`          | Raise a rule to error (repeatable)                                    |
-| `--warn <rule>`           | Lower a rule to warning (repeatable)                                  |
-| `-q, --quiet`             | Show errors only                                                      |
-| `--show-help-urls`        | Print the spec link for each finding                                  |
-| `--list-rules`            | Print every rule and exit                                             |
-| `--no-suggestions`        | Hide diagnostic suggestions in the output                             |
-| `--color`                 | Force colour on, overriding `NO_COLOR`                                |
-| `--no-color`              | Force colour off                                                      |
-| `-i, --interactive`       | Full-screen dashboard to walk the findings (falls back to text)       |
+| Flag                      | Effect                                                                            |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `-d, --domain <d>`        | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks             |
+| `-f, --format <fmt>`      | `text` (default), `json`, `sarif`, `github`, `junit`                              |
+| `--strict`                | Treat warnings as errors                                                          |
+| `--max-warnings <n>`      | Fail if warnings exceed `n`                                                       |
+| `--check-network`         | Verify accounts, `HORIZON_URL`, SEP-8 flags, and `ANCHOR_QUOTE_SERVER` online     |
+| `--check-contracts`       | Verify Soroban contract and WASM TTL liveliness online                            |
+| `--soroban-rpc <url>`     | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`) |
+| `--webhook-slack <url>`   | POST a Slack Block Kit card with the run summary                                  |
+| `--webhook-discord <url>` | POST a Discord embed with the run summary                                         |
+| `--off <rule>`            | Disable a rule (repeatable)                                                       |
+| `--error <rule>`          | Raise a rule to error (repeatable)                                                |
+| `--warn <rule>`           | Lower a rule to warning (repeatable)                                              |
+| `-q, --quiet`             | Show errors only                                                                  |
+| `--show-help-urls`        | Print the spec link for each finding                                              |
+| `--list-rules`            | Print every rule and exit                                                         |
+| `--no-suggestions`        | Hide diagnostic suggestions in the output                                         |
+| `--color`                 | Force colour on, overriding `NO_COLOR`                                            |
+| `--no-color`              | Force colour off                                                                  |
+| `-i, --interactive`       | Full-screen dashboard to walk the findings (falls back to text)                   |
 
 Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failure.
 
@@ -354,6 +356,23 @@ wallet that cannot negotiate exchange rates fails the run instead of at transfer
 `/quote` route is probed too: a 5xx emits `sep38/quote-endpoint-error`, and a 200 that is not a JSON
 object emits `sep38/malformed-quote-response`, while the 400/401/404 a bare unauthenticated GET
 legitimately earns stays silent.
+
+For every `[[CURRENCIES]]` entry marked `regulated=true` with a classic `issuer`, the issuer's
+account flags are read from Horizon: a missing `AUTH_REQUIRED_FLAG` emits
+`currencies/regulated-missing-auth-required-flag` (error) and a missing `AUTH_REVOCABLE_FLAG` emits
+`currencies/regulated-missing-auth-revocable-flag` (warning), since SEP-8 needs the issuer to
+control who may hold the asset and to be able to freeze offenders. A Horizon outage, missing
+account, or unparseable response degrades to the `currencies/regulated-issuer-flags-unverifiable`
+warning instead of failing the run.
+
+**Contracts** (with `--check-contracts`) — queries the Soroban RPC for the contract instance and
+WASM behind every `[[CURRENCIES]].contract` and `WEB_AUTH_CONTRACT_ID`, comparing each
+`liveUntilLedgerSeq` against the network's `latestLedger`. When the effective TTL is within roughly a
+day of expiry it emits `soroban/contract-ttl-expiring-soon` (warning); past that point, or when the
+instance or WASM entry is absent entirely, it emits `soroban/contract-expired` (error). An
+unreachable or malformed RPC degrades to `soroban/contract-ttl-unavailable` (warning). The RPC
+endpoint is derived from `NETWORK_PASSPHRASE` (Public, Testnet, or Futurenet) and can be overridden
+with `--soroban-rpc`.
 
 ### Severity
 
