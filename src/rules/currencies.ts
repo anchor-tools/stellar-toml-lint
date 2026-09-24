@@ -1,4 +1,5 @@
 import type { Rule, RuleContext } from '../types.js';
+import { anchoredAssetRules } from './anchored-asset-rules.js';
 import {
   ANCHOR_ASSET_TYPES,
   CURRENCY_STATUSES,
@@ -64,6 +65,8 @@ function eachCurrency(
 
 /** Rules covering the `[[CURRENCIES]]` list. */
 export const currencyRules: Rule[] = [
+  ...anchoredAssetRules,
+
   {
     id: 'currencies/entries-are-tables',
     category: 'currencies',
@@ -534,11 +537,7 @@ export const currencyRules: Rule[] = [
           return;
         }
 
-        for (const field of [
-          'anchor_asset_type',
-          'anchor_asset',
-          'redemption_instructions',
-        ] as const) {
+        for (const field of ['redemption_instructions'] as const) {
           if (entry[field] !== undefined) continue;
           ctx.report({
             rule: 'currencies/anchored-asset-fields',
