@@ -4,6 +4,7 @@ import { documentationRules } from './documentation.js';
 import { principalRules } from './principals.js';
 import { currencyRules } from './currencies.js';
 import { validatorRules } from './validators.js';
+import { securityRules } from './security.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -12,9 +13,17 @@ export const allRules: Rule[] = [
   ...principalRules,
   ...currencyRules,
   ...validatorRules,
+  ...securityRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
 export const ruleIds: string[] = allRules.map((r) => r.id).sort();
 
-export { generalRules, documentationRules, principalRules, currencyRules, validatorRules };
+export {
+  generalRules,
+  documentationRules,
+  principalRules,
+  currencyRules,
+  validatorRules,
+  securityRules,
+};

@@ -212,7 +212,8 @@ public/.well-known/stellar.toml
               <h3>Network checks</h3>
               <p>
                 With <code>--domain</code>, it verifies reachability, CORS headers, content type,
-                and file size for deployed anchors.
+                file size, and the negotiated TLS session — deprecated protocol versions and weak
+                cipher suites included.
               </p>
             </div>
           </div>
@@ -240,8 +241,8 @@ cat stellar.toml | stellar-toml-lint -</code></pre>
             <h3>Common flags</h3>
             <ul class="feature-list">
               <li>
-                <code>-d, --domain &lt;d&gt;</code> — serve from a domain for CORS and same-domain
-                checks
+                <code>-d, --domain &lt;d&gt;</code> — serve from a domain for CORS, TLS, and
+                same-domain checks
               </li>
               <li><code>-f, --format &lt;fmt&gt;</code> — text, json, sarif, github</li>
               <li><code>--strict</code> — treat warnings like errors</li>

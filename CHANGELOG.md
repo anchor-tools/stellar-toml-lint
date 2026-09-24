@@ -9,6 +9,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Opt-in `--check-network` flag to query Horizon and report non-existent `SIGNING_KEY` or `ACCOUNTS` entries as warnings (#7).
 
+### Added
+
+- `security/deprecated-tls-version` and `security/weak-cipher-suite` warnings under `--domain`:
+  the linter now inspects the TLS session the host negotiates and flags TLS 1.0/1.1 (and SSLv2/SSLv3),
+  plus cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. Offline linting is
+  unaffected, and both rules can be tuned with `--off`, `--warn`, and `--error` like any other.
+- `lintDomain` accepts an optional `tlsProbe` so embedders and tests can supply the session instead of
+  having one opened for them. `probeTls` is exported for callers that need to measure it themselves.
+
 ## [0.1.0]
 
 Initial release.
