@@ -1,4 +1,5 @@
 import { lint } from './lint.js';
+import { getHoverInfo } from './lsp/hover.js';
 
 interface LspMessage {
   jsonrpc: string;
@@ -114,9 +115,7 @@ async function handleMessage(msg: LspMessage): Promise<LspMessage | null> {
       return {
         jsonrpc: '2.0',
         id: msg.id,
-        result: {
-          contents: getHover(documentSource, params.position),
-        },
+        result: getHoverInfo(documentSource, params.position),
       };
     }
     default:
@@ -186,50 +185,4 @@ function getCompletions(
     kind: 6,
     detail: 'stellar.toml',
   }));
-}
-
-function getHover(
-  source: string,
-  position: Position,
-): Array<{
-  kind: string;
-  value: string;
-}> {
-  const lines = source.split('\n');
-  const line = lines[position.line] || '';
-  const trimmed = line.trim();
-
-  const specUrls: Record<string, string> = {
-    NETWORK_PASSPHRASE:
-      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#network-passphrase',
-    SIGNING_KEY:
-      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#signing-key',
-    DOMAIN: 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#domain',
-    CURRENCIES:
-      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currencies',
-    VALIDATORS:
-      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#validators',
-    DOCUMENTATION:
-      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#documentation',
-    WEB_AUTH_ENDPOINT:
-      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0010.md',
-    TRANSFER_SERVER:
-      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0024.md',
-    HORIZON_URL:
-      'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#horizon-url',
-  };
-
-  for (const [key, url] of Object.entries(specUrls)) {
-    if (trimmed.startsWith(key) || trimmed.includes(key)) {
-      return [{ kind: 'markdown', value: `**${key}**\n\n${url}` }];
-    }
-  }
-
-  return [
-    {
-      kind: 'markdown',
-      value:
-        '**SEP-1 stellar.toml**\n\nSee the [SEP-1 specification](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md) for details.',
-    },
-  ];
 }

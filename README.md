@@ -130,7 +130,7 @@ stellar-toml-lint   # honours .stellartomlrc.json found upward from ./stellar.to
 | `--color`                 | Force colour on, overriding `NO_COLOR`                                            |
 | `--no-color`              | Force colour off                                                                  |
 | `-i, --interactive`       | Full-screen dashboard to walk the findings (falls back to text)                   |
-| `--lsp`                   | Run as a Language Server on stdio (diagnostics + quick-fix code actions)          |
+| `--lsp`                   | Run as a Language Server on stdio (diagnostics, quick-fixes, hover)               |
 
 Every flag above takes precedence over the [configuration file](#configuration-file).
 
@@ -172,6 +172,12 @@ quick-fix code actions for mechanically safe findings (strip a trailing slash fr
 normalize a near-miss `NETWORK_PASSPHRASE`, reduce a social URL to a bare handle, format a phone
 number as E.164). Unfixable parse errors never produce a code action. Point your editor's LSP
 client at the `stellar-toml-lint` binary with `--lsp`.
+
+Hovering a key or a table header shows the SEP-1 documentation for what is under the cursor: the
+qualified name (`[[CURRENCIES]].display_decimals`), its type (`integer (0-7)`), the specification's
+own description, the permitted values where SEP-1 enumerates them (`live`, `dead`, `test`,
+`private`), and a link to the section of SEP-1 that defines the field. Hovering whitespace, a
+comment, or a key SEP-1 does not define shows nothing at all.
 
 ### Alerting a Slack or Discord channel
 
@@ -334,6 +340,7 @@ severity filters (All, Errors, Warnings, Info), and expandable suggestion blocks
 code frames and links into SEP-1. Every string from the linted file is HTML-escaped, so a hostile
 `stellar.toml` cannot inject markup into the report. As with the other document formats, lint one
 file per report.
+
 ### Checkstyle XML reports
 
 Jenkins (via the Warnings NG plugin) and other pipelines that ingest the Checkstyle schema read
@@ -659,7 +666,7 @@ stellar-toml-lint --json-schema > stellar-toml.schema.json
 // .vscode/settings.json
 {
   "evenBetterToml.schema.associations": {
-    "stellar\\.toml": "file://./stellar-toml.schema.json"
-  }
+    "stellar\\.toml": "file://./stellar-toml.schema.json",
+  },
 }
 ```
