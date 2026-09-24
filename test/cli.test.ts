@@ -190,3 +190,19 @@ describe('cli', () => {
     expect(stderr).toContain('--readiness supports');
   });
 });
+
+describe('cli --json-schema', () => {
+  it('exits 0 and emits a JSON schema to stdout', async () => {
+    const { code, stdout } = await cli(['--json-schema']);
+    expect(code).toBe(0);
+
+    const schema = JSON.parse(stdout) as Record<string, unknown>;
+    expect(schema.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
+    expect(schema.type).toBe('object');
+
+    const properties = schema.properties as Record<string, unknown>;
+    for (const section of ['DOCUMENTATION', 'PRINCIPALS', 'CURRENCIES', 'VALIDATORS']) {
+      expect(properties[section], `missing ${section}`).toBeDefined();
+    }
+  });
+});

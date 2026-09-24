@@ -48,6 +48,7 @@ import { runDashboard, supportsDashboard } from './ui/dashboard.js';
 import { runLspServer } from './lsp/server.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
+import { getTomlJsonSchema } from './schema.js';
 import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
 
 const VERSION = '0.1.0';
@@ -130,6 +131,9 @@ OPTIONS
       --export-ap-config  Export Anchor Platform YAML config to stdout
       --generate-openapi <file>
                           Generate an OpenAPI 3.1 spec (json or yaml extension)
+      --json-schema       Print a JSON Schema (Draft 2020-12) for stellar.toml
+                          to stdout, for editor autocompletion via schema
+                          associations
       --color / --no-color
        --list-rules        Print every rule and exit
    --lsp               Start the LSP server for IDE integration
@@ -464,6 +468,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--list-rules':
         process.stdout.write(listRules());
+        return 'handled';
+
+      case '--json-schema':
+        process.stdout.write(`${JSON.stringify(getTomlJsonSchema(), null, 2)}\n`);
         return 'handled';
 
       case '--lsp':

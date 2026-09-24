@@ -595,3 +595,23 @@ Not affiliated with or endorsed by the Stellar Development Foundation.
 [SEP-1]: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md
 [anchor-tests]: https://github.com/stellar/stellar-anchor-tests
 [gfi]: https://github.com/anchor-tools/stellar-toml-lint/labels/good%20first%20issue
+
+### Editor autocompletion with `--json-schema`
+
+`stellar-toml-lint --json-schema` prints a JSON Schema (Draft 2020-12) describing every SEP-1
+field — top-level keys, `[DOCUMENTATION]`, `[[PRINCIPALS]]`, `[[CURRENCIES]]`, and
+`[[VALIDATORS]]`, including the `status` and `anchor_asset_type` enums — and exits 0. Save it and
+point your editor at it, e.g. in VS Code with the Even Better TOML extension:
+
+```sh
+stellar-toml-lint --json-schema > stellar-toml.schema.json
+```
+
+```jsonc
+// .vscode/settings.json
+{
+  "evenBetterToml.schema.associations": {
+    "stellar\\.toml": "file://./stellar-toml.schema.json"
+  }
+}
+```
