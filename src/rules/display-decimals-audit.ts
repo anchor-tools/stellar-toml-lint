@@ -63,7 +63,10 @@ function classicDiagnostics(
   const diagnostics: Diagnostic[] = [];
   currenciesOf(doc).forEach((entry, index) => {
     if (entry.toml !== undefined || entry.contract !== undefined) return;
-    if (typeof entry.display_decimals !== 'number' || entry.display_decimals <= MAX_CLASSIC_DECIMALS) {
+    if (
+      typeof entry.display_decimals !== 'number' ||
+      entry.display_decimals <= MAX_CLASSIC_DECIMALS
+    ) {
       return;
     }
 
@@ -142,7 +145,12 @@ export async function auditDisplayDecimals(
 
   for (const { entry, path } of contracts) {
     if (typeof entry.display_decimals !== 'number') continue;
-    const actual = await contractDecimals(entry.contract as string, networkPassphrase, rpcUrl, fetchImpl);
+    const actual = await contractDecimals(
+      entry.contract as string,
+      networkPassphrase,
+      rpcUrl,
+      fetchImpl,
+    );
     if (actual === undefined || actual === entry.display_decimals) continue;
 
     const rule = 'currencies/display-decimals-contract-mismatch';

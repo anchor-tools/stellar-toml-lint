@@ -78,7 +78,7 @@ cat stellar.toml | stellar-toml-lint -
 | Flag                 | Effect                                                           |
 | -------------------- | ---------------------------------------------------------------- |
 | `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, and `ORG_URL` checks |
-| `--check-network`    | Compare currency `display_decimals` with on-chain state        |
+| `--check-network`    | Compare currency `display_decimals` with on-chain state          |
 | `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`                      |
 | `--strict`           | Treat warnings as errors                                         |
 | `--max-warnings <n>` | Fail if warnings exceed `n`                                      |

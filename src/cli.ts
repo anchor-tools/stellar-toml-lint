@@ -151,16 +151,12 @@ async function addNetworkDiagnostics(
     typeof result.parsed.NETWORK_PASSPHRASE === 'string'
       ? result.parsed.NETWORK_PASSPHRASE
       : undefined;
-  const diagnostics = await auditDisplayDecimals(
-    result.parsed,
-    (path) => sourceIndex?.get(path),
-    {
-      includeClassic: false,
-      networkPassphrase,
-      rpcUrl: process.env.SOROBAN_RPC_URL ?? sorobanRpcUrl(networkPassphrase),
-      rules: options.rules,
-    },
-  );
+  const diagnostics = await auditDisplayDecimals(result.parsed, (path) => sourceIndex?.get(path), {
+    includeClassic: false,
+    networkPassphrase,
+    rpcUrl: process.env.SOROBAN_RPC_URL ?? sorobanRpcUrl(networkPassphrase),
+    rules: options.rules,
+  });
   return mergeDiagnostics(result, diagnostics, options);
 }
 
