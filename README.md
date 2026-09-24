@@ -78,6 +78,7 @@ cat stellar.toml | stellar-toml-lint -
 | Flag                 | Effect                                                           |
 | -------------------- | ---------------------------------------------------------------- |
 | `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, and `ORG_URL` checks |
+| `--check-network`    | Compare currency `display_decimals` with on-chain state        |
 | `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`                      |
 | `--strict`           | Treat warnings as errors                                         |
 | `--max-warnings <n>` | Fail if warnings exceed `n`                                      |
@@ -218,7 +219,11 @@ signature lists of equal length; `toml` pointer entries carrying nothing else; d
 `PUBLIC_KEY`; `HOST` as `host:port`; `HISTORY` as an absolute URI.
 
 **Network** (with `--domain`) — reachability, `Access-Control-Allow-Origin: *`, `text/plain` content
-type, size.
+type, size. With `--check-network`, classic assets with `display_decimals > 7` emit
+`currencies/display-decimals-exceeds-network-limit` (error), and Soroban currencies are checked
+against the contract's `decimals()` value. A difference emits
+`currencies/display-decimals-contract-mismatch` (warning). The Soroban RPC endpoint is selected
+from `NETWORK_PASSPHRASE`, or can be overridden with `SOROBAN_RPC_URL`.
 
 ### Severity
 

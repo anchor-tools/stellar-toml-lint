@@ -1,4 +1,5 @@
 import type { Rule, RuleContext } from '../types.js';
+import { displayDecimalsRules } from './display-decimals-audit.js';
 import {
   ANCHOR_ASSET_TYPES,
   CURRENCY_STATUSES,
@@ -64,6 +65,8 @@ function eachCurrency(
 
 /** Rules covering the `[[CURRENCIES]]` list. */
 export const currencyRules: Rule[] = [
+  ...displayDecimalsRules,
+
   {
     id: 'currencies/entries-are-tables',
     category: 'currencies',

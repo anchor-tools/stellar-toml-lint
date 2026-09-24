@@ -87,6 +87,15 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
   return finalize(diagnostics, options, parsed);
 }
 
+/** Re-finalizes a lint result after asynchronous network diagnostics are added. */
+export function mergeDiagnostics(
+  result: LintResult,
+  diagnostics: Diagnostic[],
+  options: LintOptions = {},
+): LintResult {
+  return finalize([...result.diagnostics, ...diagnostics], options, result.parsed);
+}
+
 /**
  * Lints the file served at `https://<domain>/.well-known/stellar.toml`,
  * additionally checking the HTTP-level requirements SEP-1 imposes: CORS,

@@ -9,10 +9,12 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import process from 'node:process';
-import { lint, lintDomain } from './lint.js';
+import { lint, lintDomain, mergeDiagnostics } from './lint.js';
 import { formatGithub, formatJson, formatSarif, formatText } from './reporters.js';
+import { auditDisplayDecimals, sorobanRpcUrl } from './rules/display-decimals-audit.js';
 import { allRules } from './rules/index.js';
-import type { LintResult, RuleOverrides, Severity } from './types.js';
+import { SourceIndex } from './source-index.js';
+import type { LintOptions, LintResult, RuleOverrides, Severity } from './types.js';
 
 const VERSION = '0.1.0';
 const DEFAULT_PATH = 'stellar.toml';
@@ -30,6 +32,7 @@ interface Cli {
   showHelp: boolean;
   rules: RuleOverrides;
   maxWarnings?: number;
+  checkNetwork: boolean;
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -44,6 +47,7 @@ USAGE
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
                           ORG_URL same-domain checks. Fetches unless files are given.
+      --check-network     Compare display_decimals with on-chain state
   -f, --format <fmt>      text (default), json, sarif, or github
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
@@ -83,21 +87,30 @@ async function main(argv: string[]): Promise<number> {
 
   try {
     if (cli.domain && cli.paths.length === 0) {
+      const options: LintOptions = {
+        strict: cli.strict,
+        rules: cli.rules,
+        checkNetwork: cli.checkNetwork,
+      };
+      const result = await lintDomain(cli.domain, options);
       results.push({
         name: cli.domain,
-        result: await lintDomain(cli.domain, { strict: cli.strict, rules: cli.rules }),
+        result: await addNetworkDiagnostics(result, options),
       });
     } else {
       const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
       for (const path of paths) {
         const source = path === '-' ? await readStdin() : await readFile(path, 'utf8');
+        const options: LintOptions = {
+          strict: cli.strict,
+          rules: cli.rules,
+          checkNetwork: cli.checkNetwork,
+          ...(cli.domain ? { domain: cli.domain } : {}),
+        };
+        const result = lint(source, options);
         results.push({
           name: path === '-' ? 'stdin' : path,
-          result: lint(source, {
-            strict: cli.strict,
-            rules: cli.rules,
-            ...(cli.domain ? { domain: cli.domain } : {}),
-          }),
+          result: await addNetworkDiagnostics(result, options, source),
         });
       }
     }
@@ -115,6 +128,31 @@ async function main(argv: string[]): Promise<number> {
   }
 
   return verdict(results, cli) ? 0 : 1;
+}
+
+async function addNetworkDiagnostics(
+  result: LintResult,
+  options: LintOptions,
+  source?: string,
+): Promise<LintResult> {
+  if (!options.checkNetwork || !result.parsed) return result;
+
+  const sourceIndex = source === undefined ? undefined : new SourceIndex(source);
+  const networkPassphrase =
+    typeof result.parsed.NETWORK_PASSPHRASE === 'string'
+      ? result.parsed.NETWORK_PASSPHRASE
+      : undefined;
+  const diagnostics = await auditDisplayDecimals(
+    result.parsed,
+    (path) => sourceIndex?.get(path),
+    {
+      includeClassic: false,
+      networkPassphrase,
+      rpcUrl: process.env.SOROBAN_RPC_URL ?? sorobanRpcUrl(networkPassphrase),
+      rules: options.rules,
+    },
+  );
+  return mergeDiagnostics(result, diagnostics, options);
 }
 
 function render(result: LintResult, name: string, cli: Cli, color: boolean): string {
@@ -161,6 +199,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     quiet: false,
     showHelp: false,
     rules: {},
+    checkNetwork: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -198,6 +237,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--strict':
         cli.strict = true;
+        break;
+
+      case '--check-network':
+        cli.checkNetwork = true;
         break;
 
       case '--no-suggestions':

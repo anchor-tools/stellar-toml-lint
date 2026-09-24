@@ -47,6 +47,8 @@ export interface LintOptions {
    * verified from the file alone, e.g. `ORG_URL` matching the host domain.
    */
   domain?: string;
+  /** Enable checks that compare currency metadata with on-chain state. */
+  checkNetwork?: boolean;
   /** Severity overrides, keyed by rule id. */
   rules?: RuleOverrides;
   /** Treat warnings as errors when computing {@link LintResult.ok}. */
