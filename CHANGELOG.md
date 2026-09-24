@@ -9,6 +9,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+<<<<<<< feat/sep41-contract-checks
+- Opt-in SEP-41 contract verification under `--check-network`: each `[[CURRENCIES]].contract` is
+  simulated against the Soroban RPC for the file's network to confirm it exists and answers the
+  SEP-41 `decimals()` accessor (`currencies/sep41-token`, warning), a `display_decimals` that
+  disagrees with the contract reports `currencies/display-decimals-contract-mismatch` (warning),
+  and an unreachable RPC degrades to `currencies/sep41-unverified` (warning) instead of silently
+  skipping — the offline default run is unchanged (#10).
+=======
 - Interactive quick-fix code actions over LSP (#42): `stellar-toml-lint --lsp` runs a stdio Language
   Server that publishes diagnostics and answers `textDocument/codeAction` with `WorkspaceEdit`
   replacements for mechanically safe rules — `general/trailing-slash-in-endpoint`,
@@ -20,6 +28,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `NO_COLOR` disables colour, an empty value counts as unset, and only an explicit `--color`
   overrides it. Covered by `test/no-color.test.ts` (#148).
 
+>>>>>>> main
 - `--format junit` emits a JUnit XML test report for CI dashboards that chart test results (Jenkins,
   Bamboo, CircleCI, Azure DevOps). Error-severity findings are reported as `<failure>` elements and
   warnings as `<error>` elements, so a dashboard counting failures matches the exit code (#143).
