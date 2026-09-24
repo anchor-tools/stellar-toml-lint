@@ -24,6 +24,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Bamboo, CircleCI, Azure DevOps). Error-severity findings are reported as `<failure>` elements and
   warnings as `<error>` elements, so a dashboard counting failures matches the exit code (#143).
 
+- `--format checkstyle` emits Checkstyle XML for CI dashboards that ingest the Checkstyle schema
+  (Jenkins Warnings NG, Java-adjacent pipelines) (#8): one `<file>` per linted file, one `<error>`
+  per diagnostic with `line`, `column`, `severity`, `message`, and `source` (the rule id).
+
 - `validators/invalid-history-url` (error) validates each `[[VALIDATORS]].HISTORY` as a well-formed
   archive URL, including `{0}` template handling.
 - `validators/stellar-history-json-unreachable` (error) under `--check-network` fetches each

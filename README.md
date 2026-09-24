@@ -80,26 +80,27 @@ cat stellar.toml | stellar-toml-lint -
 ```
 
 ### Options
-| Flag                 | Effect                                                                |
-| -------------------- | --------------------------------------------------------------------- |
-| `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks |
-| `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`, `junit`                  |
-| `--strict`           | Treat warnings as errors                                              |
-| `--max-warnings <n>` | Fail if warnings exceed `n`                                           |
-| `--check-network`    | Verify accounts, `HORIZON_URL`, and `ANCHOR_QUOTE_SERVER` online      |
-| `--off <rule>`       | Disable a rule (repeatable)                                           |
-| `--error <rule>`     | Raise a rule to error (repeatable)                                    |
-| `--warn <rule>`      | Lower a rule to warning (repeatable)                                  |
-| `-q, --quiet`        | Show errors only                                                      |
-| `--show-help-urls`   | Print the spec link for each finding                                  |
-| `--list-rules`       | Print every rule and exit                                             |
-| `--no-suggestions`   | Hide diagnostic suggestions in the output                             |
-| `--check-network`    | Validate `ORG_OFFICIAL_EMAIL` domain MX records for email deliverability |
+
+| Flag                 | Effect                                                                       |
+| -------------------- | ---------------------------------------------------------------------------- |
+| `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks        |
+| `-f, --format <fmt>` | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `checkstyle` |
+| `--strict`           | Treat warnings as errors                                                     |
+| `--max-warnings <n>` | Fail if warnings exceed `n`                                                  |
+| `--check-network`    | Verify accounts, `HORIZON_URL`, and `ANCHOR_QUOTE_SERVER` online             |
+| `--off <rule>`       | Disable a rule (repeatable)                                                  |
+| `--error <rule>`     | Raise a rule to error (repeatable)                                           |
+| `--warn <rule>`      | Lower a rule to warning (repeatable)                                         |
+| `-q, --quiet`        | Show errors only                                                             |
+| `--show-help-urls`   | Print the spec link for each finding                                         |
+| `--list-rules`       | Print every rule and exit                                                    |
+| `--no-suggestions`   | Hide diagnostic suggestions in the output                                    |
+| `--check-network`    | Validate `ORG_OFFICIAL_EMAIL` domain MX records for email deliverability     |
 
 | Flag                      | Effect                                                                            |
 | ------------------------- | --------------------------------------------------------------------------------- |
 | `-d, --domain <d>`        | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks             |
-| `-f, --format <fmt>`      | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`                    |
+| `-f, --format <fmt>`      | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `checkstyle`      |
 | `--strict`                | Treat warnings as errors                                                          |
 | `--max-warnings <n>`      | Fail if warnings exceed `n`                                                       |
 | `--check-network`         | Verify accounts, `HORIZON_URL`, SEP-8 flags, and `ANCHOR_QUOTE_SERVER` online     |
@@ -119,7 +120,6 @@ cat stellar.toml | stellar-toml-lint -
 | `--no-color`              | Force colour off                                                                  |
 | `-i, --interactive`       | Full-screen dashboard to walk the findings (falls back to text)                   |
 | `--lsp`                   | Run as a Language Server on stdio (diagnostics + quick-fix code actions)          |
-
 
 Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failure.
 
@@ -242,6 +242,20 @@ elements and the warnings and info as `<error>` elements, so a dashboard that co
 with the exit code while the softer findings stay visible. Lint one file per report — each run emits
 a complete `<testsuites>` document, as the other machine-readable formats do.
 
+### Checkstyle XML reports
+
+Jenkins (via the Warnings NG plugin) and other pipelines that ingest the Checkstyle schema read
+per-file static-analysis results. `--format checkstyle` emits them:
+
+```bash
+stellar-toml-lint public/.well-known/stellar.toml --format checkstyle > stellar-toml-checkstyle.xml
+```
+
+Each linted file becomes one `<file>` element and each diagnostic an `<error>` carrying `line`,
+`column`, `severity`, `message`, and `source` — the rule id, so a dashboard can group, baseline, or
+suppress findings the way it would a Checkstyle check. Severity maps straight across (`error`,
+`warning`, `info`). Lint one file per report, as with the other machine-readable formats.
+
 ### Pre-commit
 
 ```yaml
@@ -288,7 +302,7 @@ const result = lint(await readFile('stellar.toml', 'utf8'), {
 });
 
 // The reporters mirror `--format`: formatText (shown here), formatJson, formatNdjson,
-// formatJunit, formatSarif, and formatGithub.
+// formatJunit, formatCheckstyle, formatSarif, and formatGithub.
 if (!result.ok) {
   console.error(formatText(result, { color: true }));
   process.exit(1);
@@ -331,10 +345,10 @@ interface Diagnostic {
 Run `stellar-toml-lint --list-rules` for the authoritative list. In summary:
 
 **File** — 100KB size limit, TOML syntax with line and column, UTF-8 BOM detection.
- `https://` on every endpoint field; trailing-slash detection; checksum-valid `SIGNING_KEY`,
- `URI_REQUEST_SIGNING_KEY`, `WEB_AUTH_CONTRACT_ID`, and `ACCOUNTS`; deprecated fields; unknown fields;
- and empty string values in documentation fields. Under `--check-network`, validates that the domain
- portion of `ORG_OFFICIAL_EMAIL` has MX records for email deliverability.
+`https://` on every endpoint field; trailing-slash detection; checksum-valid `SIGNING_KEY`,
+`URI_REQUEST_SIGNING_KEY`, `WEB_AUTH_CONTRACT_ID`, and `ACCOUNTS`; deprecated fields; unknown fields;
+and empty string values in documentation fields. Under `--check-network`, validates that the domain
+portion of `ORG_OFFICIAL_EMAIL` has MX records for email deliverability.
 
 `https://` on every endpoint field; no trailing slashes on service endpoints
 (`WEB_AUTH_ENDPOINT`, `TRANSFER_SERVER`, `TRANSFER_SERVER_SEP0024`, `KYC_SERVER`,
@@ -343,7 +357,6 @@ Run `stellar-toml-lint --list-rules` for the authoritative list. In summary:
 `URI_REQUEST_SIGNING_KEY`, `WEB_AUTH_CONTRACT_ID`, and `ACCOUNTS`; deprecated fields; unknown fields; empty string values in documentation fields; and uppercase-only Stellar public keys
 (`SIGNING_KEY`, `[[CURRENCIES]].issuer`, `[[VALIDATORS]].PUBLIC_KEY`) — lowercase base32 letters are
 flagged with the corrected uppercase form, since wallets compare the string when matching accounts.
-
 
 **Cross-field dependencies** — `DIRECT_PAYMENT_SERVER` (SEP-31) requires `KYC_SERVER` (SEP-12);
 `WEB_AUTH_ENDPOINT` (SEP-10) requires `SIGNING_KEY`; SEP-45 needs both its endpoint and contract ID;

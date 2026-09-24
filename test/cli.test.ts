@@ -66,6 +66,7 @@ describe('cli', () => {
     expect(stdout).toContain('EXIT CODES');
     expect(stdout).toContain('--check-contracts');
     expect(stdout).toContain('--soroban-rpc');
+    expect(stdout).toContain('checkstyle');
   });
 
   it('prints the version', async () => {
@@ -117,6 +118,17 @@ describe('cli', () => {
     expect(XMLValidator.validate(stdout)).toBe(true);
     expect(stdout).toContain('<testsuites');
     expect(stdout).toContain('<failure');
+  });
+
+  it('emits parseable Checkstyle XML', async () => {
+    const { stdout, code } = await cli([fixture('broken.toml'), '-f', 'checkstyle']);
+    expect(XMLValidator.validate(stdout)).toBe(true);
+    expect(stdout).toContain('<checkstyle');
+    expect(stdout).toContain('<file name=');
+    expect(stdout).toContain('severity="error"');
+    expect(stdout).toContain('source="');
+    // The format flag never changes the verdict: broken file still exits 1.
+    expect(code).toBe(1);
   });
 
   it('honours --off', async () => {
