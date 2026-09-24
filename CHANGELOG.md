@@ -9,6 +9,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--format junit` emits a JUnit XML test report for CI dashboards that chart test results (Jenkins,
+  Bamboo, CircleCI, Azure DevOps). Error-severity findings are reported as `<failure>` elements and
+  warnings as `<error>` elements, so a dashboard counting failures matches the exit code (#143).
+
+- Opt-in `--check-network` flag to query Horizon and report non-existent `SIGNING_KEY` or `ACCOUNTS` entries as warnings (#7).
+
+### Added
+
 - `security/deprecated-tls-version` and `security/weak-cipher-suite` warnings under `--domain`:
   the linter now inspects the TLS session the host negotiates and flags TLS 1.0/1.1 (and SSLv2/SSLv3),
   plus cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. Offline linting is

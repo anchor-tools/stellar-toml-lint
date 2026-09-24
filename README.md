@@ -78,7 +78,7 @@ cat stellar.toml | stellar-toml-lint -
 | Flag                 | Effect                                                                |
 | -------------------- | --------------------------------------------------------------------- |
 | `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks |
-| `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`                           |
+| `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`, `junit`                  |
 | `--strict`           | Treat warnings as errors                                              |
 | `--max-warnings <n>` | Fail if warnings exceed `n`                                           |
 | `--off <rule>`       | Disable a rule (repeatable)                                           |
@@ -117,6 +117,21 @@ To route them into the Security tab instead:
   with:
     sarif_file: stellar-toml.sarif
 ```
+
+### JUnit XML reports
+
+Jenkins, Bamboo, CircleCI, and Azure DevOps read JUnit XML to draw test pass/fail charts and suite
+summaries. `--format junit` emits it for them:
+
+```bash
+stellar-toml-lint public/.well-known/stellar.toml --format junit > stellar-toml.xml
+```
+
+Each diagnostic becomes a `<testcase>` named after its rule, carrying the message, the suggestion,
+the spec link, and the source line. Since only errors fail the run, they are reported as `<failure>`
+elements and the warnings and info as `<error>` elements, so a dashboard that counts failures agrees
+with the exit code while the softer findings stay visible. Lint one file per report — each run emits
+a complete `<testsuites>` document, as the other machine-readable formats do.
 
 ### Pre-commit
 
@@ -163,6 +178,8 @@ const result = lint(await readFile('stellar.toml', 'utf8'), {
   rules: { 'general/unknown-field': 'off' },
 });
 
+// The reporters mirror `--format`: formatText (shown here), formatJson,
+// formatJunit, formatSarif, and formatGithub.
 if (!result.ok) {
   console.error(formatText(result, { color: true }));
   process.exit(1);

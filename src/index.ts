@@ -11,7 +11,7 @@
  */
 export { lint, lintDomain } from './lint.js';
 export { allRules, ruleIds } from './rules/index.js';
-export { formatText, formatJson, formatSarif, formatGithub } from './reporters.js';
+export { formatText, formatJson, formatSarif, formatGithub, formatJunit } from './reporters.js';
 export type { TextReporterOptions } from './reporters.js';
 export { probeTls } from './tls.js';
 export type { TlsProbe } from './tls.js';

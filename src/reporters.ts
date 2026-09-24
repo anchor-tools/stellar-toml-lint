@@ -218,3 +218,94 @@ export function formatSarif(
 function toUri(filename: string): string {
   return filename.replace(/\\/g, '/').replace(/^\.\//, '');
 }
+
+/**
+ * JUnit XML, which Jenkins, Bamboo, CircleCI and Azure DevOps parse to draw
+ * pass/fail charts and test suite summaries.
+ *
+ * A lint run maps onto the schema the way a test suite does: the file is the
+ * `<testsuite>`, and every diagnostic is a `<testcase>` named after its rule.
+ *
+ * JUnit has no notion of a non-fatal problem, so the two outcome elements are
+ * split by what actually fails the run: `<failure>` is reserved for the
+ * error-severity findings that drive the exit code, so a dashboard that counts
+ * failures agrees with CI. Warnings and info land in `<error>` entries — still
+ * visible, without claiming the file failed — and carry their severity in the
+ * `type` attribute so the difference is machine-readable.
+ */
+export function formatJunit(result: LintResult, filename = 'stellar.toml'): string {
+  const cases = result.diagnostics.map((d) => {
+    const outcome = d.severity === 'error' ? 'failure' : 'error';
+    const attributes = [
+      `name="${escapeXmlAttribute(d.rule)}"`,
+      `classname="${escapeXmlAttribute(d.category)}"`,
+      `file="${escapeXmlAttribute(filename)}"`,
+      ...(d.position ? [`line="${d.position.line}"`] : []),
+      'time="0"',
+    ].join(' ');
+
+    // The element body carries what the terminal reporter shows under the
+    // message: the concrete next step, and the spec link when one is known.
+    const body = [d.message, d.suggestion, d.helpUri].filter(hasText).join('\n');
+
+    return [
+      `    <testcase ${attributes}>`,
+      `      <${outcome} type="${d.severity}" message="${escapeXmlAttribute(d.message)}">${escapeXml(body)}</${outcome}>`,
+      '    </testcase>',
+    ].join('\n');
+  });
+
+  const counts = [
+    `tests="${result.diagnostics.length}"`,
+    `failures="${result.counts.error}"`,
+    `errors="${result.counts.warning + result.counts.info}"`,
+  ].join(' ');
+
+  const suite = [
+    `  <testsuite name="${escapeXmlAttribute(filename)}" ${counts} skipped="0" time="0">`,
+    ...cases,
+    '  </testsuite>',
+  ];
+
+  // No XML declaration is emitted. A run over several files concatenates one
+  // document per file onto stdout, and a declaration anywhere but the very
+  // first byte is a parse error, so omitting it is the honest option.
+  return [
+    `<testsuites name="${escapeXmlAttribute('stellar-toml-lint')}" ${counts}>`,
+    ...suite,
+    '</testsuites>',
+    '',
+  ].join('\n');
+}
+
+function hasText(value: string | undefined): value is string {
+  return value !== undefined && value !== '';
+}
+
+/**
+ * Escapes XML text, replacing the characters XML 1.0 forbids with U+FFFD.
+ *
+ * Diagnostic messages quote values read out of the linted file, so neither the
+ * markup characters nor stray control bytes can be assumed away. A control
+ * character that survives into the document makes a parser reject all of it,
+ * which in CI looks like the linter failed to run at all.
+ */
+function escapeXml(s: string): string {
+  return sanitizeXmlChars(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * XML 1.0 permits tab, newline, carriage return, and everything from #x20
+ * upward that is not a lone surrogate or a noncharacter. Written as Unicode
+ * property escapes because the literal form is a control-character regex.
+ */
+function sanitizeXmlChars(s: string): string {
+  return s.replace(/[\p{Cc}\p{Cs}\uFFFE\uFFFF]/gu, (char) =>
+    char === '\t' || char === '\n' || char === '\r' ? char : '\uFFFD',
+  );
+}
+
+/** Attributes additionally have to escape both quote characters. */
+function escapeXmlAttribute(s: string): string {
+  return escapeXml(s).replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}

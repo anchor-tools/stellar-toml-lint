@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { XMLValidator } from 'fast-xml-parser';
 
 const run = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -86,6 +87,13 @@ describe('cli', () => {
   it('emits parseable SARIF', async () => {
     const { stdout } = await cli([fixture('broken.toml'), '-f', 'sarif']);
     expect(JSON.parse(stdout).version).toBe('2.1.0');
+  });
+
+  it('emits parseable JUnit XML', async () => {
+    const { stdout } = await cli([fixture('broken.toml'), '-f', 'junit']);
+    expect(XMLValidator.validate(stdout)).toBe(true);
+    expect(stdout).toContain('<testsuites');
+    expect(stdout).toContain('<failure');
   });
 
   it('honours --off', async () => {
