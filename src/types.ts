@@ -72,6 +72,8 @@ export interface LintOptions {
   rules?: RuleOverrides;
   /** Treat warnings as errors when computing {@link LintResult.ok}. */
   strict?: boolean;
+  /** Verify network-dependent account and currency metadata checks. */
+  checkNetwork?: boolean;
   /**
    * TLS session observed while fetching the file.
    *
