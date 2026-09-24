@@ -21,26 +21,43 @@ interface StubOptions {
 
 /**
  * A fetch stub that records the request, so tests can assert on what the linter
- * sent as well as what it did with the response.
+ * sent as well as what it did with the response. Pass a single set of options
+ * to answer every URL the same way, or a pathname→options map to answer the
+ * well-known and root paths differently.
  */
-function stubFetch(options: StubOptions = {}) {
+function stubFetch(options: StubOptions | Record<string, StubOptions> = {}) {
   const calls: { url: string; headers: Record<string, string> }[] = [];
+  const routes = isRouteMap(options) ? options : undefined;
+  const fallback: StubOptions = isRouteMap(options) ? { status: 404 } : options;
 
   const impl = (async (url: string | URL, init?: RequestInit) => {
     calls.push({
       url: String(url),
       headers: (init?.headers ?? {}) as Record<string, string>,
     });
-    return new Response(options.body ?? GOOD_TOML, {
-      status: options.status ?? 200,
+    const pathname = new URL(String(url)).pathname;
+    const matched = routes?.[pathname] ?? fallback;
+    return new Response(matched.body ?? GOOD_TOML, {
+      status: matched.status ?? 200,
       headers: {
         'content-type': 'text/plain',
-        ...(options.headers ?? { 'access-control-allow-origin': '*' }),
+        ...(matched.headers ?? { 'access-control-allow-origin': '*' }),
       },
     });
   }) as unknown as typeof fetch;
 
   return { impl, calls };
+}
+
+function isRouteMap(
+  options: StubOptions | Record<string, StubOptions>,
+): options is Record<string, StubOptions> {
+  return (
+    options.status === undefined &&
+    options.body === undefined &&
+    options.headers === undefined &&
+    Object.keys(options).length > 0
+  );
 }
 
 const ruleIds = (result: { diagnostics: { rule: string }[] }): string[] =>
@@ -102,6 +119,58 @@ describe('lintDomain', () => {
     const result = await lintDomain('example.com', {}, impl);
     expect(ruleIds(result)).toEqual(['network/unreachable']);
     expect(result.ok).toBe(false);
+  });
+
+  it('points at the root when only /.well-known/stellar.toml is missing', async () => {
+    const { impl, calls } = stubFetch({
+      '/.well-known/stellar.toml': { status: 404 },
+      '/stellar.toml': { status: 200 },
+    });
+    const result = await lintDomain('example.com', {}, impl);
+
+    expect(ruleIds(result)).toContain('network/wrong-path');
+    expect(result.diagnostics.find((d) => d.rule === 'network/wrong-path')?.message).toContain(
+      'https://example.com/stellar.toml',
+    );
+    expect(result.ok).toBe(false);
+
+    // Exactly one extra request, and only for the root path.
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.url).toBe('https://example.com/stellar.toml');
+  });
+
+  it('keeps network/unreachable alone when the root probe also fails', async () => {
+    const { impl, calls } = stubFetch({
+      '/.well-known/stellar.toml': { status: 404 },
+      '/stellar.toml': { status: 404 },
+    });
+    const result = await lintDomain('example.com', {}, impl);
+
+    expect(ruleIds(result)).toEqual(['network/unreachable']);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('does not probe the root for a non-404 failure', async () => {
+    const { impl, calls } = stubFetch({ status: 500 });
+    const result = await lintDomain('example.com', {}, impl);
+
+    expect(ruleIds(result)).toEqual(['network/unreachable']);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('survives a transport failure on the root probe', async () => {
+    const calls: string[] = [];
+    const impl = (async (url: string | URL) => {
+      calls.push(String(url));
+      if (String(url).endsWith('/stellar.toml') && !String(url).includes('.well-known')) {
+        throw new Error('socket hang up');
+      }
+      return new Response('nope', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const result = await lintDomain('example.com', {}, impl);
+    expect(ruleIds(result)).toEqual(['network/unreachable']);
+    expect(calls).toHaveLength(2);
   });
 
   it('reports a transport failure without throwing', async () => {

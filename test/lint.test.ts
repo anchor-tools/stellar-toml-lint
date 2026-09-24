@@ -270,6 +270,33 @@ describe('the native asset', () => {
     const result = lint(withValidBase('[[CURRENCIES]]\ncode="USDC"'));
     expect(find(result, 'currencies/issuer-or-contract')).toHaveLength(1);
   });
+
+  it('flags display_decimals on the native asset as info', () => {
+    const result = lint(withValidBase('[[CURRENCIES]]\ncode="native"\ndisplay_decimals=2'));
+    const [d] = find(result, 'currencies/display-decimals');
+    expect(d?.severity).toBe('info');
+    expect(d?.message).toContain('native asset');
+    expect(d?.path).toBe('CURRENCIES[0].display_decimals');
+  });
+
+  it('flags display_decimals on bare XLM with no issuer', () => {
+    const result = lint(withValidBase('[[CURRENCIES]]\ncode="XLM"\ndisplay_decimals=2'));
+    expect(find(result, 'currencies/display-decimals')).toHaveLength(1);
+  });
+
+  it('stays silent when the native entry omits display_decimals', () => {
+    const result = lint(withValidBase('[[CURRENCIES]]\ncode="native"'));
+    expect(find(result, 'currencies/display-decimals')).toEqual([]);
+  });
+
+  it('stays silent when a non-native entry sets display_decimals', () => {
+    const result = lint(
+      withValidBase(
+        `[[CURRENCIES]]\ncode="USDC"\nissuer="${ACCOUNT_A}"\ndisplay_decimals=2\nis_unlimited=true`,
+      ),
+    );
+    expect(find(result, 'currencies/display-decimals')).toEqual([]);
+  });
 });
 
 describe('currencies/toml-pointer', () => {

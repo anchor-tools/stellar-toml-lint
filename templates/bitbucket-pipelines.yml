@@ -1,0 +1,58 @@
+# Reusable Bitbucket Pipelines steps: lint your Stellar Info File (SEP-1).
+#
+# Bitbucket has no cross-file include for step definitions, so copy the
+# `definitions.steps` block below into your `bitbucket-pipelines.yml` and merge a
+# definition into any pipeline by name:
+#
+#   pipelines:
+#     default:
+#       - step: *stellar-toml-lint-step
+#
+# A `pipelines` block is included so this file is a complete, valid pipeline —
+# delete it or point `pipelines` at your own branches.
+#
+# The steps read configuration from pipeline variables, all of which are optional:
+#
+#   STELLAR_TOML_PATH     file to lint (default: stellar.toml)
+#   STELLAR_TOML_FORMAT   output format (default: text)
+#   STELLAR_TOML_STRICT   "true" to treat warnings as errors
+#   STELLAR_TOML_ARGS     extra space-separated CLI flags
+
+definitions:
+  steps:
+    # Node.js 18+ via npx, with the npm cache enabled so the linter is only
+    # downloaded once between runs.
+    - step: &stellar-toml-lint-step
+        name: Lint stellar.toml (SEP-1)
+        caches:
+          - npm
+        script:
+          - |
+            set --
+            set -- "$@" --format "${STELLAR_TOML_FORMAT:-text}"
+            if [ "${STELLAR_TOML_STRICT:-false}" = "true" ]; then
+              set -- "$@" --strict
+            fi
+            # Intentional word splitting: the caller may pass several space-separated flags.
+            set -- "$@" ${STELLAR_TOML_ARGS:-} "${STELLAR_TOML_PATH:-stellar.toml}"
+            npx --yes stellar-toml-lint@latest "$@"
+
+    # Container variant: run the published image instead of installing via npx.
+    # The image's entrypoint is the linter CLI, so arguments pass straight through.
+    - step: &stellar-toml-lint-container-step
+        name: Lint stellar.toml (SEP-1)
+        image: ghcr.io/anchor-tools/stellar-toml-lint:latest
+        script:
+          - |
+            set --
+            set -- "$@" --format "${STELLAR_TOML_FORMAT:-text}"
+            if [ "${STELLAR_TOML_STRICT:-false}" = "true" ]; then
+              set -- "$@" --strict
+            fi
+            # Intentional word splitting: the caller may pass several space-separated flags.
+            set -- "$@" ${STELLAR_TOML_ARGS:-} "${STELLAR_TOML_PATH:-stellar.toml}"
+            stellar-toml-lint "$@"
+
+pipelines:
+  default:
+    - step: *stellar-toml-lint-step

@@ -15,6 +15,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checklist marking each requirement as met or missing. `--readiness --format json` emits the same
   report as JSON, and `calculateReadiness`/`formatReadiness`/`formatReadinessJson` are exported for
   embedders. The run stays offline and the exit code still follows the diagnostics (#28).
+- `network/wrong-path` (error) under `--domain`: when `/.well-known/stellar.toml` returns HTTP 404,
+  the linter probes `https://<host>/stellar.toml` once. If the root path serves the file, the
+  diagnostic says so and points at the SEP-1 location; if the root probe also fails, behaviour is
+  unchanged (`network/unreachable` only). At most one extra request, still through the injected
+  `fetchImpl` (#3).
 - Interactive quick-fix code actions over LSP (#42): `stellar-toml-lint --lsp` runs a stdio Language
   Server that publishes diagnostics and answers `textDocument/codeAction` with `WorkspaceEdit`
   replacements for mechanically safe rules — `general/trailing-slash-in-endpoint`,

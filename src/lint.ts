@@ -147,20 +147,45 @@ export async function lintDomain(
   }
 
   if (!response.ok) {
-    return finalize(
-      [
-        {
-          rule: 'network/unreachable',
-          severity: 'error',
-          category: 'network',
-          message: `${url} returned HTTP ${response.status}`,
-          helpUri: specUrl('specification'),
-          suggestion: 'SEP-1 requires the file at exactly /.well-known/stellar.toml.',
-        },
-      ],
-      options,
-      undefined,
-    );
+    const failed: Diagnostic[] = [
+      {
+        rule: 'network/unreachable',
+        severity: 'error',
+        category: 'network',
+        message: `${url} returned HTTP ${response.status}`,
+        helpUri: specUrl('specification'),
+        suggestion: 'SEP-1 requires the file at exactly /.well-known/stellar.toml.',
+      },
+    ];
+
+    // A 404 is often a deploy mistake rather than a missing file: the anchor
+    // published stellar.toml at the site root. One bounded probe of that path
+    // turns a dead-end status code into a fix the maintainer can act on.
+    if (response.status === 404) {
+      const rootUrl = `https://${host}/stellar.toml`;
+      try {
+        const root = await fetchImpl(rootUrl, {
+          redirect: 'follow',
+          headers: { Origin: 'https://stellar-toml-lint.invalid' },
+        });
+        if (root.ok) {
+          failed.push({
+            rule: 'network/wrong-path',
+            severity: 'error',
+            category: 'network',
+            message: `Found stellar.toml at ${rootUrl}, but SEP-1 requires /.well-known/stellar.toml`,
+            helpUri: specUrl('specification'),
+            suggestion:
+              'Move the file to /.well-known/stellar.toml — wallets only discover it there.',
+          });
+        }
+      } catch {
+        // The root probe is a hint, not a requirement: a transport failure
+        // here leaves today's network/unreachable behaviour unchanged.
+      }
+    }
+
+    return finalize(failed, options, undefined);
   }
 
   // Anchors sign SEP-10 challenges over this same host, so deprecated protocol

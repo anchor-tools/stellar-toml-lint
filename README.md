@@ -119,6 +119,7 @@ stellar-toml-lint   # honours .stellartomlrc.json found upward from ./stellar.to
 | `--verify-sep10`          | Verify SEP-10 nonce uniqueness and replay resistance (requires --check-network)   |
 | `--check-contracts`       | Verify Soroban contract and WASM TTL liveliness online                            |
 | `--soroban-rpc <url>`     | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`) |
+| `--mock-fixtures <dir>`   | Serve network checks from recorded JSON fixtures under `<dir>`, never the network |
 | `--webhook-slack <url>`   | POST a Slack Block Kit card with the run summary                                  |
 | `--webhook-discord <url>` | POST a Discord embed with the run summary                                         |
 | `--off <rule>`            | Disable a rule (repeatable)                                                       |
@@ -284,6 +285,67 @@ To route them into the Security tab instead:
     sarif_file: stellar-toml.sarif
 ```
 
+### Azure DevOps
+
+Copy [`templates/azure-pipelines.yml`](templates/azure-pipelines.yml) into your repository and
+reference it as a steps template:
+
+```yaml
+# azure-pipelines.yml
+steps:
+  - template: templates/azure-pipelines.yml
+    parameters:
+      stellarTomlPath: public/.well-known/stellar.toml
+      strict: true
+      publishTestResults: true
+```
+
+| Parameter            | Default                    | Effect                                                                                                              |
+| -------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `stellarTomlPath`    | `stellar.toml`             | File to lint.                                                                                                       |
+| `format`             | `text`                     | Output format: `text`, `json`, `sarif`, `github`, or `junit`.                                                       |
+| `strict`             | `false`                    | Treat warnings as errors.                                                                                           |
+| `args`               | `''`                       | Extra space-separated CLI flags appended verbatim.                                                                  |
+| `nodeVersion`        | `20.x`                     | Node installed by `NodeTool@0` when running via `npx`.                                                              |
+| `containerImage`     | `''`                       | Run the published `ghcr.io/anchor-tools/stellar-toml-lint` container instead of `npx`.                              |
+| `publishTestResults` | `false`                    | Switch to `--format junit` and publish the report with `PublishTestResults@2`, so the run appears in the Tests tab. |
+| `resultsFile`        | `stellar-toml-results.xml` | Where the JUnit report is written when `publishTestResults` is set.                                                 |
+
+The template installs a Node.js 18+ toolchain (or pulls the container image), runs the linter,
+and, when `publishTestResults` is set, publishes the JUnit report.
+
+### Bitbucket Pipelines
+
+Bitbucket has no cross-file include for step definitions, so copy the `definitions.steps` block
+from [`templates/bitbucket-pipelines.yml`](templates/bitbucket-pipelines.yml) into your
+`bitbucket-pipelines.yml` and merge a definition into any pipeline by name:
+
+```yaml
+# bitbucket-pipelines.yml
+pipelines:
+  default:
+    - step: *stellar-toml-lint-step
+```
+
+Two variants ship in the template:
+
+- `stellar-toml-lint-step` — Node.js 18+ via `npx`, with the `npm` cache enabled so the linter is
+  only downloaded once between runs.
+- `stellar-toml-lint-container-step` — the published
+  `ghcr.io/anchor-tools/stellar-toml-lint` container, whose entrypoint is the linter CLI.
+
+Configure the run with pipeline variables, all optional:
+
+| Variable              | Default        | Effect                                             |
+| --------------------- | -------------- | -------------------------------------------------- |
+| `STELLAR_TOML_PATH`   | `stellar.toml` | File to lint.                                      |
+| `STELLAR_TOML_FORMAT` | `text`         | Output format.                                     |
+| `STELLAR_TOML_STRICT` | `false`        | Set to `true` to treat warnings as errors.         |
+| `STELLAR_TOML_ARGS`   | `''`           | Extra space-separated CLI flags appended verbatim. |
+
+Both templates are validated by a YAML parser in `test/templates.test.ts`, exercised by the
+`test-templates.yml` workflow, so a broken copy-paste template fails CI before it can be merged.
+
 ### JUnit XML reports
 
 Jenkins, Bamboo, CircleCI, and Azure DevOps read JUnit XML to draw test pass/fail charts and suite
@@ -344,6 +406,40 @@ repos:
         language: system
         files: '\.well-known/stellar\.toml$'
 ```
+
+### Offline and air-gapped CI
+
+Enterprise pipelines run in hermetic sandboxes with no outbound network. `--mock-fixtures <dir>`
+replaces the transport every network check uses — `--check-network`, `--check-contracts`, and the
+`--domain` fetch — with recorded responses read from `<dir>`, so those checks stay deterministic and
+never touch the internet:
+
+```bash
+stellar-toml-lint public/.well-known/stellar.toml \
+  --check-network --check-contracts \
+  --mock-fixtures ./ci/fixtures
+```
+
+A request maps onto the fixture tree by host and path: `https://horizon.stellar.org/accounts/GABC...`
+is served from `<dir>/horizon.stellar.org/accounts/GABC....json`, with a fallback to the shorter host
+label (`<dir>/horizon/accounts/GABC....json`) for trees that drop the TLD. A URL ending in `/` reads
+`index.json`, and query strings are ignored — `GET /prices?sell_asset=...` reads
+`<dir>/<host>/prices.json`.
+
+Each fixture file holds the response body. Wrap it in an object with a `body` key to also set the
+status and headers; a string `body` is served verbatim as text, everything else is JSON-encoded:
+
+```json
+{
+  "status": 404,
+  "headers": { "content-type": "application/json" },
+  "body": { "type": "not_found" }
+}
+```
+
+Fixture mode is strict on purpose: a request with no matching file **fails** with a message naming
+the URL and the paths it looked for, instead of quietly falling through to the network. The only I/O
+performed is reading files under `<dir>`.
 
 ### Monitoring a deployed anchor
 
@@ -412,6 +508,12 @@ report.checklist; // every item, with points, detail, and suggestion
 
 console.log(formatReadiness(report, { color: true }));
 console.log(formatReadinessJson(report, 'stellar.toml'));
+Tests and hermetic CI inject recorded responses with the same mechanism that backs `--mock-fixtures`:
+
+```ts
+import { createFixtureFetch } from 'stellar-toml-lint';
+
+const result = await lintDomain('example.com', {}, createFixtureFetch('./ci/fixtures'));
 ```
 
 Every diagnostic carries a stable `rule` id, a `severity`, a dotted `path` to the offending value, a
@@ -463,7 +565,8 @@ and `ORG_GITHUB` as a valid GitHub username or `https://github.com/<username>` p
 **`[[PRINCIPALS]]`** — name and email present and well-formed; hex photo hashes of plausible length.
 
 **`[[CURRENCIES]]`** — code length and charset; exactly one of `issuer` or `contract`, both checksum
-validated; the native XLM asset handled as the special case it is; exactly one issuance policy;
+validated; the native XLM asset handled as the special case it is (including a `display_decimals`
+setting on it, which the protocol makes meaningless, reported as `info`); exactly one issuance policy;
 `status` and `anchor_asset_type` enums; `display_decimals` in 0–7; asset-anchored currencies
 requiring a valid `anchor_asset_type` and warning when `anchor_asset` is absent; anchored fiat
 requiring a declared transfer server; SEP-8 regulated assets carrying an approval server, with
@@ -488,8 +591,10 @@ balance.
 
 **Network** (with `--domain`) — reachability, `Access-Control-Allow-Origin: *`, `text/plain` content
 type, size, and the security of the TLS session: a negotiated protocol of TLS 1.0, TLS 1.1, SSLv2,
-or SSLv3, and cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. Nothing here
-fires for a local file, so offline linting never depends on a network connection.
+or SSLv3, and cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. A 404 on
+`/.well-known/stellar.toml` triggers one probe of `https://<host>/stellar.toml`: if the file is
+served there, `network/wrong-path` (error) says to move it under `.well-known`. Nothing here fires
+for a local file, so offline linting never depends on a network connection.
 
 **Network** (with `--check-network`) — queries the `HORIZON_URL` endpoint the file advertises and
 asserts it answers with a valid Horizon root document. An endpoint that is offline, misconfigured,

@@ -555,11 +555,28 @@ export const currencyRules: Rule[] = [
     id: 'currencies/display-decimals',
     category: 'currencies',
     severity: 'error',
-    description: 'display_decimals must be an integer from 0 to 7',
+    description:
+      'display_decimals must be an integer from 0 to 7, and has no meaning on the native asset',
     run(ctx) {
       eachCurrency(ctx, (entry, path) => {
         const value = entry.display_decimals;
         if (value === undefined) return;
+
+        // XLM's scale is fixed at 7 decimals by the protocol; no issuer can
+        // override it, so a value here is meaningless and can mislead wallets
+        // into rendering the native asset at the wrong scale.
+        if (isNativeAsset(entry)) {
+          ctx.report({
+            rule: 'currencies/display-decimals',
+            category: 'currencies',
+            severity: 'info',
+            message: `${path} sets display_decimals on the native asset, but the protocol fixes XLM at 7 decimals`,
+            path: `${path}.display_decimals`,
+            position: ctx.locate(`${path}.display_decimals`),
+            helpUri: specUrl('currency-documentation'),
+            suggestion: 'Remove display_decimals from the native XLM entry.',
+          });
+        }
 
         if (!isInteger(value) || value < 0 || value > 7) {
           ctx.report({

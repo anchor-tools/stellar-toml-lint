@@ -188,6 +188,30 @@ describe('cli', () => {
     const { code, stderr } = await cli([fixture('valid.toml'), '--readiness', '-f', 'sarif']);
     expect(code).toBe(2);
     expect(stderr).toContain('--readiness supports');
+  it('serves network checks from --mock-fixtures', async () => {
+    const { code, stdout } = await cli([
+      fixture('network/offline-anchor.toml'),
+      '--check-network',
+      '--mock-fixtures',
+      fixture('network'),
+      '-f',
+      'json',
+    ]);
+
+    expect(code).toBe(0);
+    const rules = JSON.parse(stdout).diagnostics.map((d: { rule: string }) => d.rule);
+    expect(rules.filter((rule: string) => rule.startsWith('network/'))).toEqual([]);
+  });
+
+  it('rejects a --mock-fixtures directory that does not exist', async () => {
+    const { code, stderr } = await cli([
+      fixture('network/offline-anchor.toml'),
+      '--check-network',
+      '--mock-fixtures',
+      './definitely-not-here',
+    ]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--mock-fixtures directory');
   });
 });
 
