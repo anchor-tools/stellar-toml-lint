@@ -9,15 +9,39 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+<<<<<<< feat/sep41-contract-checks
 - Opt-in SEP-41 contract verification under `--check-network`: each `[[CURRENCIES]].contract` is
   simulated against the Soroban RPC for the file's network to confirm it exists and answers the
   SEP-41 `decimals()` accessor (`currencies/sep41-token`, warning), a `display_decimals` that
   disagrees with the contract reports `currencies/display-decimals-contract-mismatch` (warning),
   and an unreachable RPC degrades to `currencies/sep41-unverified` (warning) instead of silently
   skipping — the offline default run is unchanged (#10).
+=======
+- Interactive quick-fix code actions over LSP (#42): `stellar-toml-lint --lsp` runs a stdio Language
+  Server that publishes diagnostics and answers `textDocument/codeAction` with `WorkspaceEdit`
+  replacements for mechanically safe rules — `general/trailing-slash-in-endpoint`,
+  `network/passphrase` (near miss), `documentation/social-handles`, `principals/social-handles`,
+  and `documentation/phone-e164`. Diagnostics that cannot be corrected safely (parse errors,
+  missing tables) offer no action. Shared fix engine lives in `src/fix.ts` for `--fix` (#9) to reuse.
+
+- Text output follows the [NO_COLOR standard](https://no-color.org) explicitly: any non-empty
+  `NO_COLOR` disables colour, an empty value counts as unset, and only an explicit `--color`
+  overrides it. Covered by `test/no-color.test.ts` (#148).
+
+>>>>>>> main
 - `--format junit` emits a JUnit XML test report for CI dashboards that chart test results (Jenkins,
   Bamboo, CircleCI, Azure DevOps). Error-severity findings are reported as `<failure>` elements and
   warnings as `<error>` elements, so a dashboard counting failures matches the exit code (#143).
+
+- `--format checkstyle` emits Checkstyle XML for CI dashboards that ingest the Checkstyle schema
+  (Jenkins Warnings NG, Java-adjacent pipelines) (#8): one `<file>` per linted file, one `<error>`
+  per diagnostic with `line`, `column`, `severity`, `message`, and `source` (the rule id).
+
+- `validators/invalid-history-url` (error) validates each `[[VALIDATORS]].HISTORY` as a well-formed
+  archive URL, including `{0}` template handling.
+- `validators/stellar-history-json-unreachable` (error) under `--check-network` fetches each
+  validator's archive root and requires it to serve `.well-known/stellar-history.json` with
+  `"version": 1` (#144).
 
 - Opt-in `--check-network` flag to query Horizon and report non-existent `SIGNING_KEY` or `ACCOUNTS` entries as warnings (#7).
 - `network/horizon-unreachable` and `network/horizon-protocol-outdated` under `--check-network`:
@@ -32,8 +56,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   answers — so a quote server returning 500s or malformed JSON fails the run instead of surfacing
   later as wallets unable to calculate transaction amounts.
 
+### Changed
+
+- The `validators/history` warning is replaced by `validators/invalid-history-url`, which checks the
+  same field more strictly and reports it as an error. Update any `--off validators/history`
+  configuration to the new id.
+
 ### Added
 
+- SEP-8 regulated issuer flags under `--check-network`: for every `[[CURRENCIES]]` entry marked
+  `regulated=true` with a classic `issuer`, the linter reads the issuer account's flags from Horizon.
+  A missing `AUTH_REQUIRED` flag emits `currencies/regulated-missing-auth-required-flag` (error), a
+  missing `AUTH_REVOCABLE` flag emits `currencies/regulated-missing-auth-revocable-flag` (warning),
+  and a Horizon outage or missing account degrades to
+  `currencies/regulated-issuer-flags-unverifiable` (warning) so the run still fails cleanly on
+  strengthenable-to-fatal findings without depending on network availability.
+- Soroban contract liveliness under `--check-contracts`: `src/soroban.ts` queries the Soroban RPC's
+  `getLedgerEntries` for the contract instance and its WASM behind every `[[CURRENCIES]].contract`
+  and `WEB_AUTH_CONTRACT_ID`, comparing `liveUntilLedgerSeq` against `latestLedger`. Within ~a day of
+  expiry it emits `soroban/contract-ttl-expiring-soon` (warning); expired or archived state emits
+  `soroban/contract-expired` (error); an unreachable RPC degrades to `soroban/contract-ttl-unavailable`
+  (warning). The endpoint is derived from `NETWORK_PASSPHRASE` and overridable with `--soroban-rpc`.
 - `security/deprecated-tls-version` and `security/weak-cipher-suite` warnings under `--domain`:
   the linter now inspects the TLS session the host negotiates and flags TLS 1.0/1.1 (and SSLv2/SSLv3),
   plus cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. Offline linting is

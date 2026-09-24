@@ -35,6 +35,18 @@ export interface Diagnostic {
   helpUri?: string;
   /** Concrete next step for the maintainer. */
   suggestion?: string;
+  /**
+   * Replacement text for the value at {@link Diagnostic.path}, when the rule
+   * can correct itself mechanically. The value is the raw TOML string content
+   * (no surrounding quotes), so `fix.value` is ready to drop into a text edit.
+   */
+  fix?: Fix;
+}
+
+/** A mechanically safe replacement for a diagnostic's offending value. */
+export interface Fix {
+  /** Corrected value content, without TOML quoting. */
+  value: string;
 }
 
 /** Per-rule severity overrides. `'off'` disables the rule entirely. */

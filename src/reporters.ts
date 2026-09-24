@@ -309,3 +309,78 @@ function sanitizeXmlChars(s: string): string {
 function escapeXmlAttribute(s: string): string {
   return escapeXml(s).replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
+
+/**
+ * Checkstyle XML, the shape Jenkins (Warnings NG), SonarQube-adjacent
+ * dashboards, and Java-adjacent CI pipelines read for static-analysis results.
+ *
+ * The document mirrors what Checkstyle itself emits: one `<file>` per linted
+ * file, one `<error>` per diagnostic carrying `line`, `column`, `severity`,
+ * `message`, and `source`. `source` holds the rule id so a consumer can group,
+ * baseline, or suppress findings the way it would a Checkstyle check.
+ * Severity maps straight across (`error`, `warning`, `info`).
+ *
+ * `line` and `column` are always present, defaulting to 1: the format treats
+ * them as required attributes even for a finding about an absent key that has
+ * no position of its own — the same compromise SARIF makes for the same
+ * diagnostics.
+ *
+ * Like `formatJunit`, no XML declaration is emitted. A run over several files
+ * concatenates one document per file onto stdout, and a declaration anywhere
+ * but the very first byte is a parse error, so omitting it is the honest
+ * option.
+ */
+export function formatCheckstyle(
+  result: LintResult,
+  filename = 'stellar.toml',
+  version = '0.1.0',
+): string {
+  const errors = result.diagnostics.map((d) => {
+    const attributes = [
+      `line="${Math.max(d.position?.line ?? 1, 1)}"`,
+      `column="${Math.max(d.position?.column ?? 1, 1)}"`,
+      `severity="${d.severity}"`,
+      `message="${escapeXmlAttribute(d.message)}"`,
+      `source="${escapeXmlAttribute(d.rule)}"`,
+    ].join(' ');
+    return `    <error ${attributes} />`;
+  });
+
+  return [
+    `<checkstyle version="${escapeXmlAttribute(version)}">`,
+    `  <file name="${escapeXmlAttribute(filename)}">`,
+    ...errors,
+    '  </file>',
+    '</checkstyle>',
+    '',
+  ].join('\n');
+}
+
+/** Newline-delimited JSON for streaming analysis. */
+export function formatNdjson(result: LintResult, filename = 'stellar.toml'): string {
+  const lines: string[] = [];
+
+  for (const d of result.diagnostics) {
+    lines.push(
+      JSON.stringify({
+        type: 'diagnostic',
+        file: filename,
+        rule: d.rule,
+        severity: d.severity,
+        message: d.message,
+        ...(d.position ? { position: d.position } : {}),
+      }),
+    );
+  }
+
+  lines.push(
+    JSON.stringify({
+      type: 'summary',
+      file: filename,
+      ok: result.ok,
+      counts: result.counts,
+    }),
+  );
+
+  return `${lines.join('\n')}\n`;
+}
