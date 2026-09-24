@@ -9,6 +9,7 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import process from 'node:process';
+import { compareToml, formatDiff, hasBreakingChanges } from './diff.js';
 import { lint, lintDomain, finalize } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { formatGithub, formatJson, formatJunit, formatSarif, formatText } from './reporters.js';
@@ -34,6 +35,7 @@ interface Cli {
   rules: RuleOverrides;
   maxWarnings?: number;
   checkNetwork: boolean;
+  diff?: { base: string; target: string };
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -43,12 +45,17 @@ Validate a Stellar Info File (stellar.toml) against SEP-1 — offline.
 USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
   stellar-toml-lint --domain <domain>    Fetch and lint https://<domain>/.well-known/stellar.toml
+  stellar-toml-lint --diff <base> <target>
+                                         Compare two versions for breaking changes
   cat stellar.toml | stellar-toml-lint - Lint stdin
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
                           ORG_URL same-domain checks. Fetches unless files are given.
   -f, --format <fmt>      text (default), json, sarif, github, or junit
+      --diff <base> <target>
+                          Report BREAKING/WARNING/INFO differences between two
+                          stellar.toml versions. Exits 1 if any change is breaking.
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
       --off <rule>        Disable a rule (repeatable)
@@ -87,6 +94,14 @@ async function main(argv: string[]): Promise<number> {
   const results: { name: string; result: LintResult }[] = [];
 
   try {
+    if (cli.diff) {
+      const baseSource = await readFile(cli.diff.base, 'utf8');
+      const targetSource = await readFile(cli.diff.target, 'utf8');
+      const differences = compareToml(baseSource, targetSource);
+      process.stdout.write(formatDiff(differences, cli.diff, { color }));
+      return hasBreakingChanges(differences) ? 1 : 0;
+    }
+
     if (cli.domain && cli.paths.length === 0) {
       results.push({
         name: cli.domain,
@@ -225,6 +240,13 @@ function parseArgs(argv: string[]): Cli | 'handled' {
           );
         }
         cli.format = value;
+        break;
+      }
+
+      case '--diff': {
+        const base = requireValue(argv, ++i, arg);
+        const target = requireValue(argv, ++i, arg);
+        cli.diff = { base, target };
         break;
       }
 

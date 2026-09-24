@@ -71,25 +71,50 @@ stellar-toml-lint public/.well-known/stellar.toml --domain example.com
 
 # Read from stdin
 cat stellar.toml | stellar-toml-lint -
+
+# Compare two versions for breaking changes (exits 1 if any are breaking)
+stellar-toml-lint --diff main-stellar.toml pr-stellar.toml
 ```
 
 ### Options
 
-| Flag                 | Effect                                                                |
-| -------------------- | --------------------------------------------------------------------- |
-| `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks |
-| `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`, `junit`                  |
-| `--strict`           | Treat warnings as errors                                              |
-| `--max-warnings <n>` | Fail if warnings exceed `n`                                           |
-| `--off <rule>`       | Disable a rule (repeatable)                                           |
-| `--error <rule>`     | Raise a rule to error (repeatable)                                    |
-| `--warn <rule>`      | Lower a rule to warning (repeatable)                                  |
-| `-q, --quiet`        | Show errors only                                                      |
-| `--show-help-urls`   | Print the spec link for each finding                                  |
-| `--list-rules`       | Print every rule and exit                                             |
-| `--no-suggestions`   | Hide diagnostic suggestions in the output                             |
+| Flag                     | Effect                                                                |
+| ------------------------ | --------------------------------------------------------------------- |
+| `-d, --domain <d>`       | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks |
+| `-f, --format <fmt>`     | `text` (default), `json`, `sarif`, `github`, `junit`                  |
+| `--diff <base> <target>` | Semantic diff of two files; exit 1 on breaking changes                |
+| `--strict`               | Treat warnings as errors                                              |
+| `--max-warnings <n>`     | Fail if warnings exceed `n`                                           |
+| `--off <rule>`           | Disable a rule (repeatable)                                           |
+| `--error <rule>`         | Raise a rule to error (repeatable)                                    |
+| `--warn <rule>`          | Lower a rule to warning (repeatable)                                  |
+| `-q, --quiet`            | Show errors only                                                      |
+| `--show-help-urls`       | Print the spec link for each finding                                  |
+| `--list-rules`           | Print every rule and exit                                             |
+| `--no-suggestions`       | Hide diagnostic suggestions in the output                             |
 
 Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failure.
+
+### Diff mode for PR review
+
+A `stellar.toml` can be perfectly valid against SEP-1 and still break every wallet that already
+trusts its assets. `--diff` compares two versions and labels each change:
+
+| Label      | Meaning                                                                                                                             | Exit code |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `BREAKING` | Removed/changed issuer, contract, issuance rules, validator `PUBLIC_KEY`, `SIGNING_KEY`, removed SEP endpoint, live→non-live status | 1         |
+| `WARNING`  | Material but non-fatal edits (e.g. `ORG_DESCRIPTION`, endpoint URL change)                                                          | 0         |
+| `INFO`     | Purely additive (new currency, new validator, new endpoint)                                                                         | 0         |
+
+```bash
+# Fail the PR job if the proposed file would break existing integrations
+stellar-toml-lint --diff origin/main:public/.well-known/stellar.toml \
+                         public/.well-known/stellar.toml
+```
+
+Programmatic equivalent: `compareToml(baseSource, targetSource)` returns
+`TomlDifference[]` with `{ path, message, severity, breaking }`; `formatDiff` renders the
+same report the CLI prints.
 
 ## In CI
 

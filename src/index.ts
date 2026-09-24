@@ -10,6 +10,8 @@
  * ```
  */
 export { lint, lintDomain } from './lint.js';
+export { compareToml, formatDiff, countDifferences, hasBreakingChanges } from './diff.js';
+export type { DiffSeverity, FormatDiffOptions, TomlDifference } from './diff.js';
 export { allRules, ruleIds } from './rules/index.js';
 export { formatText, formatJson, formatSarif, formatGithub, formatJunit } from './reporters.js';
 export type { TextReporterOptions } from './reporters.js';
