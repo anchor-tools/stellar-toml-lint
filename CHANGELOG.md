@@ -9,6 +9,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--readiness` (alias `--score`) grades a file the way a wallet listing review would: a 0–100
+  total and a letter grade across three weighted pillars — Protocol & Syntax Compliance (40),
+  Organization Identity & Trust (30), and Asset & Anchor Transparency (30) — plus an actionable
+  checklist marking each requirement as met or missing. `--readiness --format json` emits the same
+  report as JSON, and `calculateReadiness`/`formatReadiness`/`formatReadinessJson` are exported for
+  embedders. The run stays offline and the exit code still follows the diagnostics (#28).
+
 - Text output follows the [NO_COLOR standard](https://no-color.org) explicitly: any non-empty
   `NO_COLOR` disables colour, an empty value counts as unset, and only an explicit `--color`
   overrides it. Covered by `test/no-color.test.ts` (#148).

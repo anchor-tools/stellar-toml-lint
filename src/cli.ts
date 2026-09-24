@@ -11,7 +11,16 @@ import { basename } from 'node:path';
 import process from 'node:process';
 import { lint, lintDomain, finalize } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
-import { formatGithub, formatJson, formatJunit, formatSarif, formatText } from './reporters.js';
+import {
+  formatGithub,
+  formatJson,
+  formatJunit,
+  formatReadiness,
+  formatReadinessJson,
+  formatSarif,
+  formatText,
+} from './reporters.js';
+import { calculateReadiness } from './readiness.js';
 import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
@@ -38,6 +47,7 @@ interface Cli {
   paths: string[];
   domain?: string;
   format: Format;
+  readiness?: boolean;
   strict: boolean;
   color?: boolean;
   quiet: boolean;
@@ -69,6 +79,9 @@ OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
                           ORG_URL same-domain checks. Fetches unless files are given.
   -f, --format <fmt>      text (default), json, sarif, github, or junit
+      --readiness         Score wallet listing readiness (0-100) with a letter
+                          grade and an actionable checklist. Also --score.
+                          Combine with -f json for machine-readable output
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
       --off <rule>        Disable a rule (repeatable)
@@ -105,6 +118,8 @@ EXAMPLES
   stellar-toml-lint public/.well-known/stellar.toml
   stellar-toml-lint --domain example.com --strict
   stellar-toml-lint -f sarif > results.sarif
+  stellar-toml-lint public/.well-known/stellar.toml --readiness
+  stellar-toml-lint public/.well-known/stellar.toml --readiness -f json
 `;
 
 async function main(argv: string[]): Promise<number> {
@@ -115,6 +130,14 @@ async function main(argv: string[]): Promise<number> {
     cli = parsed;
   } catch (error) {
     process.stderr.write(`${message(error)}\n\nRun with --help for usage.\n`);
+    return 2;
+  }
+
+  // Readiness draws its own report, so it only has a text and a JSON form.
+  if (cli.readiness && cli.format !== 'text' && cli.format !== 'json') {
+    process.stderr.write(
+      `--readiness supports --format text or --format json; drop --format ${cli.format}.\n\nRun with --help for usage.\n`,
+    );
     return 2;
   }
 
@@ -229,7 +252,9 @@ async function main(argv: string[]): Promise<number> {
 
   // A dashboard written into a pipe or a file would corrupt the output it is
   // meant to replace, so anything that is not a terminal keeps the text report.
-  const dashboard = cli.interactive === true && supportsDashboard(process.stdout);
+  // Readiness renders its own report too, so the dashboard steps aside for it.
+  const dashboard =
+    cli.interactive === true && cli.readiness !== true && supportsDashboard(process.stdout);
 
   if (!cli.exportApConfig && dashboard) {
     await runDashboard(
@@ -239,6 +264,11 @@ async function main(argv: string[]): Promise<number> {
     );
   } else if (!cli.exportApConfig) {
     for (const { name, result } of results) {
+      if (cli.readiness) {
+        process.stdout.write(renderReadiness(result, name, cli, color));
+        continue;
+      }
+
       const filtered = cli.quiet
         ? { ...result, diagnostics: result.diagnostics.filter((d) => d.severity === 'error') }
         : result;
@@ -287,6 +317,14 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
         errorsOnly: cli.quiet,
       });
   }
+}
+
+/** Formats the wallet listing readiness report, in text or JSON. */
+function renderReadiness(result: LintResult, name: string, cli: Cli, color: boolean): string {
+  const report = calculateReadiness(result);
+  return cli.format === 'json'
+    ? formatReadinessJson(report, name)
+    : formatReadiness(report, { filename: name, color });
 }
 
 /** Combines per-file verdicts, including the `--max-warnings` threshold. */
@@ -355,6 +393,11 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--strict':
         cli.strict = true;
+        break;
+
+      case '--readiness':
+      case '--score':
+        cli.readiness = true;
         break;
 
       case '-i':

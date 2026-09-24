@@ -11,8 +11,24 @@
  */
 export { lint, lintDomain } from './lint.js';
 export { allRules, ruleIds } from './rules/index.js';
-export { formatText, formatJson, formatSarif, formatGithub, formatJunit } from './reporters.js';
-export type { TextReporterOptions } from './reporters.js';
+export {
+  formatText,
+  formatJson,
+  formatSarif,
+  formatGithub,
+  formatJunit,
+  formatReadiness,
+  formatReadinessJson,
+} from './reporters.js';
+export type { TextReporterOptions, ReadinessReporterOptions } from './reporters.js';
+export { calculateReadiness, gradeFor } from './readiness.js';
+export type {
+  ReadinessCheck,
+  ReadinessGrade,
+  ReadinessPillar,
+  ReadinessPillarId,
+  ReadinessReport,
+} from './readiness.js';
 export { probeTls } from './tls.js';
 export type { TlsProbe } from './tls.js';
 export type {

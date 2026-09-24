@@ -1,4 +1,5 @@
 import type { Diagnostic, LintResult, Severity } from './types.js';
+import { READINESS_MAX_SCORE, type ReadinessGrade, type ReadinessReport } from './readiness.js';
 
 /** Minimal ANSI helpers. Avoids a dependency for what is a dozen escape codes. */
 function makeColors(enabled: boolean) {
@@ -6,6 +7,7 @@ function makeColors(enabled: boolean) {
     enabled ? `[${open}m${s}[${close}m` : s;
   return {
     red: wrap(31, 39),
+    green: wrap(32, 39),
     yellow: wrap(33, 39),
     blue: wrap(34, 39),
     grey: wrap(90, 39),
@@ -308,4 +310,102 @@ function sanitizeXmlChars(s: string): string {
 /** Attributes additionally have to escape both quote characters. */
 function escapeXmlAttribute(s: string): string {
   return escapeXml(s).replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+export interface ReadinessReporterOptions {
+  /** Path shown in the header. */
+  filename?: string;
+  color?: boolean;
+}
+
+/** Letter grade to colour, so a failing file reads as alarming at a glance. */
+const GRADE_COLOR: Record<ReadinessGrade, 'green' | 'blue' | 'yellow' | 'red'> = {
+  'A+': 'green',
+  A: 'green',
+  B: 'blue',
+  C: 'yellow',
+  D: 'yellow',
+  F: 'red',
+};
+
+/** A 20-cell bar so the score is visible before the number is read. */
+function scoreBar(score: number, width = 20): string {
+  const filled = Math.round((Math.max(0, Math.min(100, score)) / 100) * width);
+  return '\u2588'.repeat(filled) + '\u2591'.repeat(width - filled);
+}
+
+/**
+ * Human-readable listing readiness: score, letter grade, and a checklist that
+ * marks every requirement as met or missing.
+ */
+export function formatReadiness(
+  report: ReadinessReport,
+  options: ReadinessReporterOptions = {},
+): string {
+  const { filename = 'stellar.toml', color = false } = options;
+  const c = makeColors(color);
+  const gradeColor = GRADE_COLOR[report.grade];
+  const lines: string[] = [];
+
+  lines.push(`${c.bold(c.underline(filename))} ${c.grey('\u2014 listing readiness')}`);
+  lines.push('');
+  lines.push(
+    `  ${c.bold(`Grade ${report.grade}`.padEnd(10))}${c.grey(` ${report.score}/${READINESS_MAX_SCORE}`)}`,
+  );
+  lines.push(`  ${c[gradeColor](scoreBar(report.score))}`);
+  lines.push('');
+  lines.push(`  ${c.bold('Listing Readiness Checklist')}`);
+  lines.push('');
+
+  for (const pillar of report.pillars) {
+    lines.push(`  ${c.bold(pillar.label)} ${c.grey(`${pillar.score}/${pillar.maxScore}`)}`);
+    for (const check of pillar.checks) {
+      const mark = check.passed ? c.green('[\u2713]') : c.red('[\u2717]');
+      const points = check.maxPoints > 0 ? c.grey(` (${check.points}/${check.maxPoints})`) : '';
+      lines.push(`    ${mark} ${check.label}${points}`);
+      if (!check.passed && check.detail) {
+        lines.push(`        ${c.grey(check.detail)}`);
+      }
+      if (!check.passed && check.suggestion) {
+        lines.push(`        ${c.grey('\u21b3')} ${c.grey(check.suggestion)}`);
+      }
+    }
+    lines.push('');
+  }
+
+  const passed = report.checklist.filter((check) => check.passed).length;
+  const total = report.checklist.length;
+  const summary = `${passed} of ${total} checklist items passed`;
+  lines.push(
+    `  ${report.grade === 'A+' || report.grade === 'A' ? c.green(summary) : c.yellow(summary)}`,
+  );
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
+ * Machine-readable readiness for scripts and dashboards.
+ *
+ * Pillars carry their scores; `checklist` carries every individual item, so a
+ * consumer can render exactly the terminal view or chart the gaps.
+ */
+export function formatReadinessJson(report: ReadinessReport, filename = 'stellar.toml'): string {
+  return `${JSON.stringify(
+    {
+      file: filename,
+      maxScore: READINESS_MAX_SCORE,
+      score: report.score,
+      grade: report.grade,
+      parseFailure: report.parseFailure,
+      pillars: report.pillars.map(({ id, label, score, maxScore }) => ({
+        id,
+        label,
+        score,
+        maxScore,
+      })),
+      checklist: report.checklist,
+    },
+    null,
+    2,
+  )}\n`;
 }

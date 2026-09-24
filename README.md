@@ -79,6 +79,7 @@ cat stellar.toml | stellar-toml-lint -
 | ------------------------- | --------------------------------------------------------------------------------- |
 | `-d, --domain <d>`        | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks             |
 | `-f, --format <fmt>`      | `text` (default), `json`, `sarif`, `github`, `junit`                              |
+| `--readiness` (`--score`) | Score wallet listing readiness (0–100) with a letter grade and a checklist        |
 | `--strict`                | Treat warnings as errors                                                          |
 | `--max-warnings <n>`      | Fail if warnings exceed `n`                                                       |
 | `--check-network`         | Verify accounts, `HORIZON_URL`, SEP-8 flags, and `ANCHOR_QUOTE_SERVER` online     |
@@ -123,6 +124,50 @@ draws its own view: drop the format flag.
 `f` currently reports that no fix engine is wired up; #9 tracks the mechanical fixes it will call
 into, and the dashboard already routes the keystroke through a callback so that lands as a one-line
 change rather than a rewrite.
+
+### Scoring wallet listing readiness
+
+```console
+$ stellar-toml-lint public/.well-known/stellar.toml --readiness
+
+public/.well-known/stellar.toml — listing readiness
+
+  Grade A+   95/100
+  ███████████████████░
+
+  Listing Readiness Checklist
+
+  Protocol & Syntax Compliance 40/40
+    [✓] File parses as valid TOML
+    [✓] No SEP-1 protocol or syntax errors (40/40)
+
+  Organization Identity & Trust 25/30
+    [✓] ORG_NAME names the organization (5/5)
+    [✗] Physical address attestation is published (0/3)
+        No ORG_PHYSICAL_ADDRESS_ATTESTATION is set.
+        ↳ Publish a signed document on your own domain proving your address.
+  ...
+```
+
+SEP-1 notes that wallets and exchanges decide whether to list an asset "based on the completeness
+of their Account Information and Documentation sections". A file can therefore have zero errors and
+still be turned down, so `--readiness` grades it the way a listing review would: a 0–100 total and a
+letter grade (**A+** 95–100, **A** 90–94, **B** 80–89, **C** 70–79, **D** 60–69, **F** below 60),
+across three weighted pillars.
+
+| Pillar                        | Points | What it weighs                                                                                                                                                                   |
+| ----------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Protocol & Syntax Compliance  | 40     | 0 errors scores 40; each error costs 15; a file that will not parse scores 0                                                                                                     |
+| Organization Identity & Trust | 30     | `ORG_NAME`, `ORG_URL`, a PNG `ORG_LOGO`, `ORG_OFFICIAL_EMAIL` on the `ORG_URL` domain and not a throwaway provider, and the physical/phone attestations                          |
+| Asset & Anchor Transparency   | 30     | one issuance policy per currency, `anchor_asset_type`, `redemption_instructions`, `attestation_of_reserve`, and active `WEB_AUTH_ENDPOINT` / `TRANSFER_SERVER_SEP0024` endpoints |
+
+Every check is listed in an actionable checklist: `[✓]` marks what passed, and `[✗]` names the
+missing field together with the fix. `--score` is an alias, and `--readiness --format json` emits
+the same report as JSON for a dashboard or score badge.
+
+Readiness is purely local — it scores the parsed document and the diagnostics already computed, so
+it adds no network traffic. The exit code still follows the diagnostics, so `--readiness` never
+changes whether a build fails.
 
 ### Alerting a Slack or Discord channel
 
@@ -271,6 +316,20 @@ so it injects a `tlsProbe` too — otherwise the audit is skipped rather than gu
 const result = await lintDomain('example.com', {}, myFetch, async (host, port) => {
   return { protocol: 'TLSv1.3', cipher: 'TLS_AES_256_GCM_SHA384' };
 });
+```
+
+The listing readiness score is available programmatically too:
+
+```ts
+import { calculateReadiness, formatReadiness, formatReadinessJson } from 'stellar-toml-lint';
+
+const report = calculateReadiness(result);
+report.score; // 0–100
+report.grade; // 'A+' | 'A' | 'B' | 'C' | 'D' | 'F'
+report.checklist; // every item, with points, detail, and suggestion
+
+console.log(formatReadiness(report, { color: true }));
+console.log(formatReadinessJson(report, 'stellar.toml'));
 ```
 
 Every diagnostic carries a stable `rule` id, a `severity`, a dotted `path` to the offending value, a
