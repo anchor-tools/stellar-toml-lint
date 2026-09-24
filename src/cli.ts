@@ -9,10 +9,15 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import process from 'node:process';
+import { assertKnownRule, loadConfig } from './config.js';
 import { lint, lintDomain, finalize } from './lint.js';
+import { lspMain } from './lsp.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import {
+  formatCheckstyle,
   formatGithub,
+  formatHtml,
+  formatJson,
   formatJson,
   formatJunit,
   formatReadiness,
@@ -40,6 +45,7 @@ import {
 import { generateOpenApiSpec } from './generators/openapi.js';
 import { deliverWebhooks, isSupportedWebhookUrl } from './reporters/webhook.js';
 import { runDashboard, supportsDashboard } from './ui/dashboard.js';
+import { runLspServer } from './lsp/server.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
@@ -47,7 +53,9 @@ import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js
 const VERSION = '0.1.0';
 const DEFAULT_PATH = 'stellar.toml';
 
+type Format = 'text' | 'json' | 'sarif' | 'github' | 'junit' | 'html';
 type Format = 'text' | 'json' | 'ndjson' | 'sarif' | 'github' | 'junit';
+type Format = 'text' | 'json' | 'ndjson' | 'sarif' | 'github' | 'junit' | 'checkstyle';
 
 interface Cli {
   noSuggestions?: boolean;
@@ -72,6 +80,7 @@ interface Cli {
   interactive?: boolean;
   checkContracts: boolean;
   sorobanRpc?: string;
+  lsp?: boolean;
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -90,7 +99,10 @@ OPTIONS
       --readiness         Score wallet listing readiness (0-100) with a letter
                           grade and an actionable checklist. Also --score.
                           Combine with -f json for machine-readable output
+  -f, --format <fmt>      text (default), json, sarif, github, junit, or html
   -f, --format <fmt>      text (default), json, ndjson, sarif, github, or junit
+  -f, --format <fmt>      text (default), json, ndjson, sarif, github, junit,
+                          or checkstyle
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
       --off <rule>        Disable a rule (repeatable)
@@ -98,6 +110,8 @@ OPTIONS
       --warn <rule>       Lower a rule to warning (repeatable)
   -i, --interactive       Full-screen dashboard to walk the findings. Needs a TTY;
                           without one the text reporter is used instead
+      --lsp               Run as a Language Server on stdio (diagnostics +
+                          quick-fix code actions for editors)
   -q, --quiet             Report errors only
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
@@ -117,9 +131,18 @@ OPTIONS
       --generate-openapi <file>
                           Generate an OpenAPI 3.1 spec (json or yaml extension)
       --color / --no-color
-      --list-rules        Print every rule and exit
-  -v, --version
-  -h, --help
+       --list-rules        Print every rule and exit
+   --lsp               Start the LSP server for IDE integration
+   -v, --version
+   -h, --help
+
+CONFIG
+  .stellartomlrc.json    Project defaults, discovered upward from the linted
+                         file's directory (from the current directory for stdin
+                         and --domain), stopping at the filesystem root.
+                         Recognises "rules", "strict", and "maxWarnings".
+                         CLI flags always override the file; a malformed config
+                         or an unknown rule id exits with code 2.
 
 EXIT CODES
   0  no errors            1  errors found            2  bad usage or I/O failure
@@ -152,25 +175,48 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const color = cli.color ?? shouldUseColor();
+
+  if (cli.lsp) {
+    lspMain();
+    return 0;
+  }
+
   const results: { name: string; result: LintResult }[] = [];
+  // Project defaults from .stellartomlrc.json, overridden by any CLI flag.
+  let strict = cli.strict;
+  let maxWarnings = cli.maxWarnings;
 
   try {
+    if (cli.lsp) {
+      await runLspServer();
+      return 0;
+    }
+
     if (cli.domain && cli.paths.length === 0) {
+      const config = await loadConfig(process.cwd());
+      strict = strict || config.strict;
+      maxWarnings ??= config.maxWarnings;
       results.push({
         name: cli.domain,
         result: await lintDomain(cli.domain, {
-          strict: cli.strict,
-          rules: cli.rules,
+          strict,
+          rules: { ...config.rules, ...cli.rules },
           checkNetwork: cli.checkNetwork,
         }),
       });
     } else {
       const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
       for (const path of paths) {
+        const config = await loadConfig(path === '-' ? process.cwd() : dirname(resolve(path)));
+        const fileStrict = cli.strict || config.strict;
+        strict = strict || config.strict;
+        maxWarnings ??= config.maxWarnings;
+        const rules = { ...config.rules, ...cli.rules };
+
         const source = path === '-' ? await readStdin() : await readFile(path, 'utf8');
         let fileResult = lint(source, {
-          strict: cli.strict,
-          rules: cli.rules,
+          strict: fileStrict,
+          rules,
           checkNetwork: cli.checkNetwork,
           ...(cli.domain ? { domain: cli.domain } : {}),
         });
@@ -228,7 +274,7 @@ async function main(argv: string[]): Promise<number> {
           if (networkDiagnostics.length > 0) {
             fileResult = finalize(
               [...fileResult.diagnostics, ...networkDiagnostics],
-              { strict: cli.strict },
+              { strict: fileStrict },
               fileResult.parsed,
             );
           }
@@ -331,7 +377,7 @@ async function main(argv: string[]): Promise<number> {
     }
   }
 
-  return verdict(results, cli) ? 0 : 1;
+  return verdict(results, { strict, maxWarnings }) ? 0 : 1;
 }
 
 function render(result: LintResult, name: string, cli: Cli, color: boolean): string {
@@ -346,6 +392,10 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
       return formatGithub(result, name);
     case 'junit':
       return formatJunit(result, name);
+    case 'html':
+      return formatHtml(result, name);
+    case 'checkstyle':
+      return formatCheckstyle(result, name, VERSION);
     case 'text':
       return formatText(result, {
         filename: name,
@@ -366,7 +416,10 @@ function renderReadiness(result: LintResult, name: string, cli: Cli, color: bool
 }
 
 /** Combines per-file verdicts, including the `--max-warnings` threshold. */
-function verdict(results: { result: LintResult }[], cli: Cli): boolean {
+function verdict(
+  results: { result: LintResult }[],
+  options: { strict: boolean; maxWarnings?: number },
+): boolean {
   const totals = results.reduce(
     (acc, { result }) => {
       acc.error += result.counts.error;
@@ -377,8 +430,8 @@ function verdict(results: { result: LintResult }[], cli: Cli): boolean {
   );
 
   if (totals.error > 0) return false;
-  if (cli.strict && totals.warning > 0) return false;
-  if (cli.maxWarnings !== undefined && totals.warning > cli.maxWarnings) return false;
+  if (options.strict && totals.warning > 0) return false;
+  if (options.maxWarnings !== undefined && totals.warning > options.maxWarnings) return false;
   return true;
 }
 
@@ -413,6 +466,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         process.stdout.write(listRules());
         return 'handled';
 
+      case '--lsp':
+        cli.lsp = true;
+        break;
+
       case '-d':
       case '--domain':
         cli.domain = requireValue(argv, ++i, arg);
@@ -423,7 +480,8 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         const value = requireValue(argv, ++i, arg);
         if (!isFormat(value)) {
           throw new Error(
-            `Unknown format "${value}". Expected text, json, sarif, github, or junit.`,
+            `Unknown format "${value}". Expected text, json, sarif, github, junit, or html.`,
+            `Unknown format "${value}". Expected text, json, ndjson, sarif, github, junit, or checkstyle.`,
           );
         }
         cli.format = value;
@@ -550,19 +608,9 @@ function isFormat(value: string): value is Format {
     value === 'ndjson' ||
     value === 'sarif' ||
     value === 'github' ||
-    value === 'junit'
-  );
-}
-
-/** Rejects typo'd rule ids rather than silently ignoring the override. */
-function assertKnownRule(id: string): void {
-  if (allRules.some((rule) => rule.id === id)) return;
-  const near = allRules
-    .map((rule) => rule.id)
-    .filter((candidate) => candidate.includes(id) || id.includes(candidate.split('/')[1] ?? ''))
-    .slice(0, 3);
-  throw new Error(
-    `Unknown rule "${id}".${near.length > 0 ? ` Did you mean: ${near.join(', ')}?` : ''} Run --list-rules to see them all.`,
+    value === 'junit' ||
+    value === 'html'
+    value === 'checkstyle'
   );
 }
 

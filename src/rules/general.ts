@@ -152,6 +152,7 @@ export const generalRules: Rule[] = [
         suggestion: near
           ? `Replace it with exactly: ${normalized}`
           : 'Use the Public, Testnet, or Futurenet passphrase exactly as published.',
+        ...(near ? { fix: { value: normalized } } : {}),
       });
     },
   },

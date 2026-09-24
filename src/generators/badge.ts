@@ -17,7 +17,7 @@ function scoreColor(score: number): string {
   return 'red';
 }
 
-function computeScore(result: LintResult): number {
+export function computeScore(result: LintResult): number {
   const total = result.counts.error + result.counts.warning + result.counts.info;
   if (total === 0) return 100;
   const deductions = result.counts.error * 10 + result.counts.warning * 3 + result.counts.info;

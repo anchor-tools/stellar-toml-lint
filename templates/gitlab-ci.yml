@@ -29,7 +29,7 @@ stellar-toml-lint:
     STELLAR_TOML_STRICT: 'false'
     # Fail when the warning count exceeds this number. Empty means no limit.
     STELLAR_TOML_MAX_WARNINGS: ''
-    # Output format: text, json, sarif, or github.
+    # Output format: text, json, ndjson, sarif, github, junit, or checkstyle.
     STELLAR_TOML_FORMAT: text
     # Keep the npx download cache inside the project directory so the job
     # cache below can restore it between pipeline runs.

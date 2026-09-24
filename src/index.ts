@@ -10,6 +10,7 @@
  * ```
  */
 export { lint, lintDomain } from './lint.js';
+export { lspMain } from './lsp.js';
 export { allRules, ruleIds } from './rules/index.js';
 export {
   formatText,
@@ -29,10 +30,15 @@ export type {
   ReadinessPillarId,
   ReadinessReport,
 } from './readiness.js';
+  formatHtml,
+  formatCheckstyle,
+} from './reporters.js';
+export type { TextReporterOptions } from './reporters.js';
 export { probeTls } from './tls.js';
 export type { TlsProbe } from './tls.js';
 export type {
   Diagnostic,
+  Fix,
   LintOptions,
   LintResult,
   Position,
@@ -44,3 +50,7 @@ export type {
   TlsSession,
 } from './types.js';
 export { SPEC_URL } from './spec.js';
+export { applyFixes, computeFixEdits } from './fix.js';
+export type { OffsetTextEdit } from './fix.js';
+export { codeActionsFor } from './lsp/code-actions.js';
+export type { LspCodeAction, LspRange, LspTextEdit, LspWorkspaceEdit } from './lsp/code-actions.js';

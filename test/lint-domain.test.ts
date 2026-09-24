@@ -126,3 +126,98 @@ describe('lintDomain', () => {
     expect(ruleIds(result)).toContain('general/version');
   });
 });
+
+describe('lintDomain ORG_URL probe', () => {
+  interface Outcome {
+    status?: number;
+    headers?: Record<string, string>;
+    body?: string;
+  }
+
+  /**
+   * A stub that serves GOOD_TOML for the well-known path and defers to
+   * `handler` for everything else (i.e. the ORG_URL probe), recording calls.
+   */
+  function routingFetch(handler: (url: string, method: string) => Outcome | 'fail') {
+    const calls: { url: string; method: string }[] = [];
+    const impl = (async (url: string | URL, init?: RequestInit) => {
+      const target = String(url);
+      const method = init?.method ?? 'GET';
+      calls.push({ url: target, method });
+      if (target.endsWith('/.well-known/stellar.toml')) {
+        return new Response(GOOD_TOML, {
+          status: 200,
+          headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+        });
+      }
+      const outcome = handler(target, method);
+      if (outcome === 'fail') throw new Error('getaddrinfo ENOTFOUND');
+      return new Response(outcome.body ?? '', {
+        status: outcome.status ?? 200,
+        headers: outcome.headers ?? {},
+      });
+    }) as unknown as typeof fetch;
+    return { impl, calls };
+  }
+
+  it('probes ORG_URL over HTTPS when --domain is used', async () => {
+    const { impl, calls } = routingFetch(() => ({ status: 200 }));
+    await lintDomain('example.com', {}, impl);
+    const probe = calls.find((c) => c.url === 'https://example.com');
+    expect(probe).toBeDefined();
+    expect(probe?.method).toBe('HEAD');
+  });
+
+  it('does not emit org-url-unreachable when ORG_URL is healthy', async () => {
+    const { impl } = routingFetch(() => ({ status: 200 }));
+    const result = await lintDomain('example.com', {}, impl);
+    expect(ruleIds(result)).not.toContain('network/org-url-unreachable');
+  });
+
+  it('emits network/org-url-unreachable when ORG_URL fails DNS or TLS', async () => {
+    const { impl } = routingFetch((url) =>
+      url === 'https://example.com' ? 'fail' : { status: 200 },
+    );
+    const result = await lintDomain('example.com', {}, impl);
+    const diag = result.diagnostics.find((d) => d.rule === 'network/org-url-unreachable');
+    expect(diag).toBeDefined();
+    expect(diag?.severity).toBe('error');
+    expect(diag?.message).toContain('ENOTFOUND');
+  });
+
+  it('emits network/org-url-unreachable when ORG_URL returns an HTTP error', async () => {
+    const { impl } = routingFetch(() => ({ status: 503 }));
+    const result = await lintDomain('example.com', {}, impl);
+    const diag = result.diagnostics.find((d) => d.rule === 'network/org-url-unreachable');
+    expect(diag?.message).toContain('503');
+  });
+
+  it('falls back to GET when the server rejects HEAD', async () => {
+    const { impl, calls } = routingFetch((_url, method) =>
+      method === 'HEAD' ? { status: 405 } : { status: 200 },
+    );
+    const result = await lintDomain('example.com', {}, impl);
+    const orgCalls = calls.filter((c) => c.url === 'https://example.com');
+    expect(orgCalls[0]?.method).toBe('HEAD');
+    expect(orgCalls[1]?.method).toBe('GET');
+    expect(ruleIds(result)).not.toContain('network/org-url-unreachable');
+  });
+
+  it('skips the probe when the rule is switched off', async () => {
+    const { impl, calls } = routingFetch(() => ({ status: 200 }));
+    await lintDomain('example.com', { rules: { 'network/org-url-unreachable': 'off' } }, impl);
+    expect(calls.find((c) => c.url === 'https://example.com')).toBeUndefined();
+  });
+
+  it('offline lint() never probes the network', async () => {
+    let probed = false;
+    const impl = (async () => {
+      probed = true;
+      return new Response('VERSION="2.7.0"', { status: 200 });
+    }) as unknown as typeof fetch;
+    const { lint } = await import('../src/lint.js');
+    lint(GOOD_TOML);
+    expect(probed).toBe(false);
+    void impl;
+  });
+});

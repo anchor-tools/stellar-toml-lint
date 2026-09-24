@@ -15,6 +15,7 @@ import { SourceIndex } from './source-index.js';
 import { MAX_FILE_BYTES, isString } from './predicates.js';
 import { specUrl } from './spec.js';
 import { probeTls, type TlsProbe } from './tls.js';
+import { checkOrgUrl } from './rules/org-url-check.js';
 
 /** Severity ordering used for sorting and for `--max-warnings` style counts. */
 const SEVERITY_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -212,7 +213,22 @@ export async function lintDomain(
     domain: options.domain ?? host,
     ...(tls ? { tls } : {}),
   });
-  return finalize([...diagnostics, ...fileResult.diagnostics], options, fileResult.parsed);
+
+  // The identity anchor itself must also be alive: probe ORG_URL so a dead
+  // endpoint is caught here rather than by the next wallet that vetts the
+  // anchor. Same transport as the file fetch, so tests can stub both.
+  let orgUrlDiagnostics: Diagnostic[] = [];
+  if (fileResult.parsed) {
+    orgUrlDiagnostics = await checkOrgUrl(fileResult.parsed, fetchImpl, {
+      rules: options.rules,
+    });
+  }
+
+  return finalize(
+    [...diagnostics, ...fileResult.diagnostics, ...orgUrlDiagnostics],
+    options,
+    fileResult.parsed,
+  );
 }
 
 /**

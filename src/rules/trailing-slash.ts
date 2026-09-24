@@ -43,6 +43,7 @@ export const trailingSlashRule: Rule = {
         position: ctx.locate(field),
         helpUri: specUrl('general-information'),
         suggestion: `Remove the trailing slash: ${value.replace(/\/+$/, '')}`,
+        fix: { value: value.replace(/\/+$/, '') },
       });
     }
   },

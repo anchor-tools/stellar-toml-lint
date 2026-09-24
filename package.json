@@ -59,7 +59,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "bench": "npx tsx benchmarks/runner.ts"
   },
   "dependencies": {
     "@stellar/stellar-base": "^15.0.0",

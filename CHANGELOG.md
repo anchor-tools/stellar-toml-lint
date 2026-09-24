@@ -15,6 +15,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checklist marking each requirement as met or missing. `--readiness --format json` emits the same
   report as JSON, and `calculateReadiness`/`formatReadiness`/`formatReadinessJson` are exported for
   embedders. The run stays offline and the exit code still follows the diagnostics (#28).
+- Interactive quick-fix code actions over LSP (#42): `stellar-toml-lint --lsp` runs a stdio Language
+  Server that publishes diagnostics and answers `textDocument/codeAction` with `WorkspaceEdit`
+  replacements for mechanically safe rules — `general/trailing-slash-in-endpoint`,
+  `network/passphrase` (near miss), `documentation/social-handles`, `principals/social-handles`,
+  and `documentation/phone-e164`. Diagnostics that cannot be corrected safely (parse errors,
+  missing tables) offer no action. Shared fix engine lives in `src/fix.ts` for `--fix` (#9) to reuse.
 
 - Text output follows the [NO_COLOR standard](https://no-color.org) explicitly: any non-empty
   `NO_COLOR` disables colour, an empty value counts as unset, and only an explicit `--color`
@@ -23,6 +29,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `--format junit` emits a JUnit XML test report for CI dashboards that chart test results (Jenkins,
   Bamboo, CircleCI, Azure DevOps). Error-severity findings are reported as `<failure>` elements and
   warnings as `<error>` elements, so a dashboard counting failures matches the exit code (#143).
+
+- `--format checkstyle` emits Checkstyle XML for CI dashboards that ingest the Checkstyle schema
+  (Jenkins Warnings NG, Java-adjacent pipelines) (#8): one `<file>` per linted file, one `<error>`
+  per diagnostic with `line`, `column`, `severity`, `message`, and `source` (the rule id).
 
 - `validators/invalid-history-url` (error) validates each `[[VALIDATORS]].HISTORY` as a well-formed
   archive URL, including `{0}` template handling.
