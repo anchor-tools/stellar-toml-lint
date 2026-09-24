@@ -4,6 +4,7 @@ import { documentationRules } from './documentation.js';
 import { principalRules } from './principals.js';
 import { currencyRules } from './currencies.js';
 import { validatorRules } from './validators.js';
+import { validatorDedupRules } from './validator-dedup.js';
 import { securityRules } from './security.js';
 
 /** Every rule, in report order. */
@@ -13,6 +14,7 @@ export const allRules: Rule[] = [
   ...principalRules,
   ...currencyRules,
   ...validatorRules,
+  ...validatorDedupRules,
   ...securityRules,
 ];
 
@@ -25,5 +27,6 @@ export {
   principalRules,
   currencyRules,
   validatorRules,
+  validatorDedupRules,
   securityRules,
 };
