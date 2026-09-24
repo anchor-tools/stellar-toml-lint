@@ -9,7 +9,8 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import process from 'node:process';
-import { lint, lintDomain, mergeDiagnostics } from './lint.js';
+import { lint, lintDomain, finalize } from './lint.js';
+import { checkNetworkAccounts } from './network-checks.js';
 import { formatGithub, formatJson, formatSarif, formatText } from './reporters.js';
 import { auditDisplayDecimals, sorobanRpcUrl } from './rules/display-decimals-audit.js';
 import { allRules } from './rules/index.js';
@@ -57,6 +58,7 @@ OPTIONS
   -q, --quiet             Report errors only
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
+      --check-network     Verify SIGNING_KEY and ACCOUNTS against the network
       --color / --no-color
       --list-rules        Print every rule and exit
   -v, --version
@@ -95,22 +97,29 @@ async function main(argv: string[]): Promise<number> {
       const result = await lintDomain(cli.domain, options);
       results.push({
         name: cli.domain,
-        result: await addNetworkDiagnostics(result, options),
+        result: await lintDomain(cli.domain, { strict: cli.strict, rules: cli.rules, checkNetwork: cli.checkNetwork }),
       });
     } else {
       const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
       for (const path of paths) {
         const source = path === '-' ? await readStdin() : await readFile(path, 'utf8');
-        const options: LintOptions = {
+        let fileResult = lint(source, {
           strict: cli.strict,
           rules: cli.rules,
           checkNetwork: cli.checkNetwork,
           ...(cli.domain ? { domain: cli.domain } : {}),
-        };
-        const result = lint(source, options);
+        });
+        
+        if (cli.checkNetwork && fileResult.parsed) {
+          const networkDiagnostics = await checkNetworkAccounts(fileResult.parsed);
+          if (networkDiagnostics.length > 0) {
+            fileResult = finalize([...fileResult.diagnostics, ...networkDiagnostics], { strict: cli.strict }, fileResult.parsed);
+          }
+        }
+
         results.push({
           name: path === '-' ? 'stdin' : path,
-          result: await addNetworkDiagnostics(result, options, source),
+          result: fileResult,
         });
       }
     }
@@ -245,6 +254,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--no-suggestions':
         cli.noSuggestions = true;
+        break;
+
+      case '--check-network':
+        cli.checkNetwork = true;
         break;
 
       case '--max-warnings': {

@@ -53,6 +53,8 @@ export interface LintOptions {
   rules?: RuleOverrides;
   /** Treat warnings as errors when computing {@link LintResult.ok}. */
   strict?: boolean;
+  /** Verify SIGNING_KEY and ACCOUNTS against Horizon. */
+  checkNetwork?: boolean;
 }
 
 export interface LintResult {

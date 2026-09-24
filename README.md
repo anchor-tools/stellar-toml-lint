@@ -87,6 +87,7 @@ cat stellar.toml | stellar-toml-lint -
 | `--warn <rule>`      | Lower a rule to warning (repeatable)                             |
 | `-q, --quiet`        | Show errors only                                                 |
 | `--show-help-urls`   | Print the spec link for each finding                             |
+| `--check-network`    | Verify `SIGNING_KEY` and `ACCOUNTS` against the network          |
 | `--list-rules`       | Print every rule and exit                                        |
 | `--no-suggestions`   | Hide diagnostic suggestions in the output                        |
 
@@ -211,9 +212,15 @@ URLs; `ORG_URL` matching the serving domain; attestation documents hosted on you
 
 **`[[CURRENCIES]]`** — code length and charset; exactly one of `issuer` or `contract`, both checksum
 validated; the native XLM asset handled as the special case it is; exactly one issuance policy;
-`status` and `anchor_asset_type` enums; `display_decimals` in 0–7; anchored assets describing what
-backs them; SEP-8 regulated assets carrying an approval server; collateral address, message, and
-signature lists of equal length; `toml` pointer entries carrying nothing else; duplicate assets.
+`status` and `anchor_asset_type` enums; `display_decimals` in 0–7; asset-anchored currencies
+requiring a valid `anchor_asset_type` and warning when `anchor_asset` is absent; SEP-8 regulated
+assets carrying an approval server; collateral address, message, and signature lists of equal
+length; `toml` pointer entries carrying nothing else; duplicate assets.
+
+Asset-anchored currencies (`is_asset_anchored = true`) must use one of `fiat`, `crypto`, `stock`,
+`bond`, `commodity`, `real_estate`, or `other` for `anchor_asset_type`. Missing or invalid values
+emit `currencies/missing-anchor-asset-type` as an error. Missing `anchor_asset` metadata emits the
+`currencies/missing-anchor-asset-code` warning.
 
 **`[[VALIDATORS]]`** — `ALIAS` matching `^[a-z0-9-]{2,16}$` and unique; checksum-valid, unique
 `PUBLIC_KEY`; `HOST` as `host:port`; `HISTORY` as an absolute URI.
