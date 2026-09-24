@@ -292,8 +292,7 @@ function errorMessage(error: unknown): string {
   return isString(error) ? error : String(error);
 }
 
-/** Sorts diagnostics, tallies severities, and computes the pass/fail verdict. */
-function finalize(
+export function finalize(
   diagnostics: Diagnostic[],
   options: LintOptions,
   parsed: Record<string, unknown> | undefined,

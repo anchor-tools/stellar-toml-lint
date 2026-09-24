@@ -153,11 +153,10 @@ export const CURRENCY_STATUSES = ['live', 'dead', 'test', 'private'] as const;
 export const ANCHOR_ASSET_TYPES = [
   'fiat',
   'crypto',
-  'nft',
   'stock',
   'bond',
   'commodity',
-  'realestate',
+  'real_estate',
   'other',
 ] as const;
 
