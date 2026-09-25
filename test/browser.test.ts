@@ -107,7 +107,24 @@ describe('virtual file system', () => {
 describe('lintBrowserDomain', () => {
   it('reports nothing network-related for a correctly configured host', async () => {
     const result = await lintBrowserDomain('anchor.example', {
-      fetchImpl: async () => goodResponse(valid()),
+      // The SEP-6 /info route advertises the currencies valid.toml declares;
+      // every other request (the file, the ORG_URL probe) gets the file.
+      fetchImpl: async (input) =>
+        String(input).endsWith('/info')
+          ? new Response(
+              JSON.stringify({
+                deposit: { USDX: { enabled: true }, EXPL: { enabled: true } },
+                withdraw: { USDX: { enabled: true } },
+              }),
+              {
+                status: 200,
+                headers: {
+                  'access-control-allow-origin': '*',
+                  'content-type': 'application/json',
+                },
+              },
+            )
+          : goodResponse(valid()),
     });
 
     const network = result.diagnostics.filter((d) => d.category === 'network');

@@ -9,6 +9,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--format markdown` emits a GitHub-flavored Markdown report built for a workflow's
+  `$GITHUB_STEP_SUMMARY`: a pass/fail header with the error, warning, and info counts, a table with a
+  row per finding, and collapsible `<details>` blocks carrying suggestions and spec links. `|`, `<`,
+  and `>` are escaped so a hostile file cannot break the table or inject markup (#61).
+- `--completion bash|zsh|fish` prints a native shell completion script covering every flag, the
+  output formats, and the rule ids accepted by `--off`/`--warn`/`--error`. The rule ids come from
+  the same registry the linter runs, so they never drift from the actual checks; an unsupported
+  shell prints to stderr and exits `2` (#60).
+- `network/sep6-missing-asset` (warning), alongside `network/sep6-info-error` and
+  `network/sep6-info-malformed`, under `--domain` or `--check-network`: when `TRANSFER_SERVER` is
+  declared, `GET <TRANSFER_SERVER>/info` is fetched with redirects followed and every non-native
+  `[[CURRENCIES]]` asset must appear in the `deposit` or `withdraw` maps, keyed by bare code or
+  `CODE:issuer` (#38).
+- `soroban/invalid-auth-contract-interface` (error) under `--check-contracts`: for
+  `WEB_AUTH_CONTRACT_ID`, the deployed WASM's `contractspecv0` custom section is parsed and the
+  contract is required to export the SEP-45 `web_auth_verify` function. An unreadable interface
+  stays silent rather than guessing (#37).
+
 - `textDocument/hover` over LSP (#36): hovering a key or a table header in `stellar.toml` shows a
   Markdown tooltip with the qualified name (`[[CURRENCIES]].display_decimals`), the field's type
   (`integer (0-7)`), the SEP-1 description, the permitted values where the spec enumerates them

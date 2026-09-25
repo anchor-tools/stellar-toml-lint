@@ -17,6 +17,7 @@ import {
   formatGithub,
   formatHtml,
   formatJson,
+  formatMarkdown,
   formatNdjson,
   formatJunit,
   formatSarif,
@@ -29,6 +30,7 @@ import { checkHorizon } from './rules/horizon-check.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
 import { checkRegulatedIssuerFlags } from './rules/currencies.js';
 import { checkContracts } from './soroban.js';
+import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { allRules } from './rules/index.js';
@@ -45,12 +47,14 @@ import { loadPolicy, validatePolicy, evaluatePolicy } from './policy/engine.js';
 import { createFixtureFetch } from './mock-fixtures.js';
 import { runLspServer } from './lsp/server.js';
 import { getTomlJsonSchema } from './schema.js';
+import { generateCompletion, isCompletionShell } from './completion.js';
 import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
 
 const VERSION = '0.1.0';
 const DEFAULT_PATH = 'stellar.toml';
 
-type Format = 'text' | 'json' | 'ndjson' | 'sarif' | 'github' | 'junit' | 'html' | 'checkstyle';
+type Format =
+  'text' | 'json' | 'ndjson' | 'sarif' | 'github' | 'junit' | 'html' | 'checkstyle' | 'markdown';
 
 interface Cli {
   noSuggestions?: boolean;
@@ -98,7 +102,8 @@ USAGE
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
                           ORG_URL same-domain checks. Fetches unless files are given.
-  -f, --format <fmt>      text (default), json, ndjson, sarif, github, junit, html, or checkstyle
+  -f, --format <fmt>      text (default), json, ndjson, sarif, github, junit, html,
+                          checkstyle, or markdown (for GitHub step summaries)
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
       --off <rule>        Disable a rule (repeatable)
@@ -140,6 +145,8 @@ OPTIONS
                           associations
       --color / --no-color
       --list-rules        Print every rule and exit
+      --completion <sh>   Print a shell completion script for bash, zsh, or fish
+                          (e.g. eval "$(stellar-toml-lint --completion zsh)")
   -v, --version
   -h, --help
 
@@ -231,8 +238,20 @@ async function main(argv: string[]): Promise<number> {
           ...(cli.domain ? { domain: cli.domain } : {}),
         });
 
-        if (fileResult.parsed && (cli.checkNetwork || cli.checkContracts)) {
+        if (
+          fileResult.parsed &&
+          (cli.checkNetwork || cli.checkContracts || cli.domain !== undefined)
+        ) {
           const networkDiagnostics: Diagnostic[] = [];
+
+          // SEP-6 is reachable under either flag: `--domain` already means the
+          // file was fetched from a live host, and `--check-network` is the
+          // explicit opt-in for a local file.
+          if (cli.checkNetwork || cli.domain !== undefined) {
+            networkDiagnostics.push(
+              ...(await checkSep6(fileResult.parsed, fetchImpl, { rules: cli.rules })),
+            );
+          }
 
           if (cli.checkNetwork) {
             networkDiagnostics.push(
@@ -481,6 +500,8 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
       return formatHtml(result, name);
     case 'checkstyle':
       return formatCheckstyle(result, name, VERSION);
+    case 'markdown':
+      return formatMarkdown(result, name);
     case 'text':
       return formatText(result, {
         filename: name,
@@ -550,6 +571,15 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         process.stdout.write(`${JSON.stringify(getTomlJsonSchema(), null, 2)}\n`);
         return 'handled';
 
+      case '--completion': {
+        const shell = requireValue(argv, ++i, arg);
+        if (!isCompletionShell(shell)) {
+          throw new Error(`Unknown shell "${shell}". Expected bash, zsh, or fish.`);
+        }
+        process.stdout.write(generateCompletion(shell, allRules));
+        return 'handled';
+      }
+
       case '--lsp':
         cli.lsp = true;
         break;
@@ -564,7 +594,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         const value = requireValue(argv, ++i, arg);
         if (!isFormat(value)) {
           throw new Error(
-            `Unknown format "${value}". Expected text, json, ndjson, sarif, github, junit, html, or checkstyle.`,
+            `Unknown format "${value}". Expected text, json, ndjson, sarif, github, junit, html, checkstyle, or markdown.`,
           );
         }
         cli.format = value;
@@ -717,7 +747,8 @@ function isFormat(value: string): value is Format {
     value === 'github' ||
     value === 'junit' ||
     value === 'html' ||
-    value === 'checkstyle'
+    value === 'checkstyle' ||
+    value === 'markdown'
   );
 }
 

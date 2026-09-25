@@ -403,6 +403,83 @@ export function formatCheckstyle(
   ].join('\n');
 }
 
+/**
+ * GitHub-flavored Markdown for a workflow's `$GITHUB_STEP_SUMMARY`.
+ *
+ * GitHub Actions caps the inline annotations `--format github` emits at ten
+ * per run, and scatters the rest across commits and files. Piping this report
+ * into the step summary instead renders the whole run — a pass/fail badge, the
+ * error and warning counts, and one table row per finding — on the Action
+ * overview page. Each diagnostic with a suggestion or spec link also gets a
+ * collapsible `<details>` block so the table stays scannable.
+ *
+ * ```bash
+ * stellar-toml-lint --format markdown >> "$GITHUB_STEP_SUMMARY"
+ * ```
+ */
+export function formatMarkdown(result: LintResult, filename = 'stellar.toml'): string {
+  const { error, warning, info } = result.counts;
+  const name = escapeMarkdown(filename);
+
+  if (result.diagnostics.length === 0) {
+    return `### ✅ ${name}: No SEP-1 issues found\n`;
+  }
+
+  const status = result.ok ? '✅ Passed' : '❌ Failed';
+  const lines: string[] = [
+    `### ${status}: ${name}`,
+    '',
+    `**${error} ${plural(error, 'error')}**, **${warning} ${plural(warning, 'warning')}**, **${info} ${plural(info, 'info')}**`,
+    '',
+    '| Location | Severity | Rule | Message |',
+    '| --- | --- | --- | --- |',
+  ];
+
+  for (const d of result.diagnostics) {
+    lines.push(
+      `| ${escapeMarkdownCell(locationOf(d))} | ${d.severity} | ${escapeMarkdownCell(d.rule)} | ${escapeMarkdownCell(d.message)} |`,
+    );
+  }
+
+  const details = result.diagnostics.filter((d) => hasText(d.suggestion) || hasText(d.helpUri));
+  if (details.length > 0) {
+    lines.push('');
+    lines.push('<details>');
+    lines.push(`<summary>Details &amp; suggestions (${details.length})</summary>`);
+    lines.push('');
+    for (const d of details) {
+      lines.push(`- **${escapeMarkdownCell(d.rule)}** (${escapeMarkdownCell(locationOf(d))})`);
+      if (hasText(d.suggestion)) lines.push(`  - ${escapeMarkdownCell(d.suggestion)}`);
+      if (hasText(d.helpUri)) lines.push(`  - Spec: <${d.helpUri}>`);
+    }
+    lines.push('');
+    lines.push('</details>');
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
+/**
+ * Escapes the characters GitHub's Markdown renderer would otherwise read as
+ * markup. Diagnostic messages quote values straight out of the linted file, so
+ * a `|` in a currency code or a `<script>` in a description must not be able to
+ * break the table or inject markup into the run summary.
+ */
+function escapeMarkdown(s: string): string {
+  return s
+    .replace(/\\/g, '\\\\')
+    .replace(/([|`<>*_[\]])/g, '\\$1')
+    .replace(/\r?\n/g, ' ');
+}
+
+/**
+ * Table cells additionally have to escape their column separator, and the
+ * angle brackets a raw `<` would open a tag with inside the summary document.
+ */
+function escapeMarkdownCell(s: string): string {
+  return s.replace(/\|/g, '\\|').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r?\n/g, ' ');
+}
+
 /** Newline-delimited JSON for streaming analysis. */
 export function formatNdjson(result: LintResult, filename = 'stellar.toml'): string {
   const lines: string[] = [];

@@ -10,7 +10,7 @@
  * explicit flag (`--check-contracts`), never fails the run on an RPC outage,
  * and registers rule objects so `--list-rules` and `--off` know its ids.
  */
-import { Address, xdr } from '@stellar/stellar-base';
+import { Address, cereal, xdr } from '@stellar/stellar-base';
 import type { Diagnostic, Rule, RuleOverrides, Severity } from './types.js';
 import { isString } from './predicates.js';
 import { rpcUrlFor } from './rules/display-decimals-audit.js';
@@ -23,6 +23,18 @@ const EXPIRING_WINDOW_LEDGERS = 17_280;
 const TTL_EXPIRING_RULE = 'soroban/contract-ttl-expiring-soon';
 const CONTRACT_EXPIRED_RULE = 'soroban/contract-expired';
 const TTL_UNAVAILABLE_RULE = 'soroban/contract-ttl-unavailable';
+const AUTH_CONTRACT_INTERFACE_RULE = 'soroban/invalid-auth-contract-interface';
+
+/**
+ * The function every SEP-45 web auth contract must export. SEP-45 requires the
+ * contract at `WEB_AUTH_CONTRACT_ID` to implement `web_auth_verify`, which calls
+ * `require_auth` on the client and server accounts; a contract that lacks it
+ * cannot complete a single challenge.
+ */
+const SEP45_AUTH_FUNCTION = 'web_auth_verify';
+
+/** The WASM custom section Soroban stores a contract's spec entries in. */
+const CONTRACT_SPEC_SECTION = 'contractspecv0';
 
 interface ContractTtlOptions {
   rules?: RuleOverrides;
@@ -84,6 +96,105 @@ function wasmHashOf(entryXdr: unknown): Buffer | undefined {
     const executable = val.instance().executable();
     if (executable.switch().name !== 'contractExecutableWasm') return undefined;
     return Buffer.from(executable.wasmHash());
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The WASM bytes carried by a contract-code entry, or `undefined` when the
+ * entry is not the contract code at all.
+ */
+function wasmBytesOf(entryXdr: unknown): Buffer | undefined {
+  if (!isString(entryXdr)) return undefined;
+  try {
+    const data = xdr.LedgerEntryData.fromXDR(entryXdr, 'base64');
+    if (data.switch().name !== 'contractCode') return undefined;
+    return Buffer.from(data.contractCode().code());
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Reads an unsigned LEB128 integer, the encoding WASM uses for section ids,
+ * sizes, and name lengths. `undefined` means the bytes ran out or the value
+ * was not a well-formed 32-bit integer.
+ */
+function readLeb128(wasm: Buffer, offset: number): { value: number; next: number } | undefined {
+  let value = 0;
+  let shift = 0;
+  let pos = offset;
+  while (pos < wasm.length) {
+    const byte = wasm[pos] as number;
+    value |= (byte & 0x7f) << shift;
+    pos++;
+    if ((byte & 0x80) === 0) return { value: value >>> 0, next: pos };
+    shift += 7;
+    if (shift > 28) return undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The payload of the named WASM custom section, or `undefined` when the module
+ * is malformed or the section is absent.
+ *
+ * A WASM module is a fixed header followed by length-prefixed sections; a
+ * custom section (id 0) carries its name before the payload. Soroban stores a
+ * contract's interface in the `contractspecv0` custom section, so this is how
+ * the exported functions are read without executing anything.
+ */
+export function wasmCustomSection(wasm: Buffer, name: string): Buffer | undefined {
+  // Magic `\0asm` plus a 4-byte version. Anything shorter is not a module.
+  if (wasm.length < 8 || wasm.readUInt32BE(0) !== 0x0061736d) return undefined;
+
+  let pos = 8;
+  while (pos < wasm.length) {
+    const id = wasm[pos] as number;
+    const size = readLeb128(wasm, pos + 1);
+    if (size === undefined) return undefined;
+
+    const start = size.next;
+    const end = start + size.value;
+    if (end > wasm.length) return undefined;
+
+    if (id === 0) {
+      const nameLength = readLeb128(wasm, start);
+      if (nameLength !== undefined) {
+        const nameStart = nameLength.next;
+        const nameEnd = nameStart + nameLength.value;
+        if (nameEnd <= end && wasm.toString('utf8', nameStart, nameEnd) === name) {
+          return wasm.subarray(nameEnd, end);
+        }
+      }
+    }
+
+    pos = end;
+  }
+  return undefined;
+}
+
+/**
+ * The function names a contract's spec declares, or `undefined` when the module
+ * has no readable spec section. The section holds a stream of `ScSpecEntry`
+ * XDR values, one per exported function, struct, enum, or event.
+ */
+export function specFunctionNames(wasm: Buffer): string[] | undefined {
+  const section = wasmCustomSection(wasm, CONTRACT_SPEC_SECTION);
+  if (section === undefined) return undefined;
+
+  try {
+    const reader = new cereal.XdrReader(section);
+    const names: string[] = [];
+    while (!reader.eof) {
+      // The published types still describe `read` as taking a Buffer, but the
+      // runtime consumes the same cursor `fromXDR` builds internally.
+      const entry = xdr.ScSpecEntry.read(reader as unknown as Buffer);
+      if (entry.switch().name !== 'scSpecEntryFunctionV0') continue;
+      names.push(entry.functionV0().name().toString());
+    }
+    return names;
   } catch {
     return undefined;
   }
@@ -225,6 +336,61 @@ export async function checkContractTtl(
 }
 
 /**
+ * Verifies that the contract at `WEB_AUTH_CONTRACT_ID` exports the SEP-45
+ * `web_auth_verify` function.
+ *
+ * SEP-45 needs more than a well-formed `C...` address: the deployed contract
+ * has to implement one specific interface. The contract instance names its
+ * WASM, the WASM carries the interface in its custom section, and a contract
+ * whose spec has functions but not `web_auth_verify` cannot complete a SEP-45
+ * challenge — so a wallet that trusts the file would fail at authentication.
+ *
+ * Stays silent whenever the answer cannot be read: an RPC outage, a missing or
+ * archived entry, a native-asset executable, or an unparseable spec is not a
+ * finding, and a false error on a healthy contract is worse than a missed one.
+ * Only a spec that parses, declares functions, and omits `web_auth_verify`
+ * earns the diagnostic.
+ */
+export async function verifySep45ContractInterface(
+  contractId: string,
+  rpcUrl: string,
+  fetchImpl: typeof fetch = fetch,
+  options: ContractTtlOptions = {},
+): Promise<Diagnostic[]> {
+  const severity = severityFor(AUTH_CONTRACT_INTERFACE_RULE, 'error', options.rules);
+  if (severity === undefined) return [];
+
+  const instance = await queryLedgerEntry(rpcUrl, contractDataInstanceKey(contractId), fetchImpl);
+  if (instance === undefined || instance.liveUntil === undefined) return [];
+
+  const wasmHash = wasmHashOf(instance.entryXdr);
+  if (wasmHash === undefined) return [];
+
+  const code = await queryLedgerEntry(rpcUrl, contractCodeKey(wasmHash), fetchImpl);
+  if (code === undefined) return [];
+
+  const wasm = wasmBytesOf(code.entryXdr);
+  if (wasm === undefined) return [];
+
+  const functions = specFunctionNames(wasm);
+  if (functions === undefined || functions.length === 0) return [];
+  if (functions.includes(SEP45_AUTH_FUNCTION)) return [];
+
+  return [
+    {
+      rule: AUTH_CONTRACT_INTERFACE_RULE,
+      severity,
+      category: 'network',
+      message: `Contract ${contractId} does not export the SEP-45 ${SEP45_AUTH_FUNCTION} function`,
+      path: 'WEB_AUTH_CONTRACT_ID',
+      helpUri:
+        'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0045.md#web-authentication-contract',
+      suggestion: `Deploy a SEP-45 web auth contract that exports ${SEP45_AUTH_FUNCTION}, or remove WEB_AUTH_CONTRACT_ID.`,
+    },
+  ];
+}
+
+/**
  * Audits every contract the file declares — `[[CURRENCIES]].contract` and
  * `WEB_AUTH_CONTRACT_ID` — against Soroban. Silent when the network is
  * unknown (no RPC URL can be derived) unless `options.rpcUrl` is given.
@@ -239,9 +405,10 @@ export async function checkContracts(
     rpcUrlFor(typeof doc.NETWORK_PASSPHRASE === 'string' ? doc.NETWORK_PASSPHRASE : undefined);
   if (!rpcUrl) return [];
 
+  const authContract = webAuthContractIdOf(doc);
   const targets: ContractTarget[] = [
     ...contractIdsOf(doc),
-    ...(webAuthContractIdOf(doc) !== undefined ? [webAuthContractIdOf(doc) as ContractTarget] : []),
+    ...(authContract !== undefined ? [authContract] : []),
   ];
   if (targets.length === 0) return [];
 
@@ -249,6 +416,15 @@ export async function checkContracts(
   for (const target of targets) {
     diagnostics.push(...(await checkContractTtl(target.id, rpcUrl, fetchImpl, options)));
   }
+
+  // The auth contract has one extra obligation beyond liveliness: the SEP-45
+  // interface. Checked once for the single WEB_AUTH_CONTRACT_ID.
+  if (authContract !== undefined) {
+    diagnostics.push(
+      ...(await verifySep45ContractInterface(authContract.id, rpcUrl, fetchImpl, options)),
+    );
+  }
+
   return diagnostics;
 }
 
@@ -273,6 +449,13 @@ export const sorobanRules: Rule[] = [
     category: 'network',
     severity: 'warning',
     description: 'A Soroban contract TTL could not be verified against the Soroban RPC',
+    run() {},
+  },
+  {
+    id: AUTH_CONTRACT_INTERFACE_RULE,
+    category: 'network',
+    severity: 'error',
+    description: 'WEB_AUTH_CONTRACT_ID must export the SEP-45 web_auth_verify function',
     run() {},
   },
 ];

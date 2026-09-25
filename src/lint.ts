@@ -16,6 +16,7 @@ import { MAX_FILE_BYTES, isString } from './predicates.js';
 import { specUrl } from './spec.js';
 import { probeTls, type TlsProbe } from './tls.js';
 import { checkOrgUrl } from './rules/org-url-check.js';
+import { checkSep6 } from './cross-sep/sep6.js';
 
 /** Severity ordering used for sorting and for `--max-warnings` style counts. */
 const SEVERITY_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -249,8 +250,15 @@ export async function lintDomain(
     });
   }
 
+  // SEP-6 is the reason many anchors name a TRANSFER_SERVER at all; a wallet
+  // that discovers the endpoint here but finds no /info learns that too late.
+  let sep6Diagnostics: Diagnostic[] = [];
+  if (fileResult.parsed) {
+    sep6Diagnostics = await checkSep6(fileResult.parsed, fetchImpl, { rules: options.rules });
+  }
+
   return finalize(
-    [...diagnostics, ...fileResult.diagnostics, ...orgUrlDiagnostics],
+    [...diagnostics, ...fileResult.diagnostics, ...orgUrlDiagnostics, ...sep6Diagnostics],
     options,
     fileResult.parsed,
   );
