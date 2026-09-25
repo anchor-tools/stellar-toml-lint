@@ -79,7 +79,7 @@ describe('cli', () => {
     const { code, stdout } = await cli(['--list-rules']);
     expect(code).toBe(0);
     expect(stdout).toContain('currencies/issuance-exclusive');
-    expect(stdout).toContain('currencies/regulated-missing-auth-required-flag');
+    expect(stdout).toContain('currencies/regulated-asset-missing-auth-required');
     expect(stdout).toContain('currencies/regulated-missing-auth-revocable-flag');
     expect(stdout).toContain('soroban/contract-ttl-expiring-soon');
     expect(stdout).toContain('soroban/contract-expired');

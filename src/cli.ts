@@ -14,6 +14,7 @@ import { assertKnownRule, loadConfig } from './config.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
+import { checkCertExpiry } from './network/cert-expiry.js';
 import {
   formatCheckstyle,
   formatGithub,
@@ -30,7 +31,7 @@ import { expandGlob, hasMagic } from './glob.js';
 import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
-import { checkRegulatedIssuerFlags } from './rules/currencies.js';
+import { checkRegulatedIssuerFlags } from './rules/regulated-flags.js';
 import { checkContracts } from './soroban.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
@@ -137,8 +138,8 @@ OPTIONS
       --no-suggestions    Hide diagnostic suggestions in the output
       --health-check      Ping declared endpoint URLs to ensure they are live
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, SEP-8
-                          regulated issuer flags, and ANCHOR_QUOTE_SERVER
-                          against the network
+                          regulated issuer flags, TLS certificate expiry, and
+                          ANCHOR_QUOTE_SERVER against the network
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
@@ -284,6 +285,11 @@ async function main(argv: string[]): Promise<number> {
             ...(cli.crawlPeers && cli.mockFixtures === undefined
               ? await checkOverlayPeers(domainResult.parsed, { rules })
               : []),
+            // A certificate probe opens its own socket rather than going
+            // through the fixture transport, so hermetic runs skip it.
+            ...(cli.mockFixtures === undefined
+              ? await checkCertExpiry(domainResult.parsed, { rules })
+              : []),
           ];
           if (networkDiagnostics.length > 0) {
             domainResult = finalize(
@@ -352,6 +358,10 @@ async function main(argv: string[]): Promise<number> {
                   rules,
                 })),
                 ...(await checkCorsPreflight(fileResult.parsed, fetchImpl, { rules })),
+                // Opens its own sockets, outside the fixture transport.
+                ...(cli.mockFixtures === undefined
+                  ? await checkCertExpiry(fileResult.parsed, { rules })
+                  : []),
                 ...(await checkHistoryPublish(fileResult.parsed, fetchImpl, { rules })),
                 ...(cli.verifyDnssec
                   ? await checkDnsIntegrity(fileResult.parsed, fetchImpl, {
