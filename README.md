@@ -793,7 +793,7 @@ anchor cannot service. An unreachable endpoint, a non-200, or a body that is not
 
 For every `[[CURRENCIES]]` entry marked `regulated=true` with a classic `issuer`, the issuer's
 account flags are read from Horizon: a missing `AUTH_REQUIRED_FLAG` emits
-`currencies/regulated-missing-auth-required-flag` (error) and a missing `AUTH_REVOCABLE_FLAG` emits
+`currencies/regulated-asset-missing-auth-required` (error) and a missing `AUTH_REVOCABLE_FLAG` emits
 `currencies/regulated-missing-auth-revocable-flag` (warning), since SEP-8 needs the issuer to
 control who may hold the asset and to be able to freeze offenders. A Horizon outage, missing
 account, or unparseable response degrades to the `currencies/regulated-issuer-flags-unverifiable`

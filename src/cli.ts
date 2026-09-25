@@ -30,7 +30,7 @@ import { expandGlob, hasMagic } from './glob.js';
 import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
-import { checkRegulatedIssuerFlags } from './rules/currencies.js';
+import { checkRegulatedIssuerFlags } from './rules/regulated-flags.js';
 import { checkContracts } from './soroban.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';

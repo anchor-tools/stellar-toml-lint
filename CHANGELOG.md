@@ -127,11 +127,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - SEP-8 regulated issuer flags under `--check-network`: for every `[[CURRENCIES]]` entry marked
   `regulated=true` with a classic `issuer`, the linter reads the issuer account's flags from Horizon.
-  A missing `AUTH_REQUIRED` flag emits `currencies/regulated-missing-auth-required-flag` (error), a
+  A missing `AUTH_REQUIRED` flag emits `currencies/regulated-asset-missing-auth-required` (error), a
   missing `AUTH_REVOCABLE` flag emits `currencies/regulated-missing-auth-revocable-flag` (warning),
   and a Horizon outage or missing account degrades to
   `currencies/regulated-issuer-flags-unverifiable` (warning) so the run still fails cleanly on
-  strengthenable-to-fatal findings without depending on network availability.
+  strengthenable-to-fatal findings without depending on network availability. The audit lives in
+  its own module, `src/rules/regulated-flags.ts`, so the network-bound currency checks stay
+  separable from the offline ones (#136).
 - Soroban contract liveliness under `--check-contracts`: `src/soroban.ts` queries the Soroban RPC's
   `getLedgerEntries` for the contract instance and its WASM behind every `[[CURRENCIES]].contract`
   and `WEB_AUTH_CONTRACT_ID`, comparing `liveUntilLedgerSeq` against `latestLedger`. Within ~a day of
