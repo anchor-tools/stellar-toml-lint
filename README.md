@@ -79,6 +79,10 @@ stellar-toml-lint public/.well-known/stellar.toml --domain example.com
 
 # Read from stdin
 cat stellar.toml | stellar-toml-lint -
+
+# Fix the mechanically safe findings in place (trailing slashes, passphrase
+# whitespace, @-prefixed or URL-valued social handles) and report what changed
+stellar-toml-lint public/.well-known/stellar.toml --fix
 ```
 
 Rule policy discovered from a config file needs no flags at all:

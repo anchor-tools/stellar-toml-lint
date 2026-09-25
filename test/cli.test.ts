@@ -1,30 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn } from 'node:child_process';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { XMLValidator } from 'fast-xml-parser';
 
-const run = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI = join(here, '..', 'dist', 'cli.js');
 const fixture = (name: string): string => join(here, 'fixtures', name);
 
 /** Runs the built CLI, capturing the exit code instead of throwing. */
-async function cli(
+function cli(
   args: string[],
   input?: string,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-  try {
-    const { stdout, stderr } = await run('node', [CLI, ...args], {
+  return new Promise((resolve) => {
+    const child = spawn('node', [CLI, ...args], {
+      stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, NO_COLOR: '1' },
-      ...(input !== undefined ? {} : {}),
     });
-    return { code: 0, stdout, stderr };
-  } catch (error) {
-    const e = error as { code?: number; stdout?: string; stderr?: string };
-    return { code: e.code ?? 1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
-  }
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => (stdout += chunk));
+    child.stderr.on('data', (chunk) => (stderr += chunk));
+    child.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }));
+    if (input !== undefined) child.stdin.write(input);
+    child.stdin.end();
+  });
 }
 
 // These exercise the built artifact, so they depend on `npm run build`.

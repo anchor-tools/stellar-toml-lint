@@ -27,6 +27,15 @@ export interface Position {
   column: number;
 }
 
+/**
+ * A mechanically safe rewrite `--fix` can apply by itself. Present only when
+ * there is exactly one unambiguous correction, so the tool never guesses.
+ */
+export interface Fix {
+  /** The corrected value, unencoded, to put in place of the offending one. */
+  value: string;
+}
+
 /** One rule violation at one place in the file. */
 export interface Diagnostic {
   /** Stable machine-readable id, e.g. `currencies/issuance-exclusive`. */
