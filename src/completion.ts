@@ -87,6 +87,7 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--rpc-url', description: 'Soroban RPC endpoint', takesValue: true },
   { long: '--soroban-rpc', description: 'Soroban RPC endpoint (alias)', takesValue: true },
   { long: '--mock-fixtures', description: 'Serve network checks from fixtures', takesValue: true },
+  { long: '--serve-mock', description: 'Run a local mock anchor server' },
   { long: '--webhook-slack', description: 'Slack webhook URL', takesValue: true },
   { long: '--webhook-discord', description: 'Discord webhook URL', takesValue: true },
   { long: '--badge-svg', description: 'Write an SVG compliance badge', takesValue: true },

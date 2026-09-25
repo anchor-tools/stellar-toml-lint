@@ -9,6 +9,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--serve-mock [port]` starts a local mock anchor on `node:http` (default port `8080`): the file at
+  `/.well-known/stellar.toml` with `Access-Control-Allow-Origin: *`, SEP-10 challenges at `/auth`
+  for `NETWORK_PASSPHRASE`, and SEP-24 `/sep24/info` plus SEP-38 `/sep38/info` and `/sep38/prices`
+  generated from `[[CURRENCIES]]`. Challenges are signed with `SIGNING_KEY` when
+  `STELLAR_TOML_MOCK_SIGNING_SECRET` holds its secret and with a named ephemeral key otherwise; the
+  boot banner prints the routing table, and `SIGINT`/`SIGTERM` shut it down cleanly (#34).
 - `currencies/collateral-signature-invalid` (error) and `currencies/collateral-signature-malformed`
   (error): each `collateral_address_signatures[i]` is now verified, offline, as the signature of
   `collateral_address_messages[i]` by `collateral_addresses[i]` — Ed25519 (raw or SEP-53) for

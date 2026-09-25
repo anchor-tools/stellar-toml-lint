@@ -57,6 +57,7 @@ import { runLspServer } from './lsp/server.js';
 import { getTomlJsonSchema } from './schema.js';
 import { generateCompletion, isCompletionShell } from './completion.js';
 import { MonitorDaemon } from './monitor/daemon.js';
+import { createMockServer, DEFAULT_MOCK_PORT, formatRoutingTable } from './mock/server.js';
 import {
   runMigration,
   dryRun as dryRunMigration,
@@ -111,6 +112,7 @@ interface Cli {
   webhookUrl?: string;
   migrate?: string;
   dryRun?: boolean;
+  serveMock?: number;
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -194,6 +196,11 @@ OPTIONS
        --on-change-webhook <url>
                            POST a JSON diff payload to a webhook when the
                            monitored URL changes
+       --serve-mock [port] Serve the file plus mock SEP-10 /auth, SEP-24 /info,
+                           and SEP-38 /info and /prices endpoints on localhost
+                           (default port 8080). Set
+                           STELLAR_TOML_MOCK_SIGNING_SECRET to sign challenges
+                           with SIGNING_KEY
 
 CONFIG
   .stellartomlrc.json    Project defaults, discovered upward from the linted
@@ -615,6 +622,9 @@ async function main(argv: string[]): Promise<number> {
   };
 
   const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
+  if (cli.serveMock !== undefined) {
+    return serveMock(paths[0] as string, cli.serveMock);
+  }
   if (cli.monitor) {
     const daemon = new MonitorDaemon({
       url: cli.domain !== undefined ? `https://${cli.domain}/.well-known/stellar.toml` : paths[0]!,
@@ -987,6 +997,21 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.dryRun = true;
         break;
 
+      case '--serve-mock': {
+        // The port is optional, so only a bare number after the flag is taken
+        // as one; anything else is left for the next iteration (a file path).
+        const next = argv[i + 1];
+        if (next !== undefined && /^\d+$/.test(next)) {
+          const port = Number(next);
+          if (port > 65535) throw new Error('--serve-mock expects a port between 0 and 65535.');
+          cli.serveMock = port;
+          i++;
+        } else {
+          cli.serveMock = DEFAULT_MOCK_PORT;
+        }
+        break;
+      }
+
       default:
         if (arg.startsWith('--')) throw new Error(`Unknown option "${arg}".`);
         cli.paths.push(arg);
@@ -1001,6 +1026,60 @@ function parseArgs(argv: string[]): Cli | 'handled' {
   }
 
   return cli;
+}
+
+/**
+ * Serves `path` and the mock anchor endpoints generated from it until SIGINT
+ * or SIGTERM, then closes the server and resolves with exit code 0.
+ */
+async function serveMock(path: string, port: number): Promise<number> {
+  if (path === '-') {
+    process.stderr.write('--serve-mock needs a file path; it cannot serve stdin.\n');
+    return 2;
+  }
+
+  let source: string;
+  try {
+    source = await readFile(path, 'utf8');
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+  const { parsed } = lint(source);
+  if (parsed === undefined) {
+    process.stderr.write(`${path} is not valid TOML; run the linter on it first.\n`);
+    return 2;
+  }
+
+  const secret = process.env.STELLAR_TOML_MOCK_SIGNING_SECRET;
+  const { server, signer } = createMockServer({
+    source,
+    doc: parsed,
+    ...(secret ? { signingSecret: secret } : {}),
+  });
+
+  try {
+    await new Promise<void>((resolveListen, rejectListen) => {
+      server.once('error', rejectListen);
+      server.listen(port, () => resolveListen());
+    });
+  } catch (error) {
+    process.stderr.write(`Could not start the mock server: ${message(error)}\n`);
+    return 2;
+  }
+
+  const address = server.address();
+  const boundPort = typeof address === 'object' && address !== null ? address.port : port;
+  process.stdout.write(formatRoutingTable(`http://localhost:${boundPort}`, signer));
+
+  return new Promise<number>((resolveExit) => {
+    const shutdown = (): void => {
+      server.closeAllConnections();
+      server.close(() => resolveExit(0));
+    };
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+  });
 }
 
 function requireValue(argv: string[], index: number, flag: string): string {
