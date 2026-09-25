@@ -11,7 +11,7 @@ import { watch } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
-import { lint, lintDomain, finalize } from './lint.js';
+import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import {
@@ -75,6 +75,7 @@ interface Cli {
   preset?: PresetName;
   maxWarnings?: number;
   checkNetwork: boolean;
+  followLinks: boolean;
   verifySep10: boolean;
   badgeSvg?: string;
   badgeJson?: string;
@@ -130,6 +131,8 @@ OPTIONS
                           regulated issuer flags, and ANCHOR_QUOTE_SERVER
                           against the network
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
+      --follow-links      Fetch and lint the toml pointers in CURRENCIES
+                          (implied by --domain)
       --check-contracts   Verify Soroban contract and WASM TTL liveliness
       --soroban-rpc <url> Soroban RPC endpoint to use with --check-contracts
       --mock-fixtures <dir>
@@ -254,6 +257,9 @@ async function main(argv: string[]): Promise<number> {
               strict,
               rules: { ...config.rules, ...cli.rules },
               checkNetwork: cli.checkNetwork,
+              // --domain already fetched the file from a live host, so its
+              // currency pointers are in scope without a second opt-in.
+              followLinks: true,
             },
             fetchImpl,
           ),
@@ -277,7 +283,7 @@ async function main(argv: string[]): Promise<number> {
 
           if (
             fileResult.parsed &&
-            (cli.checkNetwork || cli.checkContracts || cli.domain !== undefined)
+            (cli.checkNetwork || cli.checkContracts || cli.followLinks || cli.domain !== undefined)
           ) {
             const networkDiagnostics: Diagnostic[] = [];
 
@@ -325,6 +331,16 @@ async function main(argv: string[]): Promise<number> {
                   rules: cli.rules,
                   fetchImpl: fetch,
                 })),
+              );
+            }
+
+            if (cli.followLinks) {
+              networkDiagnostics.push(
+                ...(await followTomlPointers(
+                  fileResult.parsed,
+                  { strict: fileStrict, rules, domain: cli.domain },
+                  fetchImpl,
+                )),
               );
             }
 
@@ -600,6 +616,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     showHelp: false,
     rules: {},
     checkNetwork: false,
+    followLinks: false,
     verifySep10: false,
     checkContracts: false,
     graphIncludeContracts: false,
@@ -687,6 +704,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-sep10':
         cli.verifySep10 = true;
+        break;
+
+      case '--follow-links':
+        cli.followLinks = true;
         break;
 
       case '--check-contracts':
