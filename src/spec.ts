@@ -32,9 +32,22 @@ export const HTTPS_ENDPOINT_FIELDS = [
 /** Global fields holding a `G...` account ID. */
 export const ACCOUNT_ID_FIELDS = ['SIGNING_KEY', 'URI_REQUEST_SIGNING_KEY'] as const;
 
-/** Fields SEP-1 marks deprecated, with the SEP that replaced them. */
-export const DEPRECATED_FIELDS: Record<string, string> = {
-  AUTH_SERVER: 'SEP-3 (Compliance Protocol) is deprecated; SEP-10/SEP-12 replace it',
+export interface DeprecatedField {
+  message: string;
+  suggestion: string;
+}
+
+export const DEPRECATED_FIELDS: Record<string, DeprecatedField> = {
+  AUTH_SERVER: {
+    message: 'the SEP-3 Compliance Protocol is deprecated',
+    suggestion:
+      'Replace AUTH_SERVER with WEB_AUTH_ENDPOINT for SEP-10 authentication and KYC_SERVER for SEP-12 customer data.',
+  },
+  DEPOSIT_SERVER: {
+    message: 'the legacy SEP-6 deposit server field was replaced',
+    suggestion:
+      'Replace DEPOSIT_SERVER with TRANSFER_SERVER for SEP-6 or TRANSFER_SERVER_SEP0024 for SEP-24.',
+  },
 };
 
 /** Every field SEP-1 defines at the top level of the document. */
@@ -46,6 +59,7 @@ export const KNOWN_GLOBAL_FIELDS = new Set<string>([
   'WEB_AUTH_CONTRACT_ID',
   ...HTTPS_ENDPOINT_FIELDS,
   ...ACCOUNT_ID_FIELDS,
+  ...Object.keys(DEPRECATED_FIELDS),
   // Tables, handled by their own rule sets.
   'DOCUMENTATION',
   'PRINCIPALS',
@@ -271,6 +285,14 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
     type: 'url (`https://`)',
     description:
       '(deprecated) The endpoint used for SEP-3 Compliance Protocol; SEP-10 and SEP-12 replace it.',
+    anchor: 'general-information',
+  },
+  {
+    section: '',
+    name: 'DEPOSIT_SERVER',
+    type: 'url (`https://`)',
+    description:
+      '(deprecated) The legacy SEP-6 deposit server field; use TRANSFER_SERVER for SEP-6 or TRANSFER_SERVER_SEP0024 for SEP-24.',
     anchor: 'general-information',
   },
   {

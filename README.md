@@ -612,6 +612,15 @@ interface Diagnostic {
 
 Run `stellar-toml-lint --list-rules` for the authoritative list. In summary:
 
+**File and general fields** — 100KB size limit, TOML syntax with line and column, UTF-8 BOM
+detection, `https://` on every endpoint field, and trailing-slash detection on service endpoints;
+checksum-valid `SIGNING_KEY`, `URI_REQUEST_SIGNING_KEY`, `WEB_AUTH_CONTRACT_ID`, and `ACCOUNTS`;
+uppercase-only Stellar public keys; unknown fields; and empty string values in documentation fields.
+Deprecated configuration emits actionable `general/deprecated-field` warnings for `AUTH_SERVER`,
+legacy `DEPOSIT_SERVER`, unencrypted `FEDERATION_SERVER`, and documentation keys placed at the
+top level instead of under `[DOCUMENTATION]`. Under `--check-network`, validates that the domain
+portion of `ORG_OFFICIAL_EMAIL` has MX records for email deliverability.
+
 **File** — 100KB size limit, TOML syntax with line and column, UTF-8 BOM detection.
 `https://` on every endpoint field; trailing-slash detection; checksum-valid `SIGNING_KEY`,
 `URI_REQUEST_SIGNING_KEY`, `WEB_AUTH_CONTRACT_ID`, and `ACCOUNTS`; deprecated fields; unknown fields;

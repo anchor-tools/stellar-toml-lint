@@ -9,6 +9,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `general/deprecated-field` warns about legacy `AUTH_SERVER` and `DEPOSIT_SERVER` fields,
+  unencrypted `FEDERATION_SERVER` values, and documentation keys placed outside `[DOCUMENTATION]`,
+  with replacement syntax for SEP-10, SEP-12, SEP-6, and SEP-24 (#126).
 - `--format markdown` emits a GitHub-flavored Markdown report built for a workflow's
   `$GITHUB_STEP_SUMMARY`: a pass/fail header with the error, warning, and info counts, a table with a
   row per finding, and collapsible `<details>` blocks carrying suggestions and spec links. `|`, `<`,
