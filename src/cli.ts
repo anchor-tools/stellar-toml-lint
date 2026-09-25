@@ -770,8 +770,10 @@ function message(error: unknown): string {
 }
 
 main(process.argv.slice(2))
-  .then((code) => process.exit(code))
+  .then((code) => {
+    process.exitCode = code;
+  })
   .catch((error: unknown) => {
     process.stderr.write(`Unexpected failure: ${message(error)}\n`);
-    process.exit(2);
+    process.exitCode = 2;
   });

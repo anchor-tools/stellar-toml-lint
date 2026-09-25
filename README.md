@@ -215,7 +215,7 @@ into a failing build.
 
 ## In the browser
 
-The linter itself is free of Node built-ins, so it also runs in a page or a worker, under a separate entry point:
+The linter itself is free of Node built-ins, so it also runs in a page or a worker under dedicated browser packages and bundles:
 
 ```ts
 import { createVirtualFileSystem, lintBrowserFile } from 'stellar-toml-lint/browser';
@@ -224,15 +224,49 @@ const files = createVirtualFileSystem({ 'stellar.toml': textareaValue });
 const result = await lintBrowserFile('stellar.toml', { files });
 ```
 
-- `lintBrowser(content, options)` — lint a string.
-- `lintBrowserFile(path, { files })` and `lintBrowserRun(paths, { files })` — lint out of a virtual file system, which is what replaces `node:fs`.
-- `lintBrowserDomain(domain, { fetchImpl })` — fetch `/.well-known/stellar.toml` with the page's own `fetch`. CORS applies here exactly as it does to a wallet, so a host without `Access-Control-Allow-Origin: *` produces the same `network/cors` finding.
+### Browser API & Bundles
 
-A worker wrapper is published as `stellar-toml-lint/worker`. Send `{ type: 'lint', content, options }` and get back `{ type: 'result', result }`, or `{ type: 'error', message }` when the request itself was malformed — the handler answers errors rather than throwing, because a worker that throws loses the request silently. `{ type: 'ping' }` lets a page check the worker is alive before a long run.
+- `lintBrowser(content, options)` — lint a string asynchronously.
+- `lintBrowserFile(path, { files })` and `lintBrowserRun(paths, { files })` — lint out of an in-memory virtual file system (`createVirtualFileSystem`), replacing `node:fs`.
+- `lintBrowserDomain(domain, { fetchImpl })` — fetch `/.well-known/stellar.toml` with the page's standard `globalThis.fetch`. CORS applies exactly as it does to a wallet, so a host without `Access-Control-Allow-Origin: *` produces the same `network/cors` finding.
+
+Pre-bundled minified outputs are compiled to `dist/browser/`:
+
+- `dist/browser/stellar-toml-lint.esm.min.js` (`index.js`): ESM bundle for bundlers, Vite, and ES module imports.
+- `dist/browser/stellar-toml-lint.umd.min.js` (`index.umd.js`): UMD/IIFE bundle for direct browser script tags, exposing `window.stellarTomlLint`.
+- `dist/browser/stellar-toml-lint.worker.min.js` (`worker.js`): Dedicated Web Worker script.
+
+```html
+<!-- Direct script tag usage -->
+<script src="dist/browser/stellar-toml-lint.umd.min.js"></script>
+<script>
+  stellarTomlLint.lintBrowser('VERSION="2.0.0"\n').then((result) => {
+    console.log('Valid:', result.ok, result.counts);
+  });
+</script>
+```
+
+### Web Worker
+
+A worker wrapper is published as `stellar-toml-lint/worker` (and `dist/browser/worker.js`). Send `{ type: 'lint', content, options }` and get back `{ type: 'result', result }`, or `{ type: 'error', message }` when the request itself was malformed — the handler answers errors rather than throwing, because a worker that throws loses the request silently. `{ type: 'ping' }` lets a page check the worker is alive before a long run.
+
+```ts
+const worker = new Worker(new URL('stellar-toml-lint/worker', import.meta.url));
+worker.onmessage = (e) => console.log('Lint result:', e.data.result);
+worker.postMessage({ type: 'lint', content: tomlString });
+```
+
+### Capabilities & Typings
 
 One capability does not survive the move: a page cannot observe a TLS session, so the `security/*` audit is skipped in the browser and reported as not observed rather than guessed. `browserCapabilities` says the same thing at runtime, for callers that branch on it.
 
-Both entry points ship their own typings (`dist/browser.d.ts`, `dist/worker.d.ts`), and a test walks the static import graph from them so a `node:` import cannot creep back onto that path.
+Both entry points ship their own TypeScript declarations (`dist/browser.d.ts`, `dist/worker.d.ts`), and build tests verify static import boundaries and execution in browser sandbox environments.
+
+To build the browser bundles:
+
+```bash
+npm run build:browser
+```
 
 ## In CI
 

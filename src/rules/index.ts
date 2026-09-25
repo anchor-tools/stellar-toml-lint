@@ -15,6 +15,7 @@ import { orgUrlRules } from './org-url-check.js';
 import { sep38Rules } from './sep38-endpoints.js';
 import { imageAssetRules } from './image-assets.js';
 import { sorobanRules } from '../soroban.js';
+import { sep12Rules } from './sep12-schema.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -34,6 +35,7 @@ export const allRules: Rule[] = [
   ...sep38Rules,
   ...imageAssetRules,
   ...sorobanRules,
+  ...sep12Rules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -52,4 +54,5 @@ export {
   sep38Rules,
   imageAssetRules,
   sorobanRules,
+  sep12Rules,
 };

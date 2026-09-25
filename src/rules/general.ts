@@ -44,7 +44,10 @@ export const generalRules: Rule[] = [
     severity: 'error',
     description: 'stellar.toml must not exceed 100KB',
     run(ctx) {
-      const bytes = Buffer.byteLength(ctx.source, 'utf8');
+      const bytes =
+        typeof Buffer !== 'undefined'
+          ? Buffer.byteLength(ctx.source, 'utf8')
+          : new TextEncoder().encode(ctx.source).length;
       if (bytes > MAX_FILE_BYTES) {
         ctx.report({
           rule: 'file/max-size',

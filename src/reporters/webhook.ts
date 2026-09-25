@@ -331,6 +331,18 @@ async function postWithRetry(
       if (!RETRYABLE_STATUS.has(response.status)) {
         return { ok: false, attempts: attempt, status: response.status, error: lastError };
       }
+
+      if (response.status === 429) {
+        const retryAfterHeader = response.headers?.get?.('retry-after');
+        if (retryAfterHeader) {
+          const delaySec = parseFloat(retryAfterHeader);
+          if (!isNaN(delaySec) && delaySec > 0 && attempt <= options.retries) {
+            clearTimeout(timer);
+            await sleep(delaySec * 1000);
+            continue;
+          }
+        }
+      }
     } catch (error) {
       lastError = message(error);
     } finally {
