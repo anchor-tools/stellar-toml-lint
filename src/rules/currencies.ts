@@ -1,6 +1,7 @@
 import type { Diagnostic, Rule, RuleContext, RuleOverrides, Severity } from '../types.js';
 import { displayDecimalsRules } from './display-decimals-audit.js';
 import { anchoredAssetRules } from './anchored-asset-rules.js';
+import { assetCodeFormatRules } from './asset-code-format.js';
 import { checkIssuerFlags, horizonUrlFor } from '../network-checks.js';
 import {
   ANCHOR_ASSET_TYPES,
@@ -242,6 +243,7 @@ export const currencyRules: Rule[] = [
   ...displayDecimalsRules,
 
   ...anchoredAssetRules,
+  ...assetCodeFormatRules,
 
   ...regulatedFlagRules,
 
@@ -285,7 +287,7 @@ export const currencyRules: Rule[] = [
     id: 'currencies/code',
     category: 'currencies',
     severity: 'error',
-    description: 'Each currency needs a code (or code_template) of at most 12 characters',
+    description: 'Each currency needs a code or code_template',
     run(ctx) {
       eachCurrency(ctx, (entry, path) => {
         const code = entry.code;
@@ -318,7 +320,7 @@ export const currencyRules: Rule[] = [
               position: ctx.locate(`${path}.${field}`),
               helpUri: specUrl('currency-documentation'),
             });
-          } else if (value.length > 12) {
+          } else if (field === 'code_template' && value.length > 12) {
             ctx.report({
               rule: 'currencies/code',
               category: 'currencies',
@@ -326,17 +328,6 @@ export const currencyRules: Rule[] = [
               path: `${path}.${field}`,
               position: ctx.locate(`${path}.${field}`),
               helpUri: specUrl('currency-documentation'),
-            });
-          } else if (field === 'code' && !/^[A-Za-z0-9]+$/.test(value)) {
-            // Stellar asset codes are alphanumeric; `?` belongs to templates.
-            ctx.report({
-              rule: 'currencies/code',
-              category: 'currencies',
-              message: `${path}.code "${value}" contains characters that are not valid in a Stellar asset code`,
-              path: `${path}.code`,
-              position: ctx.locate(`${path}.code`),
-              helpUri: specUrl('currency-documentation'),
-              suggestion: 'Asset codes are alphanumeric. Use code_template for wildcards.',
             });
           }
         }

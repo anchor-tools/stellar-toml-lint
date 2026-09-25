@@ -2,9 +2,10 @@
  * Native shell completion scripts for the CLI.
  *
  * `--completion <shell>` prints a script to stdout that teaches the named shell
- * how to complete `stellar-toml-lint`'s flags, its output formats, and the rule
- * ids accepted by `--off`/`--warn`/`--error`. The scripts are generated rather
- * than hand-maintained so the rule ids can never drift from `allRules`:
+ * how to complete `stellar-toml-lint`'s flags, its output formats, the rule
+ * ids accepted by `--off`/`--warn`/`--error`, and the `--preset` bundles. The
+ * scripts are generated rather than hand-maintained so those values can never
+ * drift from `allRules` and the preset registry:
  *
  * ```console
  * $ stellar-toml-lint --completion bash >> ~/.bashrc
@@ -13,6 +14,7 @@
  * ```
  */
 import type { Rule } from './types.js';
+import { PRESET_NAMES } from './presets.js';
 
 /** Shells `--completion` knows how to emit a script for. */
 export type CompletionShell = 'bash' | 'zsh' | 'fish';
@@ -66,6 +68,7 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--off', description: 'Disable a rule' },
   { long: '--error', description: 'Raise a rule to error' },
   { long: '--warn', description: 'Lower a rule to warning' },
+  { long: '--preset', description: 'Role-based rule bundle', values: PRESET_NAMES },
   { long: '--interactive', short: '-i', description: 'Full-screen dashboard of the findings' },
   { long: '--lsp', description: 'Run as a Language Server on stdio' },
   { long: '--quiet', short: '-q', description: 'Report errors only' },
@@ -73,6 +76,8 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--no-suggestions', description: 'Hide diagnostic suggestions' },
   { long: '--check-network', description: 'Verify accounts and endpoints online' },
   { long: '--verify-sep10', description: 'Verify SEP-10 nonce replay resistance' },
+  { long: '--crawl-peers', description: 'Discover and audit overlay peers' },
+  { long: '--verify-dnssec', description: 'Compare DNSSEC-validating DNS resolvers' },
   { long: '--check-contracts', description: 'Verify Soroban contract TTL liveliness' },
   { long: '--soroban-rpc', description: 'Soroban RPC endpoint', takesValue: true },
   { long: '--mock-fixtures', description: 'Serve network checks from fixtures', takesValue: true },

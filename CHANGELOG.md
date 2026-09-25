@@ -9,6 +9,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Follow and lint `toml` currency pointers. A `[[CURRENCIES]]` entry that points at a separate
+  document via `toml` now has that document fetched and linted as part of the same run, so an
+  anchor cannot pass with a broken linked asset. Enabled by `--follow-links` and implied by
+  `--domain`. Findings from a linked document are prefixed with its URL, a pointer that cannot be
+  fetched is a `network/toml-pointer-fetch` warning rather than a hard failure, and fetches are
+  capped at 20 so a long currency list cannot fan out unboundedly.
+
+- `--preset validator|anchor-sep24|issuer` applies a curated rule bundle for an organisation's role
+  in the ecosystem, so a validator operator, a SEP-24 anchor, and a standalone asset issuer stop
+  carrying the same `--off` chain through every workflow. `validator` keeps the validator and
+  general file checks and silences the currency and anchor service rules (raising a duplicate
+  validator `HOST` or `ALIAS` to `error`); `anchor-sep24` holds the SEP-24, SEP-10, and currency
+  requirements at `error` and silences the validator rules; `issuer` holds currency, collateral,
+  and documentation completeness at `error` and silences the anchor service rules. A preset is a
+  baseline, so an explicit `--off`/`--warn`/`--error` still wins whatever order the flags appear in,
+  and an unknown name lists the available presets and exits `2`. Bundles are assembled from the rule
+  registry, so a rule registered later joins the group its category puts it in (#20).
 - `general/deprecated-field` warns about legacy `AUTH_SERVER` and `DEPOSIT_SERVER` fields,
   unencrypted `FEDERATION_SERVER` values, and documentation keys placed outside `[DOCUMENTATION]`,
   with replacement syntax for SEP-10, SEP-12, SEP-6, and SEP-24 (#126).
@@ -72,6 +89,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `validators/stellar-history-json-unreachable` (error) under `--check-network` fetches each
   validator's archive root and requires it to serve `.well-known/stellar-history.json` with
   `"version": 1` (#144).
+- Overlay and archive integrity audits: `--crawl-peers` decodes bounded `GET_PEERS` discovery
+  responses, `--verify-dnssec` compares DNSSEC-validating DoH resolvers, and `--check-network`
+  validates the three most recent history checkpoints for complete category archives and chained
+  previous-ledger pointers (#90, #91, #92, #96).
+- `overlay/invalid-crypto-framing` and `overlay/mac-authentication-failure` audit big-endian frame
+  lengths, HKDF-derived session keys, sequence replay, and authenticated tags (#91).
 
 - Opt-in `--check-network` flag to query Horizon and report non-existent `SIGNING_KEY` or `ACCOUNTS` entries as warnings (#7).
 - `network/horizon-unreachable` and `network/horizon-protocol-outdated` under `--check-network`:

@@ -117,8 +117,11 @@ it was before.
 | `-f, --format <fmt>`        | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`                        |
 | `--strict`                  | Treat warnings as errors                                                                                                |
 | `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                             |
-| `--check-network`           | Verify accounts, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online                            |
+| `--check-network`           | Verify accounts, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online |
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                       |
+| `--crawl-peers`             | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                 |
+| `--verify-dnssec`           | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                  |
+| `--follow-links`            | Fetch and lint the `toml` pointers in `CURRENCIES` (implied by `--domain`)                                              |
 | `--check-contracts`         | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                   |
 | `--soroban-rpc <url>`       | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                       |
 | `--mock-fixtures <dir>`     | Serve network checks from recorded JSON fixtures under `<dir>`, never the network                                       |
@@ -127,6 +130,7 @@ it was before.
 | `--off <rule>`              | Disable a rule (repeatable)                                                                                             |
 | `--error <rule>`            | Raise a rule to error (repeatable)                                                                                      |
 | `--warn <rule>`             | Lower a rule to warning (repeatable)                                                                                    |
+| `--preset <name>`           | Start from a role's rule bundle: `validator`, `anchor-sep24`, or `issuer`                                               |
 | `-q, --quiet`               | Show errors only                                                                                                        |
 | `--show-help-urls`          | Print the spec link for each finding                                                                                    |
 | `--list-rules`              | Print every rule and exit                                                                                               |
@@ -147,42 +151,9 @@ it was before.
 | `--badge-svg <file>`        | Generate an SVG compliance badge                                                                                        |
 | `--badge-json <file>`       | Generate a Shields.io JSON endpoint                                                                                     |
 | `--json-schema`             | Print a JSON Schema (Draft 2020-12) for stellar.toml to stdout                                                          |
-| Flag                        | Effect                                                                                                                  |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `-d, --domain <d>`          | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks                                                   |
-| `-f, --format <fmt>`        | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`                        |
-| `--strict`                  | Treat warnings as errors                                                                                                |
-| `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                             |
-| `--check-network`           | Verify accounts, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online |
-| `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                       |
-| `--check-contracts`         | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                   |
-| `--soroban-rpc <url>`       | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                       |
-| `--mock-fixtures <dir>`     | Serve network checks from recorded JSON fixtures under `<dir>`, never the network                                       |
-| `--webhook-slack <url>`     | POST a Slack Block Kit card with the run summary                                                                        |
-| `--webhook-discord <url>`   | POST a Discord embed with the run summary                                                                               |
-| `--off <rule>`              | Disable a rule (repeatable)                                                                                             |
-| `--error <rule>`            | Raise a rule to error (repeatable)                                                                                      |
-| `--warn <rule>`             | Lower a rule to warning (repeatable)                                                                                    |
-| `-q, --quiet`               | Show errors only                                                                                                        |
-| `--show-help-urls`          | Print the spec link for each finding                                                                                    |
-| `--list-rules`              | Print every rule and exit                                                                                               |
-| `--completion <shell>`      | Print a `bash`, `zsh`, or `fish` completion script and exit                                                             |
-| `--no-suggestions`          | Hide diagnostic suggestions in the output                                                                               |
-| `--color`                   | Force colour on, overriding `NO_COLOR`                                                                                  |
-| `--no-color`                | Force colour off                                                                                                        |
-| `--lsp`                     | Run as a Language Server on stdio (diagnostics, quick-fixes, hover)                                                     |
-| `--graph <fmt>`             | Generate architecture diagram: `mermaid` or `dot`                                                                       |
-| `--graph-contracts`         | Include Soroban contracts in diagram                                                                                    |
-| `--graph-validators`        | Include validators in diagram                                                                                           |
-| `--graph-color`             | Color nodes by protocol type                                                                                            |
-| `--policy <file>`           | Evaluate enterprise policy file (JSON or YAML)                                                                          |
-| `--export-ap-config`        | Export Anchor Platform YAML config to stdout                                                                            |
-| `--generate-openapi <file>` | Generate an OpenAPI 3.1 spec (json or yaml extension)                                                                   |
-| `--badge-svg <file>`        | Generate an SVG compliance badge                                                                                        |
-| `--badge-json <file>`       | Generate a Shields.io JSON endpoint                                                                                     |
-| `--json-schema`             | Print a JSON Schema (Draft 2020-12) for stellar.toml to stdout                                                          |
 
-Every flag above takes precedence over the [configuration file](#configuration-file).
+Every flag above takes precedence over the [configuration file](#configuration-file), and
+`--preset` — being a flag — takes precedence over it too.
 
 Exit codes: **0** no errors, **1** problems found, **2** bad usage, an unmatched glob, or I/O
 failure.
@@ -190,6 +161,74 @@ failure.
 Colour output follows the [NO_COLOR standard](https://no-color.org): setting `NO_COLOR` to any
 non-empty value disables it, an empty value counts as unset, and stdout not being a terminal
 disables it too. An explicit `--color` is the only thing that overrides `NO_COLOR`.
+
+### Rule presets
+
+Nobody is all of the ecosystem at once. A validator operator publishes `[[VALIDATORS]]` and little
+else; a standalone issuer publishes `[[CURRENCIES]]` and `[DOCUMENTATION]` and runs no servers; a
+SEP-24 anchor publishes service endpoints and the currencies they transfer. The default rule set
+assumes the union of all three, so each role silences the rest — normally with a long `--off` chain
+copied into every workflow, Makefile, and pre-commit hook, each copy drifting a little further from
+the last.
+
+`--preset` is that chain, written once and reviewed as a unit:
+
+- **`validator`** — for node operators. `[[VALIDATORS]]` and the general file checks stay on; the
+  currency issuance and anchor service rules are off. Two validators sharing a `HOST` or an `ALIAS`
+  fails the build, because that is a quorum bug rather than a style note.
+- **`anchor-sep24`** — for hosted anchors. SEP-24, SEP-10, and currency requirements at `error`: a
+  `TRANSFER_SERVER` with no `[[CURRENCIES]]`, a half-declared SEP-45 pair, an anchored asset that
+  does not say what backs it. Validator rules are off, since an anchor runs no validator nodes.
+- **`issuer`** — for asset issuers. Currency, collateral, and documentation completeness at `error`.
+  Anchor service rules are off, since a standalone issuer serves nothing.
+
+```bash
+# In CI, instead of --off currencies/... --off sep12/... --off sep38/... (x20)
+stellar-toml-lint --preset validator public/.well-known/stellar.toml
+```
+
+A preset is a **baseline, not a policy**: an explicit `--off`, `--warn`, or `--error` on the same
+command line still wins, whatever order the flags appear in, so the one-off deviation never needs a
+new preset.
+
+```bash
+# The bundle says a duplicate validator host is an error; this run disagrees.
+stellar-toml-lint --preset validator --warn validators/duplicate-host stellar.toml
+```
+
+An unknown name lists the available presets and exits `2`:
+
+```console
+$ stellar-toml-lint --preset valdator stellar.toml
+Unknown preset "valdator". Available presets:
+  validator     Validator operator: validator and general file checks, no anchor or currency rules
+  anchor-sep24  SEP-24 anchor: SEP-24, SEP-10, and currency requirements at error
+  issuer        Asset issuer: currency, collateral, and documentation completeness at error
+Did you mean: validator?
+```
+
+### Configuration file
+
+A `.stellartomlrc.json` next to your `stellar.toml` records the project's rule policy once, instead of
+repeating `--off`/`--warn` flags in every workflow. It is discovered by walking up from the linted
+file's directory (from the current directory for stdin and `--domain`), stopping at the filesystem
+root, so a repository-level file covers everything beneath it.
+
+```json
+{
+  "rules": {
+    "general/unknown-field": "off",
+    "currencies/regulated-missing-auth-revocable-flag": "error"
+  },
+  "strict": true,
+  "maxWarnings": 10
+}
+```
+
+`rules` maps rule ids to `off`, `error`, `warning`, or `info`; `strict` and `maxWarnings` mirror
+`--strict` and `--max-warnings`. CLI flags always override the file, and so does `--preset`. A
+malformed file, an unknown top-level field, or an unknown rule id exits `2` — a config that is
+silently ignored is worse than one that fails, because the team believes the policy is recorded.
 
 ### Walking the findings in a terminal
 
@@ -584,6 +623,18 @@ import { createFixtureFetch } from 'stellar-toml-lint';
 const result = await lintDomain('example.com', {}, createFixtureFetch('./ci/fixtures'));
 ```
 
+The [rule presets](#rule-presets) are exported too, so an embedder can hand a role's bundle to
+`lint` the same way the CLI does:
+
+```ts
+import { lint, PRESETS, resolvePreset } from 'stellar-toml-lint';
+
+// What `--preset issuer` applies...
+const bundle = resolvePreset('issuer').rules;
+// ...laid under the caller's own overrides, so an explicit severity still wins.
+const result = lint(source, { rules: { ...bundle, 'general/version': 'off' } });
+```
+
 Every diagnostic carries a stable `rule` id, a `severity`, a dotted `path` to the offending value, a
 source `position`, a link to the relevant part of the spec, and a concrete `suggestion`.
 
@@ -647,10 +698,14 @@ URLs; `ORG_URL` matching the serving domain; attestation documents hosted on you
 and `ORG_GITHUB` as a valid GitHub username or `https://github.com/<username>` profile URL.
 
 **`[[PRINCIPALS]]`** — name and email present and well-formed; hex photo hashes of plausible length.
+**`[[CURRENCIES]]`** — code length and charset, with separate errors for codes over 12 characters
+and non-alphanumeric codes; exactly one of `issuer` or `contract`, both checksum
+validated; the native XLM asset handled as the special case it is; exactly one issuance policy;
 
 **`[[CURRENCIES]]`** — code length and charset; exactly one of `issuer` or `contract`, both checksum
 validated; the native XLM asset handled as the special case it is (including a `display_decimals`
 setting on it, which the protocol makes meaningless, reported as `info`); exactly one issuance policy;
+
 `status` and `anchor_asset_type` enums; `display_decimals` in 0–7; asset-anchored currencies
 requiring a valid `anchor_asset_type` and warning when `anchor_asset` is absent; anchored fiat
 requiring a declared transfer server; SEP-8 regulated assets carrying an approval server, with
@@ -693,6 +748,33 @@ wallet that cannot negotiate exchange rates fails the run instead of at transfer
 `/quote` route is probed too: a 5xx emits `sep38/quote-endpoint-error`, and a 200 that is not a JSON
 object emits `sep38/malformed-quote-response`, while the 400/401/404 a bare unauthenticated GET
 legitimately earns stays silent.
+
+**History publish validation** (with `--check-network`) — each validator `HISTORY` archive is
+checked for the three most recent checkpoints. The audit verifies that `ledger-*.xdr.gz`,
+`transactions-*.xdr.gz`, and `results-*.xdr.gz` are present and non-empty, and compares
+previous-ledger pointers when checkpoint metadata provides them. A missing category emits
+`history/missing-category-archive` (error); an inconsistent hash or pointer emits
+`history/broken-checkpoint-chain` (error). The check uses the injected network transport, so
+`--mock-fixtures` remains hermetic.
+
+**Overlay peer discovery** (with `--check-network --crawl-peers`) — each `VALIDATORS[i].HOST`
+is contacted over TCP and sent a Stellar overlay `GET_PEERS` XDR message. Returned `PEERS`
+records are decoded, deduplicated, and crawled recursively with bounded depth and timeouts. A
+node with no peers emits `overlay/isolated-node-zero-peers` (error); a node with one to five
+peers emits `overlay/low-peer-count` (warning). The raw TCP transport is skipped in
+`--mock-fixtures` mode, which remains a no-network mode.
+
+**Overlay cryptography** (used by the peer and session audits) — the auditor validates RFC 5869
+HKDF derivation, big-endian 4-byte message length framing, monotonic sequence numbers, and
+HMAC authentication tags. A malformed frame or replayed sequence emits
+`overlay/invalid-crypto-framing` (error); a failed MAC emits
+`overlay/mac-authentication-failure` (error).
+
+**DNS integrity** (with `--check-network --verify-dnssec`) — A and AAAA answers are queried from
+Cloudflare (`1.1.1.1`), Google (`8.8.8.8`), and Quad9 (`9.9.9.9`) through their DNS-over-HTTPS
+endpoints. Resolver sets are normalized and compared; disagreement emits
+`security/dns-resolver-divergence` (error), while an explicit unauthenticated response emits
+`security/dnssec-not-enabled` (warning).
 
 The same flag sends browser-shaped `OPTIONS` requests to each declared `WEB_AUTH_ENDPOINT`,
 `TRANSFER_SERVER`, `KYC_SERVER`, and `ANCHOR_QUOTE_SERVER`. The response must allow the requesting

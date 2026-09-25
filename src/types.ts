@@ -95,6 +95,14 @@ export interface LintOptions {
   /** Verify network-dependent account and currency metadata checks. */
   checkNetwork?: boolean;
   /**
+   * Fetch and lint the `toml` pointers referenced by `CURRENCIES` entries.
+   *
+   * Consumes the caller's transport, so a stubbed `fetchImpl` keeps the linked
+   * documents hermetic. Only honoured by `lintDomain`; offline `lint` runs have
+   * no transport to follow a pointer with.
+   */
+  followLinks?: boolean;
+  /**
    * TLS session observed while fetching the file.
    *
    * Set by {@link lintDomain} only, so offline runs leave it undefined and the

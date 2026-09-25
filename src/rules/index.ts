@@ -17,6 +17,10 @@ import { sorobanRules } from '../soroban.js';
 import { sep12Rules } from './sep12-schema.js';
 import { sep6Rules } from '../cross-sep/sep6.js';
 import { corsPreflightRules } from '../network/cors-preflight.js';
+import { overlayCrawlerRules } from '../overlay/crawler-rules.js';
+import { cryptoAuditorRules } from '../overlay/crypto-auditor.js';
+import { historyPublishRules } from '../history/publish-validator.js';
+import { dnsIntegrityRules } from '../security/dns-integrity.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -40,6 +44,10 @@ export const allRules: Rule[] = [
   ...sep12Rules,
   ...sep6Rules,
   ...corsPreflightRules,
+  ...overlayCrawlerRules,
+  ...cryptoAuditorRules,
+  ...historyPublishRules,
+  ...dnsIntegrityRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -62,4 +70,8 @@ export {
   sep12Rules,
   sep6Rules,
   corsPreflightRules,
+  overlayCrawlerRules,
+  cryptoAuditorRules,
+  historyPublishRules,
+  dnsIntegrityRules,
 };
