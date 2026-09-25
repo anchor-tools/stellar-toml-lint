@@ -126,6 +126,7 @@ function titleFor(d: Diagnostic): string | undefined {
       return 'Fix: Normalize NETWORK_PASSPHRASE to the known passphrase';
     case 'documentation/social-handles':
     case 'principals/social-handles':
+    case 'general/invalid-twitter-handle':
       return `Fix: Use bare handle for ${d.path}`;
     case 'documentation/phone-e164':
       return `Fix: Format ${d.path} as E.164`;

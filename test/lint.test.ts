@@ -82,6 +82,7 @@ describe('broken fixture', () => {
     'general/auth-requires-signing-key',
     'general/deprecated-field',
     'general/unknown-field',
+    'general/invalid-twitter-handle',
     'documentation/urls',
     'documentation/emails',
     'documentation/phone-e164',

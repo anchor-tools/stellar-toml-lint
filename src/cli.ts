@@ -14,6 +14,7 @@ import { assertKnownRule, loadConfig } from './config.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
+import { checkCertExpiry } from './network/cert-expiry.js';
 import {
   formatCheckstyle,
   formatGithub,
@@ -30,7 +31,7 @@ import { expandGlob, hasMagic } from './glob.js';
 import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
-import { checkRegulatedIssuerFlags } from './rules/currencies.js';
+import { checkRegulatedIssuerFlags } from './rules/regulated-flags.js';
 import { checkContracts } from './soroban.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
@@ -55,6 +56,12 @@ import { createFixtureFetch } from './mock-fixtures.js';
 import { runLspServer } from './lsp/server.js';
 import { getTomlJsonSchema } from './schema.js';
 import { generateCompletion, isCompletionShell } from './completion.js';
+import { MonitorDaemon } from './monitor/daemon.js';
+import {
+  runMigration,
+  dryRun as dryRunMigration,
+  type MigrationTarget,
+} from './codemod/migrate.js';
 import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
 
 const VERSION = '0.1.0';
@@ -99,6 +106,11 @@ interface Cli {
   policy?: string;
   mockFixtures?: string;
   lsp?: boolean;
+  monitor?: boolean;
+  interval?: number;
+  webhookUrl?: string;
+  migrate?: string;
+  dryRun?: boolean;
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -137,8 +149,8 @@ OPTIONS
       --no-suggestions    Hide diagnostic suggestions in the output
       --health-check      Ping declared endpoint URLs to ensure they are live
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, SEP-8
-                          regulated issuer flags, and ANCHOR_QUOTE_SERVER
-                          against the network
+                          regulated issuer flags, TLS certificate expiry, and
+                          ANCHOR_QUOTE_SERVER against the network
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
@@ -164,15 +176,22 @@ OPTIONS
       --graph-validators  Include validators in diagram
       --graph-color       Color nodes by protocol type
       --policy <file>     Evaluate enterprise policy file (JSON or YAML)
-      --json-schema       Print a JSON Schema (Draft 2020-12) for stellar.toml
-                          to stdout, for editor autocompletion via schema
-                          associations
-      --color / --no-color
-      --list-rules        Print every rule and exit
-      --completion <sh>   Print a shell completion script for bash, zsh, or fish
-                          (e.g. eval "$(stellar-toml-lint --completion zsh)")
-  -v, --version
-  -h, --help
+       --json-schema       Print a JSON Schema (Draft 2020-12) for stellar.toml
+                           to stdout, for editor autocompletion via schema
+                           associations
+        --color / --no-color
+        --list-rules        Print every rule and exit
+        --completion <sh>   Print a shell completion script for bash, zsh, or fish
+                            (e.g. eval "$(stellar-toml-lint --completion zsh)")
+    -v, --version
+    -h, --help
+        --migrate <target>  Run a code migration: sep41 or v2
+        --dry-run           Show migration diff without writing files
+       --monitor           Start a polling daemon that watches a URL for changes
+       --interval <ms>     Polling interval in milliseconds (default 300)
+       --on-change-webhook <url>
+                           POST a JSON diff payload to a webhook when the
+                           monitored URL changes
 
 CONFIG
   .stellartomlrc.json    Project defaults, discovered upward from the linted
@@ -250,13 +269,9 @@ async function main(argv: string[]): Promise<number> {
     // Project defaults from .stellartomlrc.json, overridden by any CLI flag.
     let strict = cli.strict;
     let maxWarnings = cli.maxWarnings;
+    const fetchImpl = cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
 
     try {
-      // Fixture mode replaces the transport for every network-bound check, so a
-      // hermetic run can never reach the internet by accident.
-      const fetchImpl =
-        cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
-
       if (cli.domain && cli.paths.length === 0) {
         const config = await loadConfig(process.cwd());
         strict = strict || config.strict;
@@ -283,6 +298,11 @@ async function main(argv: string[]): Promise<number> {
               : []),
             ...(cli.crawlPeers && cli.mockFixtures === undefined
               ? await checkOverlayPeers(domainResult.parsed, { rules })
+              : []),
+            // A certificate probe opens its own socket rather than going
+            // through the fixture transport, so hermetic runs skip it.
+            ...(cli.mockFixtures === undefined
+              ? await checkCertExpiry(domainResult.parsed, { rules })
               : []),
           ];
           if (networkDiagnostics.length > 0) {
@@ -352,6 +372,10 @@ async function main(argv: string[]): Promise<number> {
                   rules,
                 })),
                 ...(await checkCorsPreflight(fileResult.parsed, fetchImpl, { rules })),
+                // Opens its own sockets, outside the fixture transport.
+                ...(cli.mockFixtures === undefined
+                  ? await checkCertExpiry(fileResult.parsed, { rules })
+                  : []),
                 ...(await checkHistoryPublish(fileResult.parsed, fetchImpl, { rules })),
                 ...(cli.verifyDnssec
                   ? await checkDnsIntegrity(fileResult.parsed, fetchImpl, {
@@ -411,6 +435,33 @@ async function main(argv: string[]): Promise<number> {
     } catch (error) {
       process.stderr.write(`${message(error)}\n`);
       return 2;
+    }
+
+    // Code migration: run before reporting
+    if (cli.migrate) {
+      const target = cli.migrate as MigrationTarget;
+      const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
+      for (const path of paths) {
+        const filePath = path === '-' ? DEFAULT_PATH : path;
+        try {
+          const source = await readFile(filePath, 'utf8');
+          const { diagnostics: migrationDiagnostics, result: migrationResult } = await runMigration(
+            source,
+            target,
+            fetchImpl,
+          );
+          if (!cli.dryRun && migrationResult.applied) {
+            await writeFile(filePath, migrationResult.source);
+          }
+          const diffOutput = await dryRunMigration(source, target, fetchImpl);
+          process.stdout.write(diffOutput);
+          for (const diag of migrationDiagnostics) {
+            process.stderr.write(`${diag.rule}: ${diag.message}\n`);
+          }
+        } catch (error) {
+          process.stderr.write(`Migration failed for ${filePath}: ${(error as Error).message}\n`);
+        }
+      }
     }
 
     const firstResult = results[0]?.result;
@@ -562,6 +613,20 @@ async function main(argv: string[]): Promise<number> {
   };
 
   const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
+  if (cli.monitor) {
+    const daemon = new MonitorDaemon({
+      url: cli.domain !== undefined ? `https://${cli.domain}/.well-known/stellar.toml` : paths[0]!,
+      interval: cli.interval,
+      webhookUrl: cli.webhookUrl,
+    });
+    await daemon.start();
+    return new Promise<number>(() => {
+      process.on('SIGINT', () => {
+        daemon.stop();
+        process.exit(0);
+      });
+    });
+  }
   if (cli.watch) {
     return watchFiles(cli.domain ? [] : paths, cli, color, runLint);
   }
@@ -884,6 +949,39 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--no-color':
         cli.color = false;
+        break;
+
+      case '--monitor':
+        cli.monitor = true;
+        break;
+
+      case '--interval': {
+        const value = Number(requireValue(argv, ++i, arg));
+        if (!Number.isInteger(value) || value < 1) {
+          throw new Error('--interval expects a positive integer.');
+        }
+        cli.interval = value;
+        break;
+      }
+
+      case '--on-change-webhook':
+        cli.webhookUrl = requireValue(argv, ++i, arg);
+        if (!isSupportedWebhookUrl(cli.webhookUrl)) {
+          throw new Error('--on-change-webhook expects an http or https URL.');
+        }
+        break;
+
+      case '--migrate': {
+        const value = requireValue(argv, ++i, arg);
+        if (value !== 'sep41' && value !== 'v2') {
+          throw new Error(`Unknown migration target "${value}". Expected sep41 or v2.`);
+        }
+        cli.migrate = value;
+        break;
+      }
+
+      case '--dry-run':
+        cli.dryRun = true;
         break;
 
       default:

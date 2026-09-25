@@ -19,7 +19,8 @@ export type RuleCategory =
   | 'validators'
   | 'network'
   | 'policy'
-  | 'sep12';
+  | 'sep12'
+  | 'codemod';
 
 /** A 1-based position in the source file. */
 export interface Position {

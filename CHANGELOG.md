@@ -9,6 +9,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `general/invalid-twitter-handle` (warning) validates `[DOCUMENTATION].ORG_TWITTER` as a bare
+  Twitter/X handle (`^[A-Za-z0-9_]{1,15}$`). A leading `@` or a pasted `twitter.com`/`x.com` profile
+  URL is reported with the exact bare handle to use instead and carries a quick-fix that applies it,
+  while an over-long or out-of-alphabet handle says which part of the grammar it breaks. The field
+  moves out of `documentation/social-handles`, which now covers `ORG_KEYBASE` only, so one problem
+  produces exactly one diagnostic (#137).
+- `security/tls-cert-expired` (error) and `security/tls-cert-expiring-soon` (warning) under
+  `--check-network`: every HTTPS endpoint the file declares is presented with one short TLS
+  handshake and its peer certificate's `valid_to` is read, so an already-expired certificate fails
+  the run and one with fewer than 30 days left warns in time to renew it. Endpoints sharing a host
+  are probed once, fixture-backed (`--mock-fixtures`) runs never open a socket, and an
+  unobservable certificate is skipped rather than reported (#134).
+
 - `--fail-on <error|warning|info>` sets the severity threshold that makes the CLI exit `1`, so CI
   can fail on warnings without turning every info into a build failure — or the other way round.
   Errors keep failing at every threshold; `--fail-on` takes precedence over `--strict`'s implicit
@@ -133,11 +146,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - SEP-8 regulated issuer flags under `--check-network`: for every `[[CURRENCIES]]` entry marked
   `regulated=true` with a classic `issuer`, the linter reads the issuer account's flags from Horizon.
-  A missing `AUTH_REQUIRED` flag emits `currencies/regulated-missing-auth-required-flag` (error), a
+  A missing `AUTH_REQUIRED` flag emits `currencies/regulated-asset-missing-auth-required` (error), a
   missing `AUTH_REVOCABLE` flag emits `currencies/regulated-missing-auth-revocable-flag` (warning),
   and a Horizon outage or missing account degrades to
   `currencies/regulated-issuer-flags-unverifiable` (warning) so the run still fails cleanly on
-  strengthenable-to-fatal findings without depending on network availability.
+  strengthenable-to-fatal findings without depending on network availability. The audit lives in
+  its own module, `src/rules/regulated-flags.ts`, so the network-bound currency checks stay
+  separable from the offline ones (#136).
 - Soroban contract liveliness under `--check-contracts`: `src/soroban.ts` queries the Soroban RPC's
   `getLedgerEntries` for the contract instance and its WASM behind every `[[CURRENCIES]].contract`
   and `WEB_AUTH_CONTRACT_ID`, comparing `liveUntilLedgerSeq` against `latestLedger`. Within ~a day of
