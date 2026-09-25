@@ -15,6 +15,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checklist marking each requirement as met or missing. `--readiness --format json` emits the same
   report as JSON, and `calculateReadiness`/`formatReadiness`/`formatReadinessJson` are exported for
   embedders. The run stays offline and the exit code still follows the diagnostics (#28).
+- `textDocument/hover` over LSP (#36): hovering a key or a table header in `stellar.toml` shows a
+  Markdown tooltip with the qualified name (`[[CURRENCIES]].display_decimals`), the field's type
+  (`integer (0-7)`), the SEP-1 description, the permitted values where the spec enumerates them
+  (`live`, `dead`, `test`, `private`), and a link to the anchoring section of SEP-1. Documentation
+  lives in `src/spec.ts` beside the `KNOWN_*` sets the linter checks against, with a test asserting
+  the two never drift apart; whitespace, comments, and keys SEP-1 does not define show nothing.
 - `network/wrong-path` (error) under `--domain`: when `/.well-known/stellar.toml` returns HTTP 404,
   the linter probes `https://<host>/stellar.toml` once. If the root path serves the file, the
   diagnostic says so and points at the SEP-1 location; if the root probe also fails, behaviour is
@@ -26,6 +32,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `network/passphrase` (near miss), `documentation/social-handles`, `principals/social-handles`,
   and `documentation/phone-e164`. Diagnostics that cannot be corrected safely (parse errors,
   missing tables) offer no action. Shared fix engine lives in `src/fix.ts` for `--fix` (#9) to reuse.
+- Glob patterns in the positional file arguments (`stellar-toml-lint "configs/**/*.toml"`), expanded
+  by the linter rather than the shell so the same quoted argument works on Linux, macOS, and
+  Windows, where PowerShell and CMD do not expand globs at all. `*`, `?`, `[...]`, and `**` are
+  supported; a pattern that matches nothing reports itself and exits `2`; hidden entries are skipped
+  unless named. Multi-file runs now close with a summary line — `Checked 4 files: 3 passed, 1 failed
+(2 errors, 3 warnings)` — appended by the text reporter only, with the exit code still `1` if any
+  file failed and `0` if they all passed (#18).
 
 - Text output follows the [NO_COLOR standard](https://no-color.org) explicitly: any non-empty
   `NO_COLOR` disables colour, an empty value counts as unset, and only an explicit `--color`
@@ -57,6 +70,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   carries a `buy_assets` array of valid price objects, and probes `/quote` for 5xx or non-JSON 200
   answers — so a quote server returning 500s or malformed JSON fails the run instead of surfacing
   later as wallets unable to calculate transaction amounts.
+
+### Fixed
+
+- `--lsp` actually serves the protocol now. `main()` called the line-based `lspMain()`, which
+  registered a stdin listener and then fell through to `process.exit`, so the process printed
+  nothing and exited before a client could send a message. The CLI runs the framed stdio server
+  (`src/lsp/server.ts`) instead — diagnostics, quick-fix code actions, and hover — and the
+  unreachable server behind it is gone.
 
 ### Changed
 

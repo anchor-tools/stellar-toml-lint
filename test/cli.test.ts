@@ -230,3 +230,65 @@ describe('cli --json-schema', () => {
     }
   });
 });
+
+// ── globs and the multi-file summary ───────────────────────────────────────
+
+describe('glob patterns and multi-file summaries', () => {
+  /** Windows prints paths with backslashes; the assertions read either way. */
+  const forward = (s: string): string => s.replace(/\\/g, '/');
+
+  it('expands a quoted glob to every file it matches', async () => {
+    const { code, stdout } = await cli([fixture('tenants/*/stellar.toml')]);
+    const out = forward(stdout);
+
+    expect(code).toBe(0);
+    expect(out).toContain('tenants/acme/stellar.toml');
+    expect(out).toContain('tenants/globex/stellar.toml');
+    expect(out).toContain('Checked 2 files: 2 passed, 0 failed (0 errors, 0 warnings)');
+  });
+
+  it('expands a recursive glob across directories', async () => {
+    const { stdout } = await cli([fixture('**/*.toml')]);
+    expect(stdout).toMatch(/Checked \d+ files: \d+ passed, 1 failed/);
+  });
+
+  it('exits 1 when one file fails and the others pass', async () => {
+    const { code, stdout } = await cli([fixture('*.toml')]);
+
+    expect(code).toBe(1);
+    expect(stdout).toContain('Checked 3 files: 2 passed, 1 failed');
+    // Per-file reporting is still there — the summary only appends to it.
+    expect(stdout).toContain('broken.toml');
+    expect(stdout).toContain('No SEP-1 issues found');
+  });
+
+  it('exits 0 when every file passes', async () => {
+    const { code, stdout } = await cli([fixture('tenants/*/*.toml')]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('Checked 2 files: 2 passed, 0 failed');
+  });
+
+  it('keeps single-file output free of the summary', async () => {
+    const { stdout } = await cli([fixture('valid.toml')]);
+    expect(stdout).not.toContain('Checked');
+  });
+
+  it('keeps machine-readable formats machine-readable', async () => {
+    const { stdout } = await cli([fixture('tenants/*/*.toml'), '-f', 'json']);
+
+    // The summary belongs to the text reporter; prose appended to JSON, SARIF,
+    // or XML would break the parser it exists for.
+    expect(stdout).not.toContain('Checked');
+    expect(stdout).not.toContain('passed');
+  });
+
+  it('exits 2 with a clear message when a glob matches nothing', async () => {
+    const { code, stderr } = await cli([fixture('no-such-*.toml')]);
+
+    expect(code).toBe(2);
+    expect(stderr).toContain('No files matched');
+    expect(stderr).toContain('no-such-*.toml');
+    expect(stderr).toContain('quote the pattern');
+  });
+});

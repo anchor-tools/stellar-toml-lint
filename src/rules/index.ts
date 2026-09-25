@@ -4,6 +4,7 @@ import { documentationRules } from './documentation.js';
 import { principalRules } from './principals.js';
 import { currencyRules } from './currencies.js';
 import { validatorRules } from './validators.js';
+import { validatorDedupRules } from './validator-dedup.js';
 import { securityRules } from './security.js';
 
 import { emailMxRule } from './email-mx.js';
@@ -22,6 +23,7 @@ export const allRules: Rule[] = [
   ...currencyRules,
   ...maxDecimalsRules,
   ...validatorRules,
+  ...validatorDedupRules,
   ...securityRules,
 
   emailMxRule,
@@ -42,6 +44,7 @@ export {
   currencyRules,
   maxDecimalsRules,
   validatorRules,
+  validatorDedupRules,
   securityRules,
   horizonRules,
   sep38Rules,

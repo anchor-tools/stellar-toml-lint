@@ -1,0 +1,66 @@
+version: '1.0'
+name: 'enterprise-compliance'
+description: 'Enterprise compliance policy for Stellar anchors'
+rules:
+  - id: 'kyc-required'
+    description: 'All assets must have KYC enabled'
+    severity: 'error'
+    match:
+      jsonPath: '$.CURRENCIES[*]'
+      objectMatch:
+        regulated: true
+    message: 'Regulated asset must have KYC server configured'
+    suggestion: 'Add KYC_SERVER to SERVERS section'
+  - id: 'min-validators'
+    description: 'Minimum 3 validator nodes required'
+    severity: 'error'
+    match:
+      jsonPath: '$.VALIDATORS'
+      objectMatch: {}
+    message: 'At least 3 validators are required'
+    suggestion: 'Add more validators to the VALIDATORS array'
+  - id: 'no-self-signed-certs'
+    description: 'Disallow self-signed certificates'
+    severity: 'error'
+    match:
+      jsonPath: '$.SERVERS[*].TLS_CERT'
+      objectMatch: {}
+    message: 'Self-signed certificates are not allowed'
+    suggestion: 'Use a certificate from a trusted CA'
+  - id: 'multi-sig-issuers'
+    description: 'Require multi-sig for all issuers'
+    severity: 'warning'
+    match:
+      jsonPath: '$.CURRENCIES[*].issuer'
+      objectMatch: {}
+    message: 'Issuer should use multi-sig configuration'
+    suggestion: 'Configure multi-sig for the issuing account'
+  - id: 'sep10-requires-signing-key'
+    description: 'SEP-10 requires SIGNING_KEY'
+    severity: 'error'
+    match:
+      allOf:
+        - jsonPath: '$.SERVERS[*].WEB_AUTH_ENDPOINT'
+        - not:
+            jsonPath: '$.SIGNING_KEY'
+    message: 'WEB_AUTH_ENDPOINT (SEP-10) requires SIGNING_KEY'
+    suggestion: 'Add SIGNING_KEY to the stellar.toml'
+  - id: 'asset-display-decimals'
+    description: 'display_decimals must be between 0 and 7'
+    severity: 'error'
+    match:
+      jsonPath: '$.CURRENCIES[*].display_decimals'
+      objectMatch: {}
+    message: 'display_decimals must be in range 0-7'
+    suggestion: 'Set display_decimals to a value between 0 and 7'
+  - id: 'org-documentation-complete'
+    description: 'Organization documentation must be complete'
+    severity: 'warning'
+    match:
+      allOf:
+        - jsonPath: '$.DOCUMENTATION.ORG_NAME'
+        - jsonPath: '$.DOCUMENTATION.ORG_URL'
+        - jsonPath: '$.DOCUMENTATION.ORG_OFFICIAL_EMAIL'
+        - jsonPath: '$.DOCUMENTATION.ORG_GITHUB'
+    message: 'Organization documentation is incomplete'
+    suggestion: 'Add missing DOCUMENTATION fields'

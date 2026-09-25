@@ -1,22 +1,26 @@
 /**
  * Language Server Protocol server over stdio — `stellar-toml-lint --lsp`.
  *
- * Speaks only what editors need to show diagnostics and offer #42 quick fixes:
- * `initialize`, open/change/close sync, `publishDiagnostics`, and
- * `textDocument/codeAction`. Framing is the standard `Content-Length` header;
- * payloads are UTF-8 JSON. Deliberately no `vscode-languageserver` dependency
- * (package.json freezes runtime deps to two packages).
+ * Speaks only what editors need to show diagnostics, offer #42 quick fixes, and
+ * explain a field under the cursor: `initialize`, open/change/close sync,
+ * `publishDiagnostics`, `textDocument/codeAction`, and `textDocument/hover`.
+ * Framing is the standard `Content-Length` header; payloads are UTF-8 JSON.
+ * Deliberately no `vscode-languageserver` dependency (package.json freezes
+ * runtime deps to two packages).
  */
 import process from 'node:process';
 import { lint } from '../lint.js';
 import type { Diagnostic } from '../types.js';
 import { codeActionsFor, toLspDiagnostic } from './code-actions.js';
 import type { LspCodeAction } from './code-actions.js';
+import { getHoverInfo } from './hover.js';
+import type { Hover } from './hover.js';
 import type {
   CodeActionParams,
   DidChangeTextDocumentParams,
   DidCloseTextDocumentParams,
   DidOpenTextDocumentParams,
+  HoverParams,
   LspInitializeResult,
   RpcMessage,
 } from './protocol.js';
@@ -59,6 +63,7 @@ export async function runLspServer(
             capabilities: {
               textDocumentSync: { openClose: true, change: SYNC_FULL },
               codeActionProvider: { codeActionKinds: ['quickfix'] },
+              hoverProvider: true,
             },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
           };
@@ -78,6 +83,13 @@ export async function runLspServer(
             lint(source).diagnostics,
             params.range,
           );
+          return { jsonrpc: '2.0', id, result };
+        }
+        case 'textDocument/hover': {
+          const params = message.params as HoverParams;
+          const source = documents.get(params.textDocument.uri);
+          if (source === undefined) return { jsonrpc: '2.0', id, result: null };
+          const result: Hover | null = getHoverInfo(source, params.position);
           return { jsonrpc: '2.0', id, result };
         }
         default:

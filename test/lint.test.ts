@@ -111,7 +111,9 @@ describe('broken fixture', () => {
   it('gives every diagnostic a message and a rule id', () => {
     for (const d of result.diagnostics) {
       expect(d.message.length).toBeGreaterThan(0);
-      expect(d.rule).toMatch(/^[a-z]+\/[a-z0-9-]+$/);
+      // Namespaces may contain digits (sep12/...), so the first segment is
+      // [a-z][a-z0-9]* rather than [a-z]+.
+      expect(d.rule).toMatch(/^[a-z][a-z0-9]*\/[a-z0-9-]+$/);
     }
   });
 
