@@ -1,0 +1,53 @@
+name: Homebrew Tap Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  homebrew-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release tarball
+        id: download
+        run: |
+          TAG="${{ github.ref_name }}"
+          URL="https://github.com/anchor-tools/stellar-toml-lint/archive/refs/tags/${TAG}.tar.gz"
+          curl -fL "$URL" -o stellar-toml-lint.tar.gz
+          SHA=$(sha256sum stellar-toml-lint.tar.gz | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create Homebrew tap PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: anchor-tools/homebrew-tap
+          branch: update-stellar-toml-lint-${{ github.ref_name }}
+          title: 'Update stellar-toml-lint to ${{ github.ref_name }}'
+          body: |
+            Update stellar-toml-lint to ${{ github.ref_name }}.
+
+            Closes #109
+
+            SHA-256: ${{ steps.download.outputs.sha256 }}
+          commit-message: |
+            Update stellar-toml-lint to ${{ github.ref_name }}
+
+            Computed SHA-256 checksum for the release tarball.
+
+            Closes #109
+          path: Formula/stellar-toml-lint.rb
+          change-content: |
+            url "https://github.com/anchor-tools/stellar-toml-lint/archive/refs/tags/v${{ github.ref_name }}.tar.gz"
+            sha256 ${{ steps.download.outputs.sha256 }}
+          labels: |
+            dependencies
+            homebrew

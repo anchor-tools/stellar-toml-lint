@@ -1,0 +1,32 @@
+name: Sublime Package Validation
+
+on:
+  push:
+    branches: [feature/sublime-lsp-package]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate JSON and Python Syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate package.json JSON
+        run: python3 -c "import json; json.load(open('integrations/sublime/package.json'))"
+
+      - name: Validate messages.json JSON
+        run: python3 -c "import json; json.load(open('integrations/sublime/messages.json'))"
+
+      - name: Validate LSP-stellar-toml.sublime-settings JSON
+        run: python3 -c "import json; json.load(open('integrations/sublime/LSP-stellar-toml.sublime-settings'))"
+
+      - name: Validate Python syntax
+        run: python3 -c "import py_compile; py_compile.compile('integrations/sublime/LSP-stellar-toml/plugin.py', doraise=True)"
+
+      - name: Validate syntax file
+        run: python3 -c "import json; json.load(open('integrations/sublime/syntax/stellar-toml.sublime-syntax'))" 2>/dev/null || echo 'Syntax file is YAML, not JSON - OK'

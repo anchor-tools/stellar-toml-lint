@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<idea-plugin>
+    <id>com.stellar.toml.lint.intellij</id>
+    <name>Stellar TOML Lint</name>
+    <vendor email="anchortools23@gmail.com" url="https://github.com/anchor-tools/stellar-toml-lint">anchor-tools</vendor>
+
+    <description>
+        <![CDATA[
+        Official JetBrains IDE plugin for IntelliJ and WebStorm with real-time SEP-1 linting.
+        <br><br>
+        Validates stellar.toml files against SEP-1 directly in the editor with inline diagnostics,
+        quick-fix intentions, and hover documentation.
+        ]]>
+    </description>
+
+    <change-notes>
+        <![CDATA[
+        <p>Initial release with SEP-1 linting support.</p>
+        ]]>
+    </change-notes>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileType
+            name="Stellar TOML"
+            implementationClass="com.stellar.toml.lint.intellij.StellarTomlFileType"
+            extensions="toml"
+            fieldName="INSTANCE"
+            language="Stellar TOML"
+            icon="/icons/stellar-logo.svg"/>
+        <fileTypeFactory implementation="com.stellar.toml.lint.intellij.StellarTomlFileTypeFactory"/>
+
+        <projectService serviceImplementation="com.stellar.toml.lint.intellij.LspServerService"/>
+    </extensions>
+
+    <application-components>
+        <component>
+            <implementation-class>com.stellar.toml.lint.intellij.LspServerService</implementation-class>
+        </component>
+    </application-components>
+
+    <actions>
+        <action id="StellarTomlLint.Reanalyze" class="com.stellar.toml.lint.intellij.ReanalyzeAction"
+                text="Re-analyze stellar.toml" description="Re-run the SEP-1 linter">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+    </actions>
+
+    <xpathExtendedContextEvents>
+        <xpath extended="true" context="file-viewer"/>
+    </xpathExtendedContextEvents>
+</idea-plugin>

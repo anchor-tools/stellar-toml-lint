@@ -1,0 +1,23 @@
+{
+  "name": "stellar-toml-syntax",
+  "displayName": "Stellar TOML Syntax",
+  "description": "Syntax highlighting for stellar.toml files.",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "grammars": [
+      {
+        "scopeName": "stellar.toml.injection",
+        "path": "../../syntaxes/stellar-toml.tmLanguage.json",
+        "injectTo": [
+          "source.toml"
+        ]
+      }
+    ]
+  }
+}

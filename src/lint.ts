@@ -15,6 +15,8 @@ import { SourceIndex } from './source-index.js';
 import { MAX_FILE_BYTES, isString } from './predicates.js';
 import { specUrl } from './spec.js';
 import { probeTls, type TlsProbe } from './tls.js';
+import { checkOrgUrl } from './rules/org-url-check.js';
+import { checkSep6 } from './cross-sep/sep6.js';
 
 /** Severity ordering used for sorting and for `--max-warnings` style counts. */
 const SEVERITY_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -146,20 +148,45 @@ export async function lintDomain(
   }
 
   if (!response.ok) {
-    return finalize(
-      [
-        {
-          rule: 'network/unreachable',
-          severity: 'error',
-          category: 'network',
-          message: `${url} returned HTTP ${response.status}`,
-          helpUri: specUrl('specification'),
-          suggestion: 'SEP-1 requires the file at exactly /.well-known/stellar.toml.',
-        },
-      ],
-      options,
-      undefined,
-    );
+    const failed: Diagnostic[] = [
+      {
+        rule: 'network/unreachable',
+        severity: 'error',
+        category: 'network',
+        message: `${url} returned HTTP ${response.status}`,
+        helpUri: specUrl('specification'),
+        suggestion: 'SEP-1 requires the file at exactly /.well-known/stellar.toml.',
+      },
+    ];
+
+    // A 404 is often a deploy mistake rather than a missing file: the anchor
+    // published stellar.toml at the site root. One bounded probe of that path
+    // turns a dead-end status code into a fix the maintainer can act on.
+    if (response.status === 404) {
+      const rootUrl = `https://${host}/stellar.toml`;
+      try {
+        const root = await fetchImpl(rootUrl, {
+          redirect: 'follow',
+          headers: { Origin: 'https://stellar-toml-lint.invalid' },
+        });
+        if (root.ok) {
+          failed.push({
+            rule: 'network/wrong-path',
+            severity: 'error',
+            category: 'network',
+            message: `Found stellar.toml at ${rootUrl}, but SEP-1 requires /.well-known/stellar.toml`,
+            helpUri: specUrl('specification'),
+            suggestion:
+              'Move the file to /.well-known/stellar.toml — wallets only discover it there.',
+          });
+        }
+      } catch {
+        // The root probe is a hint, not a requirement: a transport failure
+        // here leaves today's network/unreachable behaviour unchanged.
+      }
+    }
+
+    return finalize(failed, options, undefined);
   }
 
   // Anchors sign SEP-10 challenges over this same host, so deprecated protocol
@@ -212,7 +239,29 @@ export async function lintDomain(
     domain: options.domain ?? host,
     ...(tls ? { tls } : {}),
   });
-  return finalize([...diagnostics, ...fileResult.diagnostics], options, fileResult.parsed);
+
+  // The identity anchor itself must also be alive: probe ORG_URL so a dead
+  // endpoint is caught here rather than by the next wallet that vetts the
+  // anchor. Same transport as the file fetch, so tests can stub both.
+  let orgUrlDiagnostics: Diagnostic[] = [];
+  if (fileResult.parsed) {
+    orgUrlDiagnostics = await checkOrgUrl(fileResult.parsed, fetchImpl, {
+      rules: options.rules,
+    });
+  }
+
+  // SEP-6 is the reason many anchors name a TRANSFER_SERVER at all; a wallet
+  // that discovers the endpoint here but finds no /info learns that too late.
+  let sep6Diagnostics: Diagnostic[] = [];
+  if (fileResult.parsed) {
+    sep6Diagnostics = await checkSep6(fileResult.parsed, fetchImpl, { rules: options.rules });
+  }
+
+  return finalize(
+    [...diagnostics, ...fileResult.diagnostics, ...orgUrlDiagnostics, ...sep6Diagnostics],
+    options,
+    fileResult.parsed,
+  );
 }
 
 /**

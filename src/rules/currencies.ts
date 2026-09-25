@@ -1,6 +1,8 @@
-import type { Rule, RuleContext } from '../types.js';
+import type { Diagnostic, Rule, RuleContext, RuleOverrides, Severity } from '../types.js';
 import { displayDecimalsRules } from './display-decimals-audit.js';
 import { anchoredAssetRules } from './anchored-asset-rules.js';
+import { assetCodeFormatRules } from './asset-code-format.js';
+import { checkIssuerFlags, horizonUrlFor } from '../network-checks.js';
 import {
   ANCHOR_ASSET_TYPES,
   CURRENCY_STATUSES,
@@ -65,10 +67,185 @@ function eachCurrency(
 }
 
 /** Rules covering the `[[CURRENCIES]]` list. */
+
+const SEP8_SPEC_URL =
+  'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0008.md';
+
+const REGULATED_FLAG_REQUIRED_RULE = 'currencies/regulated-missing-auth-required-flag';
+const REGULATED_FLAG_REVOCABLE_RULE = 'currencies/regulated-missing-auth-revocable-flag';
+const REGULATED_FLAGS_UNVERIFIABLE_RULE = 'currencies/regulated-issuer-flags-unverifiable';
+
+/**
+ * The rule objects behind the SEP-8 issuer-flags audit.
+ *
+ * Like the other network-bound rules, `run()` is empty: the diagnostics are
+ * emitted by the async {@link checkRegulatedIssuerFlags}, and these entries
+ * exist so `--list-rules` and `--off`/`--warn`/`--error` know the ids.
+ */
+export const regulatedFlagRules: Rule[] = [
+  {
+    id: REGULATED_FLAG_REQUIRED_RULE,
+    category: 'currencies',
+    severity: 'error',
+    description:
+      'A SEP-8 regulated issuer must set AUTH_REQUIRED_FLAG so the issuer controls who may hold the asset',
+    run() {},
+  },
+  {
+    id: REGULATED_FLAG_REVOCABLE_RULE,
+    category: 'currencies',
+    severity: 'warning',
+    description:
+      'A SEP-8 regulated issuer should set AUTH_REVOCABLE_FLAG so unauthorized holders can be frozen',
+    run() {},
+  },
+  {
+    id: REGULATED_FLAGS_UNVERIFIABLE_RULE,
+    category: 'currencies',
+    severity: 'warning',
+    description: 'A SEP-8 issuer authorization flags could not be verified against Horizon',
+    run() {},
+  },
+];
+
+function severityFor(
+  rule: string,
+  fallback: 'error' | 'warning',
+  rules?: RuleOverrides,
+): Severity | undefined {
+  const override = rules?.[rule];
+  if (override === 'off') return undefined;
+  return override === 'error' || override === 'warning' ? override : fallback;
+}
+
+function finding(
+  rule: string,
+  fallback: 'error' | 'warning',
+  detail: string,
+  path: string,
+  helpUri: string,
+  suggestion: string,
+  rules: RuleOverrides | undefined,
+): Diagnostic[] {
+  const severity = severityFor(rule, fallback, rules);
+  if (severity === undefined) return [];
+
+  return [
+    {
+      rule,
+      severity,
+      category: 'currencies',
+      message: detail,
+      path,
+      helpUri,
+      suggestion,
+    },
+  ];
+}
+
+/**
+ * Audits the issuer accounts behind every `regulated=true` classic currency.
+ *
+ * SEP-8 requires the issuer to have set `AUTH_REQUIRED` and `AUTH_REVOCABLE`.
+ * Each entry is checked once against Horizon; when flags cannot be obtained
+ * (outage, missing account) the entry degrades to a warning rather than
+ * failing the run.
+ */
+export async function checkRegulatedIssuerFlags(
+  doc: Record<string, unknown>,
+  fetchImpl: typeof fetch = fetch,
+  options: { rules?: RuleOverrides } = {},
+): Promise<Diagnostic[]> {
+  const horizonUrl = horizonUrlFor(
+    typeof doc.NETWORK_PASSPHRASE === 'string' ? doc.NETWORK_PASSPHRASE : undefined,
+  );
+  const diagnostics: Diagnostic[] = [];
+
+  for (const [index, entry] of currenciesOf(doc).entries()) {
+    const issuer = entry.issuer;
+    if (
+      isTomlPointer(entry) ||
+      entry.regulated !== true ||
+      !isString(issuer) ||
+      !isAccountId(issuer)
+    ) {
+      continue;
+    }
+
+    const path = `CURRENCIES[${index}].issuer`;
+
+    const flags = await checkIssuerFlags(issuer, horizonUrl, fetchImpl);
+    if (flags === undefined) {
+      diagnostics.push(
+        ...finding(
+          REGULATED_FLAGS_UNVERIFIABLE_RULE,
+          'warning',
+          `Could not verify the authorization flags of SEP-8 issuer ${issuer} on Horizon`,
+          path,
+          SEP8_SPEC_URL,
+          'Confirm the issuer account exists on the network and that Horizon is reachable.',
+          options.rules,
+        ),
+      );
+      continue;
+    }
+
+    if (!flags.authRequired) {
+      diagnostics.push(
+        ...finding(
+          REGULATED_FLAG_REQUIRED_RULE,
+          'error',
+          `SEP-8 issuer ${issuer} does not set AUTH_REQUIRED_FLAG on the network`,
+          path,
+          SEP8_SPEC_URL,
+          'SEP-8 requires the issuer to set AUTH_REQUIRED so only authorized accounts can hold the asset.',
+          options.rules,
+        ),
+      );
+    }
+
+    if (!flags.authRevocable) {
+      diagnostics.push(
+        ...finding(
+          REGULATED_FLAG_REVOCABLE_RULE,
+          'warning',
+          `SEP-8 issuer ${issuer} does not set AUTH_REVOCABLE_FLAG on the network`,
+          path,
+          SEP8_SPEC_URL,
+          'SEP-8 requires AUTH_REVOCABLE so the issuer can freeze accounts that violate its terms.',
+          options.rules,
+        ),
+      );
+    }
+  }
+
+  return diagnostics;
+}
+
+/**
+ * The Soroban contract ids declared in `[[CURRENCIES]]`, with the path each
+ * came from, for network checks. Native assets and `toml` pointers are not
+ * contracts this file owns, so they are skipped.
+ */
+export function contractIdsOf(doc: Record<string, unknown>): { id: string; path: string }[] {
+  const contracts: { id: string; path: string }[] = [];
+  currenciesOf(doc).forEach((entry, index) => {
+    if (isTomlPointer(entry) || isNativeAsset(entry)) return;
+    if (isString(entry.contract) && isContractId(entry.contract)) {
+      contracts.push({ id: entry.contract, path: `CURRENCIES[${index}].contract` });
+    }
+  });
+  return contracts;
+}
+
+/** Rules covering the `[[CURRENCIES]]` list. */
 export const currencyRules: Rule[] = [
   ...displayDecimalsRules,
 
   ...anchoredAssetRules,
+  ...assetCodeFormatRules,
+
+  ...regulatedFlagRules,
 
   {
     id: 'currencies/entries-are-tables',
@@ -110,7 +287,7 @@ export const currencyRules: Rule[] = [
     id: 'currencies/code',
     category: 'currencies',
     severity: 'error',
-    description: 'Each currency needs a code (or code_template) of at most 12 characters',
+    description: 'Each currency needs a code or code_template',
     run(ctx) {
       eachCurrency(ctx, (entry, path) => {
         const code = entry.code;
@@ -143,7 +320,7 @@ export const currencyRules: Rule[] = [
               position: ctx.locate(`${path}.${field}`),
               helpUri: specUrl('currency-documentation'),
             });
-          } else if (value.length > 12) {
+          } else if (field === 'code_template' && value.length > 12) {
             ctx.report({
               rule: 'currencies/code',
               category: 'currencies',
@@ -151,17 +328,6 @@ export const currencyRules: Rule[] = [
               path: `${path}.${field}`,
               position: ctx.locate(`${path}.${field}`),
               helpUri: specUrl('currency-documentation'),
-            });
-          } else if (field === 'code' && !/^[A-Za-z0-9]+$/.test(value)) {
-            // Stellar asset codes are alphanumeric; `?` belongs to templates.
-            ctx.report({
-              rule: 'currencies/code',
-              category: 'currencies',
-              message: `${path}.code "${value}" contains characters that are not valid in a Stellar asset code`,
-              path: `${path}.code`,
-              position: ctx.locate(`${path}.code`),
-              helpUri: specUrl('currency-documentation'),
-              suggestion: 'Asset codes are alphanumeric. Use code_template for wildcards.',
             });
           }
         }
@@ -380,11 +546,28 @@ export const currencyRules: Rule[] = [
     id: 'currencies/display-decimals',
     category: 'currencies',
     severity: 'error',
-    description: 'display_decimals must be an integer from 0 to 7',
+    description:
+      'display_decimals must be an integer from 0 to 7, and has no meaning on the native asset',
     run(ctx) {
       eachCurrency(ctx, (entry, path) => {
         const value = entry.display_decimals;
         if (value === undefined) return;
+
+        // XLM's scale is fixed at 7 decimals by the protocol; no issuer can
+        // override it, so a value here is meaningless and can mislead wallets
+        // into rendering the native asset at the wrong scale.
+        if (isNativeAsset(entry)) {
+          ctx.report({
+            rule: 'currencies/display-decimals',
+            category: 'currencies',
+            severity: 'info',
+            message: `${path} sets display_decimals on the native asset, but the protocol fixes XLM at 7 decimals`,
+            path: `${path}.display_decimals`,
+            position: ctx.locate(`${path}.display_decimals`),
+            helpUri: specUrl('currency-documentation'),
+            suggestion: 'Remove display_decimals from the native XLM entry.',
+          });
+        }
 
         if (!isInteger(value) || value < 0 || value > 7) {
           ctx.report({
@@ -550,6 +733,72 @@ export const currencyRules: Rule[] = [
             position: ctx.locate(path),
             helpUri: specUrl('currency-documentation'),
             suggestion: 'Holders need to know what backs the token and how to redeem it.',
+          });
+        }
+      });
+    },
+  },
+
+  {
+    id: 'currencies/anchored-fiat-needs-transfer-server',
+    category: 'currencies',
+    severity: 'warning',
+    description: 'Anchored fiat assets need a transfer server to be redeemed',
+    run(ctx) {
+      const hasTransferServer =
+        ctx.doc.TRANSFER_SERVER !== undefined || ctx.doc.TRANSFER_SERVER_SEP0024 !== undefined;
+      if (hasTransferServer) return;
+
+      eachCurrency(ctx, (entry, path) => {
+        if (entry.is_asset_anchored !== true || entry.anchor_asset_type !== 'fiat') return;
+
+        ctx.report({
+          rule: 'currencies/anchored-fiat-needs-transfer-server',
+          category: 'currencies',
+          message: `${path} is anchored fiat but no transfer server is declared in the file`,
+          path,
+          position: ctx.locate(path),
+          helpUri: specUrl('currency-documentation'),
+          suggestion:
+            'Add TRANSFER_SERVER or TRANSFER_SERVER_SEP0024 so clients know where to deposit and redeem the asset.',
+        });
+      });
+    },
+  },
+
+  {
+    id: 'currencies/regulated-invalid-target',
+    category: 'currencies',
+    severity: 'error',
+    description:
+      'regulated = true applies only to classic issued assets, not native XLM or contracts',
+    run(ctx) {
+      eachCurrency(ctx, (entry, path) => {
+        if (entry.regulated !== true) return;
+
+        if (isNativeAsset(entry)) {
+          ctx.report({
+            rule: 'currencies/regulated-invalid-target',
+            category: 'currencies',
+            message: `${path} marks the native asset as regulated, but SEP-8 applies only to classic issued assets`,
+            path: `${path}.regulated`,
+            position: ctx.locate(`${path}.regulated`),
+            helpUri: specUrl('currency-documentation'),
+            suggestion: 'Remove regulated from the native XLM entry — no issuer controls it.',
+          });
+          return;
+        }
+
+        if (entry.contract !== undefined) {
+          ctx.report({
+            rule: 'currencies/regulated-invalid-target',
+            category: 'currencies',
+            message: `${path} marks a Soroban contract token as regulated, but SEP-8 applies only to classic Stellar assets`,
+            path: `${path}.regulated`,
+            position: ctx.locate(`${path}.regulated`),
+            helpUri: specUrl('currency-documentation'),
+            suggestion:
+              'Remove regulated, or issue the asset as a classic Stellar account with issuer authorization flags.',
           });
         }
       });

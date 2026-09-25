@@ -1,0 +1,84 @@
+# A fully-populated, SEP-1 clean Stellar Info File.
+# Every rule in the linter should stay silent on this file — it doubles as the
+# regression test for false positives.
+
+VERSION="2.7.0"
+NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"
+
+FEDERATION_SERVER="https://api.example.com/federation"
+TRANSFER_SERVER="https://api.example.com/sep6"
+TRANSFER_SERVER_SEP0024="https://api.example.com/sep24"
+KYC_SERVER="https://api.example.com/kyc"
+WEB_AUTH_ENDPOINT="https://api.example.com/auth"
+DIRECT_PAYMENT_SERVER="https://api.example.com/sep31"
+ANCHOR_QUOTE_SERVER="https://api.example.com/sep38"
+SIGNING_KEY="GCM5YCQPFIW4ICBPPSKACX56ZTGG6KZ7A53JGUWWAFRZW462YFIK4BZS"
+HORIZON_URL="https://horizon.example.com"
+
+ACCOUNTS=[
+"GC7T6T56DX23PT7Q6WGCTIJT5O6TP6SJ47RP73JCA3ISLVCCVMGHNSDI",
+"GBXHQL5SHDWJJ2WQXJZOVQBVVIFXLFQQFIKVWMU6XA7YZVMVMB5APS5D"
+]
+
+[DOCUMENTATION]
+ORG_NAME="Example Anchor Ltd"
+ORG_DBA="Example Anchor"
+ORG_URL="https://example.com"
+ORG_LOGO="https://example.com/logo.png"
+ORG_DESCRIPTION="A regulated on- and off-ramp between the Stellar network and local currency."
+ORG_PHYSICAL_ADDRESS="1 Example Street, Springfield, IL 62701, United States"
+ORG_PHONE_NUMBER="+14155552671"
+ORG_KEYBASE="exampleanchor"
+ORG_TWITTER="exampleanchor"
+ORG_GITHUB="exampleanchor"
+ORG_OFFICIAL_EMAIL="partners@example.com"
+ORG_SUPPORT_EMAIL="support@example.com"
+
+[[PRINCIPALS]]
+name="Jane Jedidiah Johnson"
+email="jane@example.com"
+keybase="crypto_jane"
+twitter="crypto_jane"
+github="crypto_jane"
+id_photo_hash="be688838ca8686e5c90689bf2ab585cef1137c999b48c70b92f67a5c34dc1569"
+verification_photo_hash="016ba8c4cfde65af99cb5fa8b8a37e2eb73f481b3ae34991666df2e04feb6c03"
+
+[[CURRENCIES]]
+code="USDX"
+issuer="GAZ3V7WDE3TADF6UQWU3TAWQPVSW6ZV3NCCW6A7UN6HUDI5WXPMLQDFY"
+display_decimals=2
+name="Example US Dollar"
+desc="One USDX is redeemable for one United States dollar held in reserve."
+conditions="Redemption requires a verified account under SEP-12."
+image="https://example.com/usdx.png"
+is_unlimited=true
+is_asset_anchored=true
+anchor_asset_type="fiat"
+anchor_asset="USD"
+redemption_instructions="Use SEP-24 withdraw, or contact support@example.com."
+attestation_of_reserve="https://example.com/reserves/latest.pdf"
+status="live"
+
+[[CURRENCIES]]
+code="EXPL"
+contract="CACTZSQPCQSSZ5YG3PI3N7WO6JEERKEUHTPILKB4MBANF2K4D2UHKDDU"
+display_decimals=7
+name="Example Points"
+desc="A non-redeemable loyalty token issued as a SEP-41 custom token contract."
+fixed_number=1000000
+is_asset_anchored=false
+status="live"
+
+[[VALIDATORS]]
+ALIAS="example-us"
+DISPLAY_NAME="Example United States"
+HOST="core-us.example.com:11625"
+PUBLIC_KEY="GC7T6T56DX23PT7Q6WGCTIJT5O6TP6SJ47RP73JCA3ISLVCCVMGHNSDI"
+HISTORY="https://history.example.com/prd/core-live/core_live_001/"
+
+[[VALIDATORS]]
+ALIAS="example-eu"
+DISPLAY_NAME="Example Europe"
+HOST="core-eu.example.com:11625"
+PUBLIC_KEY="GBXHQL5SHDWJJ2WQXJZOVQBVVIFXLFQQFIKVWMU6XA7YZVMVMB5APS5D"
+HISTORY="https://history.example.com/prd/core-live/core_live_002/"
