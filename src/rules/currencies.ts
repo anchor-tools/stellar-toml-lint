@@ -2,6 +2,7 @@ import type { Diagnostic, Rule, RuleContext, RuleOverrides } from '../types.js';
 import { displayDecimalsRules } from './display-decimals-audit.js';
 import { anchoredAssetRules } from './anchored-asset-rules.js';
 import { assetCodeFormatRules } from './asset-code-format.js';
+import { verifyCollateralSignature } from '../crypto/collateral.js';
 import {
   ANCHOR_ASSET_TYPES,
   CURRENCY_STATUSES,
@@ -213,6 +214,58 @@ export const sep41MetadataRules: Rule[] = [
     run() {},
   },
 ];
+
+/**
+ * Verifies each collateral signature against its address and message, and
+ * reports the ones whose verdict is `wanted`. Lists that are not string lists
+ * are left to `currencies/collateral-consistency`; a length mismatch there
+ * still leaves the aligned prefix checkable, so that much is verified.
+ */
+function eachCollateralSignature(
+  ctx: RuleContext,
+  wanted: 'invalid' | 'malformed',
+  describe: (
+    path: string,
+    address: string,
+    messagePath: string,
+  ) => { rule: string; message: string; suggestion: string },
+): void {
+  eachCurrency(ctx, (entry, base) => {
+    const addresses = entry.collateral_addresses;
+    const messages = entry.collateral_address_messages;
+    const signatures = entry.collateral_address_signatures;
+    if (!isStringArray(addresses) || !isStringArray(messages) || !isStringArray(signatures)) {
+      return;
+    }
+
+    const count = Math.min(addresses.length, messages.length, signatures.length);
+    for (let i = 0; i < count; i++) {
+      const address = addresses[i] as string;
+      const verdict = verifyCollateralSignature(
+        address,
+        messages[i] as string,
+        signatures[i] as string,
+      );
+      if (verdict !== wanted) continue;
+
+      const field = `${base}.collateral_address_signatures`;
+      const { rule, message, suggestion } = describe(
+        `${field}[${i}]`,
+        address,
+        `${base}.collateral_address_messages[${i}]`,
+      );
+      ctx.report({
+        rule,
+        category: 'currencies',
+        message,
+        path: field,
+        position: ctx.locate(field),
+        helpUri: specUrl('currency-documentation'),
+        suggestion,
+      });
+    }
+  });
+}
 
 /** Rules covering the `[[CURRENCIES]]` list. */
 export const currencyRules: Rule[] = [
@@ -839,6 +892,34 @@ export const currencyRules: Rule[] = [
           }
         }
       });
+    },
+  },
+  {
+    id: 'currencies/collateral-signature-malformed',
+    category: 'currencies',
+    severity: 'error',
+    description: 'Each collateral signature must decode to a signature of the right length',
+    run(ctx) {
+      eachCollateralSignature(ctx, 'malformed', (path, address) => ({
+        rule: 'currencies/collateral-signature-malformed',
+        message: `${path} cannot be decoded as a signature for ${address}`,
+        suggestion:
+          'Publish the raw signature base64-encoded (Ethereum signatures may also be 0x hex), 64 bytes for Stellar and 65 for Bitcoin or Ethereum.',
+      }));
+    },
+  },
+  {
+    id: 'currencies/collateral-signature-invalid',
+    category: 'currencies',
+    severity: 'error',
+    description: 'Each collateral signature must verify against its address and message',
+    run(ctx) {
+      eachCollateralSignature(ctx, 'invalid', (path, address, messagePath) => ({
+        rule: 'currencies/collateral-signature-invalid',
+        message: `${path} is not a valid signature of ${messagePath} by ${address}`,
+        suggestion:
+          'Re-sign the message with the collateral address key and publish the new signature in the same position.',
+      }));
     },
   },
 

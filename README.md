@@ -61,7 +61,8 @@ npx stellar-toml-lint                      # or just run it
 brew install anchor-tools/tap/stellar-toml-lint
 ```
 
-Requires Node.js 20 or newer. Two runtime dependencies: `smol-toml` and `@stellar/stellar-base`.
+Requires Node.js 20 or newer. Runtime dependencies: `smol-toml`, `@stellar/stellar-base`, and the
+pure-JS `@noble/curves` and `@noble/hashes` that `@stellar/stellar-base` already installs.
 Commit a `.stellartomlrc.json` next to your `stellar.toml` to record the project's rule policy once
 instead of repeating `--off`/`--warn` flags in every workflow (see [Usage](#usage)).
 
@@ -775,6 +776,21 @@ requiring a declared transfer server; SEP-8 regulated assets carrying an approva
 `regulated = true` rejected on the native asset and on Soroban contract tokens; collateral address,
 message, and signature lists of equal length; `toml` pointer entries carrying nothing else;
 duplicate assets.
+
+Collateral signatures are verified cryptographically, offline, not just counted. For each position
+`i`, `collateral_address_signatures[i]` must be the signature of `collateral_address_messages[i]` by
+`collateral_addresses[i]`:
+
+| Address                           | Scheme                                                                           |
+| --------------------------------- | -------------------------------------------------------------------------------- |
+| Stellar `G...`                    | Ed25519 over the raw message, or over the SEP-53 `Stellar Signed Message` digest |
+| Bitcoin `1...`, `3...`, `bc1q...` | BIP-137 compact secp256k1 message signature (Electrum segwit headers too)        |
+| Ethereum `0x...`                  | EIP-191 `personal_sign`; the signature may be base64 or `0x` hex                 |
+
+A signature that does not verify emits `currencies/collateral-signature-invalid` (error); one that is
+not base64 (or `0x` hex for Ethereum), or decodes to the wrong length, emits
+`currencies/collateral-signature-malformed` (error). Address families the linter cannot verify, such
+as taproot `bc1p...` (BIP-322), are skipped rather than reported.
 
 Asset-anchored currencies (`is_asset_anchored = true`) must use one of `fiat`, `crypto`, `stock`,
 `bond`, `commodity`, `real_estate`, or `other` for `anchor_asset_type`. Missing or invalid values

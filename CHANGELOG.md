@@ -9,6 +9,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `currencies/collateral-signature-invalid` (error) and `currencies/collateral-signature-malformed`
+  (error): each `collateral_address_signatures[i]` is now verified, offline, as the signature of
+  `collateral_address_messages[i]` by `collateral_addresses[i]` — Ed25519 (raw or SEP-53) for
+  Stellar `G...` accounts, BIP-137 secp256k1 for Bitcoin `1...`/`3...`/`bc1q...` addresses, and
+  EIP-191 recovery for Ethereum `0x...` addresses. `@noble/curves` and `@noble/hashes`, already
+  installed by `@stellar/stellar-base`, are now declared as direct dependencies (#33).
 - `soroban/symbol-mismatch` (error), `soroban/decimals-mismatch` (error), and
   `soroban/name-mismatch` (warning) under `--check-contracts`: the SEP-41 `symbol`, `decimal`, and
   `name` each currency contract keeps in its instance storage are read over `getLedgerEntries` and
