@@ -20,6 +20,7 @@ import { overlayCrawlerRules } from '../overlay/crawler-rules.js';
 import { cryptoAuditorRules } from '../overlay/crypto-auditor.js';
 import { historyPublishRules } from '../history/publish-validator.js';
 import { dnsIntegrityRules } from '../security/dns-integrity.js';
+import { certExpiryRules } from '../network/cert-expiry.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -46,6 +47,7 @@ export const allRules: Rule[] = [
   ...cryptoAuditorRules,
   ...historyPublishRules,
   ...dnsIntegrityRules,
+  ...certExpiryRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -71,4 +73,5 @@ export {
   cryptoAuditorRules,
   historyPublishRules,
   dnsIntegrityRules,
+  certExpiryRules,
 };

@@ -9,6 +9,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `security/tls-cert-expired` (error) and `security/tls-cert-expiring-soon` (warning) under
+  `--check-network`: every HTTPS endpoint the file declares is presented with one short TLS
+  handshake and its peer certificate's `valid_to` is read, so an already-expired certificate fails
+  the run and one with fewer than 30 days left warns in time to renew it. Endpoints sharing a host
+  are probed once, fixture-backed (`--mock-fixtures`) runs never open a socket, and an
+  unobservable certificate is skipped rather than reported (#134).
+
 - Follow and lint `toml` currency pointers. A `[[CURRENCIES]]` entry that points at a separate
   document via `toml` now has that document fetched and linted as part of the same run, so an
   anchor cannot pass with a broken linked asset. Enabled by `--follow-links` and implied by
