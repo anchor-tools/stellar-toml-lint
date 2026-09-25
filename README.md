@@ -79,6 +79,9 @@ stellar-toml-lint public/.well-known/stellar.toml --domain example.com
 
 # Read from stdin
 cat stellar.toml | stellar-toml-lint -
+
+# Compare two versions for breaking changes (exits 1 if any are breaking)
+stellar-toml-lint --diff main-stellar.toml pr-stellar.toml
 ```
 
 Rule policy discovered from a config file needs no flags at all:
@@ -233,6 +236,27 @@ A worker wrapper is published as `stellar-toml-lint/worker`. Send `{ type: 'lint
 One capability does not survive the move: a page cannot observe a TLS session, so the `security/*` audit is skipped in the browser and reported as not observed rather than guessed. `browserCapabilities` says the same thing at runtime, for callers that branch on it.
 
 Both entry points ship their own typings (`dist/browser.d.ts`, `dist/worker.d.ts`), and a test walks the static import graph from them so a `node:` import cannot creep back onto that path.
+
+### Diff mode for PR review
+
+A `stellar.toml` can be perfectly valid against SEP-1 and still break every wallet that already
+trusts its assets. `--diff` compares two versions and labels each change:
+
+| Label      | Meaning                                                                                                                             | Exit code |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `BREAKING` | Removed/changed issuer, contract, issuance rules, validator `PUBLIC_KEY`, `SIGNING_KEY`, removed SEP endpoint, live→non-live status | 1         |
+| `WARNING`  | Material but non-fatal edits (e.g. `ORG_DESCRIPTION`, endpoint URL change)                                                          | 0         |
+| `INFO`     | Purely additive (new currency, new validator, new endpoint)                                                                         | 0         |
+
+```bash
+# Fail the PR job if the proposed file would break existing integrations
+stellar-toml-lint --diff origin/main:public/.well-known/stellar.toml \
+                         public/.well-known/stellar.toml
+```
+
+Programmatic equivalent: `compareToml(baseSource, targetSource)` returns
+`TomlDifference[]` with `{ path, message, severity, breaking }`; `formatDiff` renders the
+same report the CLI prints.
 
 ## In CI
 
