@@ -120,14 +120,16 @@ export const corsPreflightRules: Rule[] = [
     id: CORS_PREFLIGHT_FAILED,
     category: 'network',
     severity: 'error',
-    description: 'Service endpoints must answer OPTIONS requests with valid CORS origin and methods',
+    description:
+      'Service endpoints must answer OPTIONS requests with valid CORS origin and methods',
     run() {},
   },
   {
     id: MISSING_ALLOW_HEADERS,
     category: 'network',
     severity: 'warning',
-    description: 'Service endpoints should return Access-Control-Allow-Headers for browser pre-flight requests',
+    description:
+      'Service endpoints should return Access-Control-Allow-Headers for browser pre-flight requests',
     run() {},
   },
 ];
