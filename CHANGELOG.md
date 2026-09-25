@@ -9,6 +9,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--readiness` (alias `--score`) grades a file the way a wallet listing review would: a 0–100
+  total and a letter grade across three weighted pillars — Protocol & Syntax Compliance (40),
+  Organization Identity & Trust (30), and Asset & Anchor Transparency (30) — plus an actionable
+  checklist marking each requirement as met or missing. `--readiness --format json` emits the same
+  report as JSON, and `calculateReadiness`/`formatReadiness`/`formatReadinessJson` are exported for
+  embedders. The run stays offline and the exit code still follows the diagnostics (#28).
 - `general/deprecated-field` warns about legacy `AUTH_SERVER` and `DEPOSIT_SERVER` fields,
   unencrypted `FEDERATION_SERVER` values, and documentation keys placed outside `[DOCUMENTATION]`,
   with replacement syntax for SEP-10, SEP-12, SEP-6, and SEP-24 (#126).

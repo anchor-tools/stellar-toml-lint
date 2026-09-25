@@ -19,6 +19,14 @@ import {
   formatGithub,
   formatHtml,
   formatJson,
+  formatJson,
+  formatJunit,
+  formatReadiness,
+  formatReadinessJson,
+  formatSarif,
+  formatText,
+} from './reporters.js';
+import { calculateReadiness } from './readiness.js';
   formatMarkdown,
   formatNdjson,
   formatJunit,
@@ -64,6 +72,7 @@ interface Cli {
   paths: string[];
   domain?: string;
   format: Format;
+  readiness?: boolean;
   healthCheck?: boolean;
   strict: boolean;
   watch?: boolean;
@@ -107,6 +116,15 @@ USAGE
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
                           ORG_URL same-domain checks. Fetches unless files are given.
+  -f, --format <fmt>      text (default), json, sarif, github, or junit
+      --readiness         Score wallet listing readiness (0-100) with a letter
+                          grade and an actionable checklist. Also --score.
+                          Combine with -f json for machine-readable output
+  -f, --format <fmt>      text (default), json, sarif, github, junit, or html
+  -f, --format <fmt>      text (default), json, ndjson, sarif, github, or junit
+  -f, --format <fmt>      text (default), json, ndjson, sarif, github, junit,
+                          or checkstyle
+  -f, --format <fmt>      text (default), json, ndjson, sarif, github, junit, html, or checkstyle
   -f, --format <fmt>      text (default), json, ndjson, sarif, github, junit, html,
                           checkstyle, or markdown (for GitHub step summaries)
       --strict            Treat warnings as errors
@@ -172,6 +190,9 @@ EXAMPLES
   stellar-toml-lint "accounts/*/stellar.toml"
   stellar-toml-lint --domain example.com --strict
   stellar-toml-lint -f sarif > results.sarif
+  stellar-toml-lint public/.well-known/stellar.toml --readiness
+  stellar-toml-lint public/.well-known/stellar.toml --readiness -f json
+  stellar-toml-lint public/.well-known/stellar.toml --check-network \\\
   stellar-toml-lint --graph mermaid > diagram.mmd
   stellar-toml-lint --graph dot --graph-contracts > diagram.dot
   stellar-toml-lint --policy policy.yaml public/.well-known/stellar.toml
@@ -187,6 +208,14 @@ async function main(argv: string[]): Promise<number> {
     cli = parsed;
   } catch (error) {
     process.stderr.write(`${message(error)}\n\nRun with --help for usage.\n`);
+    return 2;
+  }
+
+  // Readiness draws its own report, so it only has a text and a JSON form.
+  if (cli.readiness && cli.format !== 'text' && cli.format !== 'json') {
+    process.stderr.write(
+      `--readiness supports --format text or --format json; drop --format ${cli.format}.\n\nRun with --help for usage.\n`,
+    );
     return 2;
   }
 
@@ -447,6 +476,30 @@ async function main(argv: string[]): Promise<number> {
         ...(cli.webhookDiscord !== undefined ? { discord: cli.webhookDiscord } : {}),
       });
 
+  // A dashboard written into a pipe or a file would corrupt the output it is
+  // meant to replace, so anything that is not a terminal keeps the text report.
+  // Readiness renders its own report too, so the dashboard steps aside for it.
+  const dashboard =
+    cli.interactive === true && cli.readiness !== true && supportsDashboard(process.stdout);
+
+  if (!cli.exportApConfig && dashboard) {
+    await runDashboard(
+      results,
+      { stdin: process.stdin, stdout: process.stdout },
+      { color, ...(cli.quiet ? { filter: 'error' as const } : {}) },
+    );
+  } else if (!cli.exportApConfig) {
+    for (const { name, result } of results) {
+      if (cli.readiness) {
+        process.stdout.write(renderReadiness(result, name, cli, color));
+        continue;
+      }
+
+      const filtered = cli.quiet
+        ? { ...result, diagnostics: result.diagnostics.filter((d) => d.severity === 'error') }
+        : result;
+
+      process.stdout.write(render(filtered, name, cli, color));
       for (const delivery of deliveries) {
         if (delivery.ok) continue;
         // The exit code stays tied to the diagnostics: a broken alert endpoint
@@ -542,6 +595,14 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
   }
 }
 
+/** Formats the wallet listing readiness report, in text or JSON. */
+function renderReadiness(result: LintResult, name: string, cli: Cli, color: boolean): string {
+  const report = calculateReadiness(result);
+  return cli.format === 'json'
+    ? formatReadinessJson(report, name)
+    : formatReadiness(report, { filename: name, color });
+}
+
 /** Combines per-file verdicts, including the `--max-warnings` threshold. */
 function verdict(
   results: { result: LintResult }[],
@@ -634,6 +695,9 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.strict = true;
         break;
 
+      case '--readiness':
+      case '--score':
+        cli.readiness = true;
       case '-w':
       case '--watch':
         cli.watch = true;

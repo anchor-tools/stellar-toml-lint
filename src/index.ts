@@ -18,6 +18,18 @@ export {
   formatSarif,
   formatGithub,
   formatJunit,
+  formatReadiness,
+  formatReadinessJson,
+} from './reporters.js';
+export type { TextReporterOptions, ReadinessReporterOptions } from './reporters.js';
+export { calculateReadiness, gradeFor } from './readiness.js';
+export type {
+  ReadinessCheck,
+  ReadinessGrade,
+  ReadinessPillar,
+  ReadinessPillarId,
+  ReadinessReport,
+} from './readiness.js';
   formatHtml,
   formatCheckstyle,
   formatMarkdown,

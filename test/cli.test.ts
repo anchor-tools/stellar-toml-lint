@@ -169,6 +169,25 @@ describe('cli', () => {
     expect(new Set(severities)).toEqual(new Set(['error']));
   });
 
+  it('scores listing readiness for a valid file', async () => {
+    const { code, stdout } = await cli([fixture('valid.toml'), '--readiness']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('Listing Readiness Checklist');
+    expect(stdout).toMatch(/Grade [A-F]/);
+  });
+
+  it('emits parseable readiness JSON', async () => {
+    const { stdout } = await cli([fixture('valid.toml'), '--readiness', '-f', 'json']);
+    const report = JSON.parse(stdout);
+    expect(report.score).toBeGreaterThan(0);
+    expect(['A+', 'A', 'B', 'C', 'D', 'F']).toContain(report.grade);
+    expect(report.pillars).toHaveLength(3);
+  });
+
+  it('rejects --readiness with a format it cannot render', async () => {
+    const { code, stderr } = await cli([fixture('valid.toml'), '--readiness', '-f', 'sarif']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--readiness supports');
   it('serves network checks from --mock-fixtures', async () => {
     const { code, stdout } = await cli([
       fixture('network/offline-anchor.toml'),
