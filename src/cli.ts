@@ -156,8 +156,10 @@ OPTIONS
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
                           (implied by --domain)
-      --check-contracts   Verify Soroban contract and WASM TTL liveliness
-      --soroban-rpc <url> Soroban RPC endpoint to use with --check-contracts
+      --check-contracts   Verify that Soroban contracts are deployed on chain, that
+                          their WASM is not evicted, and that their TTL is live
+      --rpc-url <url>     Soroban RPC endpoint to use with --check-contracts
+                          (defaults from NETWORK_PASSPHRASE; alias --soroban-rpc)
       --mock-fixtures <dir>
                           Serve network checks from recorded JSON responses under
                           <dir> instead of the network. A URL with no fixture
@@ -837,6 +839,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.checkContracts = true;
         break;
 
+      case '--rpc-url':
       case '--soroban-rpc':
         cli.sorobanRpc = requireValue(argv, ++i, arg);
         break;

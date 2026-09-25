@@ -9,6 +9,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `soroban/contract-not-found` (error) and `soroban/contract-evicted` (error) under
+  `--check-contracts`: every `[[CURRENCIES]].contract` and `WEB_AUTH_CONTRACT_ID` is looked up with
+  the Soroban RPC's `getLedgerEntries`, so a contract that was never deployed, or whose WASM has been
+  archived, is reported against the field that declared it instead of as a generic expiry. Every RPC
+  request is bounded by a 10-second timeout and degrades to `soroban/contract-ttl-unavailable`
+  (warning); `--rpc-url` is the new name for `--soroban-rpc`, which stays as an alias (#31).
 - `general/invalid-twitter-handle` (warning) validates `[DOCUMENTATION].ORG_TWITTER` as a bare
   Twitter/X handle (`^[A-Za-z0-9_]{1,15}$`). A leading `@` or a pasted `twitter.com`/`x.com` profile
   URL is reported with the exact bare handle to use instead and carries a quick-fix that applies it,

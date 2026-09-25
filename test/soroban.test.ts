@@ -6,6 +6,7 @@ import {
   checkContracts,
   specFunctionNames,
   sorobanRules,
+  verifyContractOnChain,
   verifySep45ContractInterface,
 } from '../src/soroban.js';
 
@@ -137,6 +138,8 @@ function rpcMock(options: RpcOptions): { fetchImpl: typeof fetch; calls: () => n
 const EXPIRING_RULE = 'soroban/contract-ttl-expiring-soon';
 const EXPIRED_RULE = 'soroban/contract-expired';
 const UNAVAILABLE_RULE = 'soroban/contract-ttl-unavailable';
+const NOT_FOUND_RULE = 'soroban/contract-not-found';
+const EVICTED_RULE = 'soroban/contract-evicted';
 
 describe('Soroban contract TTL audit', () => {
   it('is silent while the TTL is ample', async () => {
@@ -178,16 +181,16 @@ describe('Soroban contract TTL audit', () => {
     );
   });
 
-  it('errors when the instance entry is missing (archived)', async () => {
+  it('reports a contract with no instance entry as not found', async () => {
     const { fetchImpl } = rpcMock({ latestLedger: 100_000, missingInstance: true });
 
     const diagnostics = await checkContractTtl(CONTRACT, RPC, fetchImpl);
     expect(diagnostics).toContainEqual(
-      expect.objectContaining({ rule: EXPIRED_RULE, severity: 'error' }),
+      expect.objectContaining({ rule: NOT_FOUND_RULE, severity: 'error' }),
     );
   });
 
-  it('errors when the WASM entry is missing (archived)', async () => {
+  it('reports a contract whose WASM entry is missing as evicted', async () => {
     const { fetchImpl } = rpcMock({
       latestLedger: 100_000,
       instanceLive: 200_000,
@@ -197,7 +200,7 @@ describe('Soroban contract TTL audit', () => {
 
     const diagnostics = await checkContractTtl(CONTRACT, RPC, fetchImpl);
     expect(diagnostics).toContainEqual(
-      expect.objectContaining({ rule: EXPIRED_RULE, severity: 'error' }),
+      expect.objectContaining({ rule: EVICTED_RULE, severity: 'error' }),
     );
   });
 
@@ -242,8 +245,105 @@ describe('Soroban contract TTL audit', () => {
       { id: EXPIRING_RULE, severity: 'warning' },
       { id: EXPIRED_RULE, severity: 'error' },
       { id: UNAVAILABLE_RULE, severity: 'warning' },
+      { id: NOT_FOUND_RULE, severity: 'error' },
+      { id: EVICTED_RULE, severity: 'error' },
       { id: 'soroban/invalid-auth-contract-interface', severity: 'error' },
     ]);
+  });
+});
+
+describe('verifyContractOnChain', () => {
+  it('is clean for a deployed contract whose instance and WASM exist', async () => {
+    const { fetchImpl, calls } = rpcMock({
+      latestLedger: 100_000,
+      instanceLive: 200_000,
+      codeLive: 200_000,
+    });
+
+    expect(await verifyContractOnChain(CONTRACT, RPC, fetchImpl)).toEqual([]);
+    expect(calls()).toBe(2);
+  });
+
+  it("ignores TTL, which is checkContractTtl's concern", async () => {
+    const { fetchImpl } = rpcMock({
+      latestLedger: 100_000,
+      instanceLive: 100_010,
+      codeLive: 200_000,
+    });
+
+    expect(await verifyContractOnChain(CONTRACT, RPC, fetchImpl)).toEqual([]);
+  });
+
+  it('reports soroban/contract-not-found for a missing instance entry', async () => {
+    const { fetchImpl, calls } = rpcMock({ latestLedger: 100_000, missingInstance: true });
+
+    const diagnostics = await verifyContractOnChain(CONTRACT, RPC, fetchImpl, {
+      path: 'CURRENCIES[0].contract',
+    });
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        rule: NOT_FOUND_RULE,
+        severity: 'error',
+        category: 'network',
+        path: 'CURRENCIES[0].contract',
+      }),
+    ]);
+    expect(diagnostics[0]?.message).toContain(CONTRACT);
+    // No WASM lookup without an instance to name it.
+    expect(calls()).toBe(1);
+  });
+
+  it('reports soroban/contract-evicted when the WASM is gone', async () => {
+    const { fetchImpl } = rpcMock({
+      latestLedger: 100_000,
+      instanceLive: 200_000,
+      codeLive: 200_000,
+      missingCode: true,
+    });
+
+    expect(await verifyContractOnChain(CONTRACT, RPC, fetchImpl)).toEqual([
+      expect.objectContaining({ rule: EVICTED_RULE, severity: 'error' }),
+    ]);
+  });
+
+  it('degrades an RPC timeout to a warning instead of throwing', async () => {
+    const fetchImpl = (async () => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    }) as unknown as typeof fetch;
+
+    const diagnostics = await verifyContractOnChain(CONTRACT, RPC, fetchImpl);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ rule: UNAVAILABLE_RULE, severity: 'warning' }),
+    ]);
+  });
+
+  it('bounds every RPC request with an abort signal', async () => {
+    let signal: AbortSignal | null | undefined;
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      signal = init?.signal;
+      throw new Error('offline');
+    }) as unknown as typeof fetch;
+
+    await verifyContractOnChain(CONTRACT, RPC, fetchImpl);
+    expect(signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('degrades a non-200 RPC answer to a warning', async () => {
+    const fetchImpl = (async () =>
+      new Response('bad gateway', { status: 502 })) as unknown as typeof fetch;
+
+    expect(await verifyContractOnChain(CONTRACT, RPC, fetchImpl)).toEqual([
+      expect.objectContaining({ rule: UNAVAILABLE_RULE, severity: 'warning' }),
+    ]);
+  });
+
+  it('honours --off on the not-found rule', async () => {
+    const { fetchImpl } = rpcMock({ latestLedger: 100_000, missingInstance: true });
+
+    const diagnostics = await verifyContractOnChain(CONTRACT, RPC, fetchImpl, {
+      rules: { [NOT_FOUND_RULE]: 'off' },
+    });
+    expect(diagnostics).toEqual([]);
   });
 });
 
@@ -274,6 +374,17 @@ describe('checkContracts', () => {
     // lookups, plus the auth contract's instance and code reads for the SEP-45
     // interface check.
     expect(calls()).toBe(6);
+  });
+
+  it('points each not-found finding at the field that declared the contract', async () => {
+    const parsed = lint(contractsSource()).parsed ?? {};
+    const { fetchImpl } = rpcMock({ latestLedger: 100_000, missingInstance: true });
+
+    const diagnostics = await checkContracts(parsed, fetchImpl);
+    expect(diagnostics.map((d) => [d.rule, d.path])).toEqual([
+      [NOT_FOUND_RULE, 'CURRENCIES[0].contract'],
+      [NOT_FOUND_RULE, 'WEB_AUTH_CONTRACT_ID'],
+    ]);
   });
 
   it('is silent with no contracts declared', async () => {

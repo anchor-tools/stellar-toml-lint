@@ -123,8 +123,8 @@ it was before.
 | `--crawl-peers`             | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                                         |
 | `--verify-dnssec`           | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                                          |
 | `--follow-links`            | Fetch and lint the `toml` pointers in `CURRENCIES` (implied by `--domain`)                                                                      |
-| `--check-contracts`         | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                                           |
-| `--soroban-rpc <url>`       | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                                               |
+| `--check-contracts`         | Verify Soroban contracts exist on chain, their WASM is not evicted, their TTL, and the SEP-45 auth interface                                    |
+| `--rpc-url <url>`           | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`; `--soroban-rpc` is an alias)                                  |
 | `--mock-fixtures <dir>`     | Serve network checks from recorded JSON fixtures under `<dir>`, never the network                                                               |
 | `--webhook-slack <url>`     | POST a Slack Block Kit card with the run summary                                                                                                |
 | `--webhook-discord <url>`   | POST a Discord embed with the run summary                                                                                                       |
@@ -870,14 +870,26 @@ control who may hold the asset and to be able to freeze offenders. A Horizon out
 account, or unparseable response degrades to the `currencies/regulated-issuer-flags-unverifiable`
 warning instead of failing the run.
 
-**Contracts** (with `--check-contracts`) — queries the Soroban RPC for the contract instance and
-WASM behind every `[[CURRENCIES]].contract` and `WEB_AUTH_CONTRACT_ID`, comparing each
-`liveUntilLedgerSeq` against the network's `latestLedger`. When the effective TTL is within roughly a
-day of expiry it emits `soroban/contract-ttl-expiring-soon` (warning); past that point, or when the
-instance or WASM entry is absent entirely, it emits `soroban/contract-expired` (error). An
-unreachable or malformed RPC degrades to `soroban/contract-ttl-unavailable` (warning). The RPC
-endpoint is derived from `NETWORK_PASSPHRASE` (Public, Testnet, or Futurenet) and can be overridden
-with `--soroban-rpc`.
+**Contracts** (with `--check-contracts`) — a checksummed `C...` address says nothing about whether
+a contract was ever deployed there, so the linter queries the Soroban RPC's `getLedgerEntries` for
+the contract instance and WASM behind every `[[CURRENCIES]].contract` and `WEB_AUTH_CONTRACT_ID`:
+
+| Rule                                 | Severity | Fires when                                                         |
+| ------------------------------------ | -------- | ------------------------------------------------------------------ |
+| `soroban/contract-not-found`         | error    | The contract has no instance entry on the ledger                   |
+| `soroban/contract-evicted`           | error    | The instance exists but its WASM code entry was archived/evicted   |
+| `soroban/contract-expired`           | error    | The instance or WASM `liveUntilLedgerSeq` is behind `latestLedger` |
+| `soroban/contract-ttl-expiring-soon` | warning  | The effective TTL runs out within roughly a day                    |
+| `soroban/contract-ttl-unavailable`   | warning  | The RPC was unreachable, timed out, or answered malformed JSON     |
+
+An RPC outage never fails the run: every request is bounded by a 10-second timeout and degrades to
+the `soroban/contract-ttl-unavailable` warning. The RPC endpoint is derived from `NETWORK_PASSPHRASE`
+(`https://soroban-rpc.mainnet.stellar.org` for Public, `https://soroban-testnet.stellar.org` for
+Testnet, or Futurenet) and can be overridden with `--rpc-url`:
+
+```bash
+stellar-toml-lint stellar.toml --check-contracts --rpc-url https://my-rpc.example.com
+```
 
 For `WEB_AUTH_CONTRACT_ID`, the deployed WASM's `contractspecv0` custom section is read and its
 exported functions checked. A contract whose spec declares functions but not `web_auth_verify`

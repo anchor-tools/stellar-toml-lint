@@ -97,6 +97,15 @@ describe('cli', () => {
     expect(accepted.code).toBe(0);
   });
 
+  it('documents --rpc-url and rejects it without a value', async () => {
+    const help = await cli(['--help']);
+    expect(help.stdout).toContain('--rpc-url');
+
+    const { code, stderr } = await cli(['--check-contracts', '--rpc-url']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('expects a value');
+  });
+
   it('rejects --soroban-rpc without a value', async () => {
     const { code, stderr } = await cli(['--check-contracts', '--soroban-rpc']);
     expect(code).toBe(2);
