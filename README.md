@@ -489,7 +489,14 @@ interface Diagnostic {
   rule: string; // 'currencies/issuance-exclusive'
   severity: 'error' | 'warning' | 'info';
   category:
-    'file' | 'general' | 'documentation' | 'principals' | 'currencies' | 'validators' | 'network';
+    | 'file'
+    | 'general'
+    | 'documentation'
+    | 'principals'
+    | 'currencies'
+    | 'validators'
+    | 'network'
+    | 'sep12';
   message: string;
   path?: string; // 'CURRENCIES[1].issuer'
   position?: { line: number; column: number };
@@ -591,6 +598,13 @@ instance or WASM entry is absent entirely, it emits `soroban/contract-expired` (
 unreachable or malformed RPC degrades to `soroban/contract-ttl-unavailable` (warning). The RPC
 endpoint is derived from `NETWORK_PASSPHRASE` (Public, Testnet, or Futurenet) and can be overridden
 with `--soroban-rpc`.
+
+**SEP-12 customer schemas** (with `--check-network`) — queries `KYC_SERVER/customer` and checks the
+customer type schemas the anchor declares (`sep31-sender`, `sep31-receiver`, `sep6-deposit`, …).
+Required field keys that are not standard [SEP-9][sep9] names (`first_name`, `last_name`,
+`email_address`, `id_country_code`, …) emit `sep12/unknown-kyc-field-name` (warning), and a customer
+type whose name is not a lowercase identifier emits `sep12/invalid-customer-type-syntax` (error).
+Nothing here fires for a local file without the flag: offline linting never opens a connection.
 
 ### Severity
 
@@ -848,6 +862,7 @@ This project participates in [Drips](https://www.drips.network). See [FUNDING.js
 Not affiliated with or endorsed by the Stellar Development Foundation.
 
 [SEP-1]: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md
+[sep9]: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0009.md
 [anchor-tests]: https://github.com/stellar/stellar-anchor-tests
 [gfi]: https://github.com/anchor-tools/stellar-toml-lint/labels/good%20first%20issue
 
