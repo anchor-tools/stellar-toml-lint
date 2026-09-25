@@ -898,6 +898,21 @@ no wallet could ever complete authentication. A contract whose interface cannot 
 unreachable RPC, an archived entry, or a module with no spec section — stays silent rather than
 failing on a guess.
 
+For every `[[CURRENCIES]]` entry with a `contract`, the SEP-41 metadata the token stores in its
+instance storage (the `METADATA` map of `decimal`, `name`, and `symbol` that the token SDK and the
+Stellar Asset Contract write) is compared against the entry, since wallets read these values from the
+contract and not from the file:
+
+| Rule                        | Severity | Compares                                     |
+| --------------------------- | -------- | -------------------------------------------- |
+| `soroban/symbol-mismatch`   | error    | on-chain `symbol` vs `code`                  |
+| `soroban/decimals-mismatch` | error    | on-chain `decimal` vs `display_decimals`     |
+| `soroban/name-mismatch`     | warning  | on-chain `name` vs `name` (skipped for SACs) |
+
+Each finding names the on-chain value and the file's value, and suggests the exact edit. A field the
+file leaves unset, or metadata that cannot be read, is not compared. A Stellar Asset Contract's
+on-chain name is always `CODE:ISSUER`, so its `name` is never compared.
+
 **SEP-12 customer schemas** (with `--check-network`) — queries `KYC_SERVER/customer` and checks the
 customer type schemas the anchor declares (`sep31-sender`, `sep31-receiver`, `sep6-deposit`, …).
 Required field keys that are not standard [SEP-9][sep9] names (`first_name`, `last_name`,

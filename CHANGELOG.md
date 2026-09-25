@@ -9,6 +9,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `soroban/symbol-mismatch` (error), `soroban/decimals-mismatch` (error), and
+  `soroban/name-mismatch` (warning) under `--check-contracts`: the SEP-41 `symbol`, `decimal`, and
+  `name` each currency contract keeps in its instance storage are read over `getLedgerEntries` and
+  compared against `code`, `display_decimals`, and `name`, with a suggestion naming the on-chain
+  value. A Stellar Asset Contract's `CODE:ISSUER` name is not compared, and unreadable metadata is
+  skipped rather than reported (#32).
 - `soroban/contract-not-found` (error) and `soroban/contract-evicted` (error) under
   `--check-contracts`: every `[[CURRENCIES]].contract` and `WEB_AUTH_CONTRACT_ID` is looked up with
   the Soroban RPC's `getLedgerEntries`, so a contract that was never deployed, or whose WASM has been

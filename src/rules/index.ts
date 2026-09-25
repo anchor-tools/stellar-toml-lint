@@ -2,7 +2,7 @@ import type { Rule } from '../types.js';
 import { generalRules } from './general.js';
 import { documentationRules } from './documentation.js';
 import { principalRules } from './principals.js';
-import { currencyRules } from './currencies.js';
+import { currencyRules, sep41MetadataRules } from './currencies.js';
 import { regulatedFlagRules } from './regulated-flags.js';
 import { validatorRules } from './validators.js';
 import { validatorDedupRules } from './validator-dedup.js';
@@ -42,6 +42,7 @@ export const allRules: Rule[] = [
   ...orgUrlRules,
   ...sep38Rules,
   ...sorobanRules,
+  ...sep41MetadataRules,
   ...sep12Rules,
   ...sep6Rules,
   ...corsPreflightRules,
@@ -69,6 +70,7 @@ export {
   horizonRules,
   sep38Rules,
   sorobanRules,
+  sep41MetadataRules,
   sep12Rules,
   sep6Rules,
   corsPreflightRules,

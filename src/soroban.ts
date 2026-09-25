@@ -7,7 +7,8 @@
  * the contract does not exist, a missing WASM means its code was archived or
  * evicted. Both live on the ledger only until their TTL expires, so each
  * `liveUntilLedgerSeq` is also compared against the network's `latestLedger`
- * and a renewal that is due is reported. Like the other network-bound checks it only runs under an
+ * and a renewal that is due is reported. For currency contracts, the SEP-41
+ * metadata in the instance storage is compared against the currency entry. Like the other network-bound checks it only runs under an
  * explicit flag (`--check-contracts`), never fails the run on an RPC outage,
  * and registers rule objects so `--list-rules` and `--off` know its ids.
  */
@@ -15,7 +16,11 @@ import { Address, cereal, xdr } from '@stellar/stellar-base';
 import type { Diagnostic, Rule, RuleOverrides, Severity } from './types.js';
 import { isString } from './predicates.js';
 import { rpcUrlFor } from './rules/display-decimals-audit.js';
-import { contractIdsOf } from './rules/currencies.js';
+import {
+  contractCurrenciesOf,
+  sep41MetadataDiagnostics,
+  type Sep41Metadata,
+} from './rules/currencies.js';
 import { webAuthContractIdOf } from './rules/general.js';
 
 /** Roughly a day of ledgers at ~5 seconds per ledger. */
@@ -417,6 +422,79 @@ export async function checkContractTtl(
   return [];
 }
 
+/** The instance storage key the SEP-41 token SDK keeps metadata under. */
+const METADATA_KEY = 'METADATA';
+
+/** A string-like ScVal as a JS string, or `undefined` for anything else. */
+function scString(val: xdr.ScVal): string | undefined {
+  switch (val.switch().name) {
+    case 'scvString':
+    case 'scvSymbol':
+      return val.value()!.toString();
+    default:
+      return undefined;
+  }
+}
+
+/** Reads `decimal`, `name`, and `symbol` out of an ScMap's entries. */
+function metadataFields(entries: xdr.ScMapEntry[]): Omit<Sep41Metadata, 'stellarAsset'> {
+  const fields: Omit<Sep41Metadata, 'stellarAsset'> = {};
+  for (const entry of entries) {
+    const key = scString(entry.key());
+    const val = entry.val();
+    if (key === 'decimal' && val.switch().name === 'scvU32') fields.decimal = val.u32();
+    if (key === 'name') fields.name = scString(val);
+    if (key === 'symbol') fields.symbol = scString(val);
+  }
+  return fields;
+}
+
+/**
+ * The SEP-41 metadata stored in a contract instance entry, or `undefined`
+ * when the entry is not a contract instance or stores no metadata.
+ *
+ * The token SDK (and so the reference token and the Stellar Asset Contract)
+ * keeps a `METADATA` map of `{ decimal, name, symbol }` in instance storage;
+ * a contract that stores the three fields at the top level is read too.
+ */
+export function sep41MetadataOf(entryXdr: unknown): Sep41Metadata | undefined {
+  if (!isString(entryXdr)) return undefined;
+  try {
+    const data = xdr.LedgerEntryData.fromXDR(entryXdr, 'base64');
+    if (data.switch().name !== 'contractData') return undefined;
+    const val = data.contractData().val();
+    if (val.switch().name !== 'scvContractInstance') return undefined;
+
+    const instance = val.instance();
+    const storage = instance.storage() ?? [];
+    const nested = storage.find(
+      (entry) => scString(entry.key()) === METADATA_KEY && entry.val().switch().name === 'scvMap',
+    );
+    const fields = metadataFields(nested ? (nested.val().map() ?? []) : storage);
+    if (Object.keys(fields).length === 0) return undefined;
+
+    const stellarAsset = instance.executable().switch().name === 'contractExecutableStellarAsset';
+    return { ...fields, stellarAsset };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Reads the SEP-41 `symbol`, `name`, and `decimal` a token contract stores in
+ * its instance storage. `undefined` means the metadata could not be read — the
+ * RPC was unreachable, the contract is absent, or it stores no metadata — and
+ * is never an error by itself.
+ */
+export async function fetchSep41Metadata(
+  contractId: string,
+  rpcUrl: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Sep41Metadata | undefined> {
+  const instance = await queryLedgerEntry(rpcUrl, contractDataInstanceKey(contractId), fetchImpl);
+  return sep41MetadataOf(instance?.entryXdr);
+}
+
 /**
  * Verifies that the contract at `WEB_AUTH_CONTRACT_ID` exports the SEP-45
  * `web_auth_verify` function.
@@ -482,8 +560,9 @@ export async function checkContracts(
   if (!rpcUrl) return [];
 
   const authContract = webAuthContractIdOf(doc);
+  const currencies = contractCurrenciesOf(doc);
   const targets: ContractTarget[] = [
-    ...contractIdsOf(doc),
+    ...currencies.map(({ id, path }) => ({ id, path })),
     ...(authContract !== undefined ? [authContract] : []),
   ];
   if (targets.length === 0) return [];
@@ -493,6 +572,15 @@ export async function checkContracts(
     diagnostics.push(
       ...(await checkContractTtl(target.id, rpcUrl, fetchImpl, { ...options, path: target.path })),
     );
+  }
+
+  // A token contract's SEP-41 metadata is what wallets display and compute
+  // with, so the currency entry describing it has to agree.
+  for (const currency of currencies) {
+    const metadata = await fetchSep41Metadata(currency.id, rpcUrl, fetchImpl);
+    if (metadata !== undefined) {
+      diagnostics.push(...sep41MetadataDiagnostics(currency, metadata, options.rules));
+    }
   }
 
   // The auth contract has one extra obligation beyond liveliness: the SEP-45

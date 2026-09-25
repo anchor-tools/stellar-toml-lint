@@ -1,4 +1,4 @@
-import type { Rule, RuleContext } from '../types.js';
+import type { Diagnostic, Rule, RuleContext, RuleOverrides } from '../types.js';
 import { displayDecimalsRules } from './display-decimals-audit.js';
 import { anchoredAssetRules } from './anchored-asset-rules.js';
 import { assetCodeFormatRules } from './asset-code-format.js';
@@ -63,21 +63,156 @@ function eachCurrency(
     if (isTomlPointer(entry)) return;
     visit(entry, `CURRENCIES[${i}]`, i);
   });
-} /**
- * The Soroban contract ids declared in `[[CURRENCIES]]`, with the path each
- * came from, for network checks. Native assets and `toml` pointers are not
- * contracts this file owns, so they are skipped.
+} /** A `[[CURRENCIES]]` entry backed by a Soroban contract. */
+export interface ContractCurrency {
+  entry: Record<string, unknown>;
+  index: number;
+  id: string;
+  path: string;
+}
+
+/**
+ * The currency entries that name a Soroban contract, for network checks.
+ * Native assets and `toml` pointers are not contracts this file owns, so they
+ * are skipped.
  */
-export function contractIdsOf(doc: Record<string, unknown>): { id: string; path: string }[] {
-  const contracts: { id: string; path: string }[] = [];
+export function contractCurrenciesOf(doc: Record<string, unknown>): ContractCurrency[] {
+  const contracts: ContractCurrency[] = [];
   currenciesOf(doc).forEach((entry, index) => {
     if (isTomlPointer(entry) || isNativeAsset(entry)) return;
     if (isString(entry.contract) && isContractId(entry.contract)) {
-      contracts.push({ id: entry.contract, path: `CURRENCIES[${index}].contract` });
+      contracts.push({ entry, index, id: entry.contract, path: `CURRENCIES[${index}].contract` });
     }
   });
   return contracts;
 }
+
+/**
+ * The Soroban contract ids declared in `[[CURRENCIES]]`, with the path each
+ * came from.
+ */
+export function contractIdsOf(doc: Record<string, unknown>): { id: string; path: string }[] {
+  return contractCurrenciesOf(doc).map(({ id, path }) => ({ id, path }));
+}
+
+/** SEP-41 token metadata, as read from a contract's instance storage. */
+export interface Sep41Metadata {
+  symbol?: string;
+  name?: string;
+  decimal?: number;
+  /**
+   * True for a Stellar Asset Contract. Its on-chain `name` is `CODE:ISSUER`,
+   * never a display name, so it is not compared against `name`.
+   */
+  stellarAsset: boolean;
+}
+
+const SYMBOL_MISMATCH_RULE = 'soroban/symbol-mismatch';
+const DECIMALS_MISMATCH_RULE = 'soroban/decimals-mismatch';
+const NAME_MISMATCH_RULE = 'soroban/name-mismatch';
+
+/**
+ * Compares a currency entry against the SEP-41 metadata its contract reports.
+ *
+ * Wallets read `symbol`, `decimal`, and `name` from the contract, not from the
+ * file, so a file that disagrees misleads anyone who trusts it: a wrong
+ * decimal in particular scales every balance by a power of ten. A field the
+ * file leaves unset, or the contract does not store, is not compared.
+ */
+export function sep41MetadataDiagnostics(
+  currency: ContractCurrency,
+  metadata: Sep41Metadata,
+  rules?: RuleOverrides,
+): Diagnostic[] {
+  const { entry, id } = currency;
+  const base = `CURRENCIES[${currency.index}]`;
+  const diagnostics: Diagnostic[] = [];
+
+  const report = (
+    rule: string,
+    fallback: 'error' | 'warning',
+    field: string,
+    message: string,
+    suggestion: string,
+  ): void => {
+    const override = rules?.[rule];
+    if (override === 'off') return;
+    diagnostics.push({
+      rule,
+      severity: override ?? fallback,
+      category: 'network',
+      message,
+      path: `${base}.${field}`,
+      suggestion,
+    });
+  };
+
+  if (isString(entry.code) && metadata.symbol !== undefined && entry.code !== metadata.symbol) {
+    report(
+      SYMBOL_MISMATCH_RULE,
+      'error',
+      'code',
+      `${base}.code is "${entry.code}", but contract ${id} reports symbol "${metadata.symbol}"`,
+      `Set code to "${metadata.symbol}" to match the on-chain symbol, or point contract at the ${entry.code} token.`,
+    );
+  }
+
+  if (
+    isInteger(entry.display_decimals) &&
+    metadata.decimal !== undefined &&
+    entry.display_decimals !== metadata.decimal
+  ) {
+    report(
+      DECIMALS_MISMATCH_RULE,
+      'error',
+      'display_decimals',
+      `${base}.display_decimals is ${entry.display_decimals}, but contract ${id} reports decimal ${metadata.decimal}`,
+      `Set display_decimals to ${metadata.decimal}; wallets scale balances by the on-chain decimal.`,
+    );
+  }
+
+  if (
+    !metadata.stellarAsset &&
+    isString(entry.name) &&
+    metadata.name !== undefined &&
+    entry.name !== metadata.name
+  ) {
+    report(
+      NAME_MISMATCH_RULE,
+      'warning',
+      'name',
+      `${base}.name is "${entry.name}", but contract ${id} reports name "${metadata.name}"`,
+      `Set name to "${metadata.name}" so the file and the contract describe the token the same way.`,
+    );
+  }
+
+  return diagnostics;
+}
+
+/** Registered so `--list-rules` and `--off`/`--warn`/`--error` know these ids. */
+export const sep41MetadataRules: Rule[] = [
+  {
+    id: SYMBOL_MISMATCH_RULE,
+    category: 'network',
+    severity: 'error',
+    description: 'CURRENCIES code must match the SEP-41 symbol its contract reports',
+    run() {},
+  },
+  {
+    id: DECIMALS_MISMATCH_RULE,
+    category: 'network',
+    severity: 'error',
+    description: 'CURRENCIES display_decimals must match the SEP-41 decimal its contract reports',
+    run() {},
+  },
+  {
+    id: NAME_MISMATCH_RULE,
+    category: 'network',
+    severity: 'warning',
+    description: 'CURRENCIES name should match the SEP-41 name its contract reports',
+    run() {},
+  },
+];
 
 /** Rules covering the `[[CURRENCIES]]` list. */
 export const currencyRules: Rule[] = [
