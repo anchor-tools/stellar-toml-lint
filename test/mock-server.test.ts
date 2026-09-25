@@ -177,7 +177,7 @@ describe('mock server signing key', () => {
 });
 
 describe('--serve-mock', () => {
-  it('prints the routing table, serves the file, and exits 0 on SIGTERM', async () => {
+  it('prints the routing table, serves the file, and shuts down on SIGTERM', async () => {
     const child = spawn('node', [CLI, '--serve-mock', '0', FIXTURE], {
       env: { ...process.env, NO_COLOR: '1' },
     });
@@ -207,7 +207,9 @@ describe('--serve-mock', () => {
       child.on('exit', resolve);
       child.kill('SIGTERM');
     });
-    expect(code).toBe(0);
+    // Windows has no POSIX signals: `kill` terminates the process outright, so
+    // the graceful-shutdown handler never runs and there is no exit code.
+    expect(code).toBe(process.platform === 'win32' ? null : 0);
   });
 
   it('exits 2 for a missing file', async () => {
