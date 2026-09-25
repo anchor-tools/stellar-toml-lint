@@ -1,0 +1,9 @@
+{
+  "account_id": "GCM5YCQPFIW4ICBPPSKACX56ZTGG6KZ7A53JGUWWAFRZW462YFIK4BZS",
+  "sequence": "123456789012345678",
+  "flags": {
+    "auth_required": true,
+    "auth_revocable": true
+  },
+  "balances": []
+}

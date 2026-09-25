@@ -20,11 +20,18 @@ function find(result: LintResult, rule: string): Diagnostic[] {
   return result.diagnostics.filter((d) => d.rule === rule);
 }
 
-/** Wraps a document body so rules that need context are satisfied. */
+/**
+ * Wraps a document body so rules that need context are satisfied.
+ *
+ * The body is emitted *before* `[DOCUMENTATION]`: TOML captures every key
+ * under the preceding table header, so a global field placed after the
+ * section would silently become `DOCUMENTATION.<field>`.
+ */
 function withValidBase(body: string): string {
   return [
     'VERSION="2.7.0"',
     'NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"',
+    body,
     '',
     '[DOCUMENTATION]',
     'ORG_NAME="Example"',
@@ -32,8 +39,6 @@ function withValidBase(body: string): string {
     'ORG_DESCRIPTION="Example"',
     'ORG_LOGO="https://example.com/logo.png"',
     'ORG_OFFICIAL_EMAIL="ops@example.com"',
-    '',
-    body,
   ].join('\n');
 }
 
@@ -70,6 +75,7 @@ describe('broken fixture', () => {
     'general/version',
     'network/passphrase',
     'general/https-endpoints',
+    'general/trailing-slash-in-endpoint',
     'general/signing-keys',
     'general/accounts',
     'general/sep31-requires-kyc',
@@ -92,11 +98,12 @@ describe('broken fixture', () => {
     'currencies/display-decimals',
     'currencies/name-length',
     'currencies/regulated-needs-approval-server',
+    'currencies/regulated-invalid-target',
     'currencies/collateral-consistency',
     'validators/alias',
     'validators/public-key',
     'validators/host',
-    'validators/history',
+    'validators/invalid-history-url',
   ])('detects %s', (rule) => {
     expect(rules(result)).toContain(rule);
   });
@@ -265,6 +272,33 @@ describe('the native asset', () => {
     const result = lint(withValidBase('[[CURRENCIES]]\ncode="USDC"'));
     expect(find(result, 'currencies/issuer-or-contract')).toHaveLength(1);
   });
+
+  it('flags display_decimals on the native asset as info', () => {
+    const result = lint(withValidBase('[[CURRENCIES]]\ncode="native"\ndisplay_decimals=2'));
+    const [d] = find(result, 'currencies/display-decimals');
+    expect(d?.severity).toBe('info');
+    expect(d?.message).toContain('native asset');
+    expect(d?.path).toBe('CURRENCIES[0].display_decimals');
+  });
+
+  it('flags display_decimals on bare XLM with no issuer', () => {
+    const result = lint(withValidBase('[[CURRENCIES]]\ncode="XLM"\ndisplay_decimals=2'));
+    expect(find(result, 'currencies/display-decimals')).toHaveLength(1);
+  });
+
+  it('stays silent when the native entry omits display_decimals', () => {
+    const result = lint(withValidBase('[[CURRENCIES]]\ncode="native"'));
+    expect(find(result, 'currencies/display-decimals')).toEqual([]);
+  });
+
+  it('stays silent when a non-native entry sets display_decimals', () => {
+    const result = lint(
+      withValidBase(
+        `[[CURRENCIES]]\ncode="USDC"\nissuer="${ACCOUNT_A}"\ndisplay_decimals=2\nis_unlimited=true`,
+      ),
+    );
+    expect(find(result, 'currencies/display-decimals')).toEqual([]);
+  });
 });
 
 describe('currencies/toml-pointer', () => {
@@ -362,6 +396,176 @@ describe('validators/alias-reserved-keyword', () => {
   });
 });
 
+describe('cross-SEP structural consistency', () => {
+  const NEW_RULES = [
+    'general/sep24-requires-auth',
+    'general/kyc-requires-auth',
+    'general/sep38-requires-auth',
+    'general/transfer-server-needs-currencies',
+    'currencies/anchored-fiat-needs-transfer-server',
+    'currencies/regulated-invalid-target',
+  ];
+
+  const AUTH = 'WEB_AUTH_ENDPOINT="https://api.example.com/auth"';
+  const SEP6 = 'TRANSFER_SERVER="https://api.example.com/sep6"';
+  const SEP24 = 'TRANSFER_SERVER_SEP0024="https://api.example.com/sep24"';
+
+  it('flags TRANSFER_SERVER_SEP0024 without WEB_AUTH_ENDPOINT', () => {
+    const [d] = find(lint(withValidBase(SEP24)), 'general/sep24-requires-auth');
+    expect(d?.severity).toBe('error');
+    expect(d?.path).toBe('TRANSFER_SERVER_SEP0024');
+    expect(d?.position?.line).toBe(3);
+    expect(d?.helpUri).toBeTruthy();
+    expect(d?.suggestion).toContain('SEP-10');
+  });
+
+  it('flags KYC_SERVER without WEB_AUTH_ENDPOINT', () => {
+    const [d] = find(
+      lint(withValidBase('KYC_SERVER="https://api.example.com/kyc"')),
+      'general/kyc-requires-auth',
+    );
+    expect(d?.severity).toBe('error');
+    expect(d?.path).toBe('KYC_SERVER');
+    expect(d?.position?.line).toBe(3);
+    expect(d?.suggestion).toBeTruthy();
+  });
+
+  it('flags ANCHOR_QUOTE_SERVER without WEB_AUTH_ENDPOINT', () => {
+    const [d] = find(
+      lint(withValidBase('ANCHOR_QUOTE_SERVER="https://api.example.com/sep38"')),
+      'general/sep38-requires-auth',
+    );
+    expect(d?.severity).toBe('error');
+    expect(d?.path).toBe('ANCHOR_QUOTE_SERVER');
+    expect(d?.position?.line).toBe(3);
+    expect(d?.suggestion).toBeTruthy();
+  });
+
+  it('stays silent on the auth pairing once WEB_AUTH_ENDPOINT is present', () => {
+    const result = lint(
+      withValidBase(
+        `${SEP24}\nKYC_SERVER="https://api.example.com/kyc"\nANCHOR_QUOTE_SERVER="https://api.example.com/sep38"\n${AUTH}`,
+      ),
+    );
+    expect(rules(result)).not.toContain('general/sep24-requires-auth');
+    expect(rules(result)).not.toContain('general/kyc-requires-auth');
+    expect(rules(result)).not.toContain('general/sep38-requires-auth');
+  });
+
+  it('flags a transfer server with no [[CURRENCIES]]', () => {
+    const [d] = find(lint(withValidBase(SEP6)), 'general/transfer-server-needs-currencies');
+    expect(d?.severity).toBe('warning');
+    expect(d?.path).toBe('TRANSFER_SERVER');
+    expect(d?.position?.line).toBe(3);
+    expect(d?.suggestion).toContain('[[CURRENCIES]]');
+  });
+
+  it('flags TRANSFER_SERVER_SEP0024 alone when [[CURRENCIES]] is absent', () => {
+    const [d] = find(lint(withValidBase(SEP24)), 'general/transfer-server-needs-currencies');
+    expect(d?.path).toBe('TRANSFER_SERVER_SEP0024');
+  });
+
+  it('reports once, anchored at TRANSFER_SERVER, when both servers are declared', () => {
+    const result = lint(withValidBase(`${SEP6}\n${SEP24}`));
+    const found = find(result, 'general/transfer-server-needs-currencies');
+    expect(found).toHaveLength(1);
+    expect(found[0]?.path).toBe('TRANSFER_SERVER');
+  });
+
+  it('flags an explicitly empty [[CURRENCIES]] array', () => {
+    const result = lint(withValidBase(`${SEP6}\nCURRENCIES=[]`));
+    expect(find(result, 'general/transfer-server-needs-currencies')).toHaveLength(1);
+  });
+
+  it('stays silent when the transfer server has currencies', () => {
+    const source = withValidBase(
+      `${SEP6}\n\n[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_A}"\nis_unlimited=true`,
+    );
+    expect(rules(lint(source))).not.toContain('general/transfer-server-needs-currencies');
+  });
+
+  it('stays silent with no transfer server declared', () => {
+    expect(rules(lint(withValidBase('')))).not.toContain(
+      'general/transfer-server-needs-currencies',
+    );
+  });
+
+  it('flags anchored fiat with no transfer server', () => {
+    const source = withValidBase(
+      `[[CURRENCIES]]\ncode="USDX"\nissuer="${ACCOUNT_A}"\nis_unlimited=true\nis_asset_anchored=true\nanchor_asset_type="fiat"\nanchor_asset="USD"`,
+    );
+    const [d] = find(lint(source), 'currencies/anchored-fiat-needs-transfer-server');
+    expect(d?.severity).toBe('warning');
+    expect(d?.path).toBe('CURRENCIES[0]');
+    expect(d?.position?.line).toBe(3);
+    expect(d?.suggestion).toContain('TRANSFER_SERVER');
+  });
+
+  it('stays silent on anchored fiat once a transfer server is declared', () => {
+    const source = withValidBase(
+      `${SEP6}\n\n[[CURRENCIES]]\ncode="USDX"\nissuer="${ACCOUNT_A}"\nis_unlimited=true\nis_asset_anchored=true\nanchor_asset_type="fiat"\nanchor_asset="USD"`,
+    );
+    expect(rules(lint(source))).not.toContain('currencies/anchored-fiat-needs-transfer-server');
+  });
+
+  it('ignores non-fiat anchored assets without a transfer server', () => {
+    const source = withValidBase(
+      `[[CURRENCIES]]\ncode="BTC"\nissuer="${ACCOUNT_A}"\nis_unlimited=true\nis_asset_anchored=true\nanchor_asset_type="crypto"\nanchor_asset="BTC"`,
+    );
+    expect(rules(lint(source))).not.toContain('currencies/anchored-fiat-needs-transfer-server');
+  });
+
+  it('flags regulated = true on a Soroban contract token', () => {
+    const source = withValidBase(
+      `[[CURRENCIES]]\ncode="TKN"\ncontract="${CONTRACT_A}"\nis_unlimited=true\nregulated=true\napproval_server="https://api.example.com/approve"`,
+    );
+    const [d] = find(lint(source), 'currencies/regulated-invalid-target');
+    expect(d?.severity).toBe('error');
+    expect(d?.message).toContain('contract');
+    expect(d?.path).toBe('CURRENCIES[0].regulated');
+    expect(d?.position?.line).toBe(7);
+    expect(d?.helpUri).toBeTruthy();
+    expect(d?.suggestion).toBeTruthy();
+  });
+
+  it('flags regulated = true on the native XLM asset', () => {
+    const source = withValidBase('[[CURRENCIES]]\ncode="native"\nregulated=true');
+    const [d] = find(lint(source), 'currencies/regulated-invalid-target');
+    expect(d?.severity).toBe('error');
+    expect(d?.message).toContain('native');
+    expect(d?.path).toBe('CURRENCIES[0].regulated');
+  });
+
+  it('flags regulated = true on bare XLM with no issuer', () => {
+    const source = withValidBase('[[CURRENCIES]]\ncode="XLM"\nregulated=true');
+    expect(find(lint(source), 'currencies/regulated-invalid-target')).toHaveLength(1);
+  });
+
+  it('accepts regulated = true on a classic issued asset', () => {
+    const source = withValidBase(
+      `[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_A}"\nis_unlimited=true\nregulated=true\napproval_server="https://api.example.com/approve"`,
+    );
+    expect(rules(lint(source))).not.toContain('currencies/regulated-invalid-target');
+  });
+
+  it('stays silent on a fully compliant file', () => {
+    // valid.toml pairs every auth-requiring endpoint with WEB_AUTH_ENDPOINT,
+    // gives its transfer server currencies, and backs its anchored fiat with
+    // a transfer server.
+    const result = lint(fixture('valid.toml'), { domain: 'example.com' });
+    for (const rule of NEW_RULES) {
+      expect(rules(result)).not.toContain(rule);
+    }
+  });
+
+  it('registers every new rule so --list-rules and --off know it', () => {
+    const ids = allRules.map((r) => r.id);
+    for (const rule of NEW_RULES) {
+      expect(ids).toContain(rule);
+    }
+  });
+});
+
 describe('rule configuration', () => {
   it('disables a rule with off', () => {
     const result = lint(fixture('broken.toml'), { rules: { 'general/version': 'off' } });
@@ -391,6 +595,7 @@ describe('rule registry', () => {
   it('gives every rule a description and a namespaced id', () => {
     for (const rule of allRules) {
       expect(rule.description.length).toBeGreaterThan(0);
+      // Categories are lowercase; digits are allowed so `sep38/...` matches.
       expect(rule.id).toMatch(/^[a-z][a-z0-9]*\/[a-z0-9-]+$/);
     }
   });

@@ -1,0 +1,41 @@
+name: CI template smoke tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'templates/**'
+      - '.github/workflows/test-templates.yml'
+      - 'test/templates.test.ts'
+      - 'package.json'
+      - 'package-lock.json'
+  pull_request:
+    paths:
+      - 'templates/**'
+      - '.github/workflows/test-templates.yml'
+      - 'test/templates.test.ts'
+      - 'package.json'
+      - 'package-lock.json'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate CI templates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Parses both templates with a real YAML parser and asserts the documented
+      # parameters, steps, and anchors still hold, so a broken copy-paste template
+      # cannot be merged.
+      - name: Validate template YAML
+        run: npx vitest run test/templates.test.ts
