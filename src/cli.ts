@@ -7,16 +7,30 @@
  * dependency tree small enough to audit by eye.
  */
 import { readFile, writeFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
+import { assertKnownRule, loadConfig } from './config.js';
 import { lint, lintDomain, finalize } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
-import { formatGithub, formatJson, formatJunit, formatSarif, formatText } from './reporters.js';
+import {
+  formatCheckstyle,
+  formatGithub,
+  formatHtml,
+  formatJson,
+  formatNdjson,
+  formatJunit,
+  formatSarif,
+  formatSummary,
+  formatText,
+} from './reporters.js';
+import { expandGlob, hasMagic } from './glob.js';
 import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
 import { checkRegulatedIssuerFlags } from './rules/currencies.js';
 import { checkContracts } from './soroban.js';
+import { checkSep10Replay } from './protocols/sep10-replay.js';
+import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { allRules } from './rules/index.js';
 import { generateBadgeSvg, generateShieldsEndpoint } from './generators/badge.js';
 import {
@@ -24,14 +38,19 @@ import {
   formatAnchorPlatformYaml,
 } from './generators/anchor-platform.js';
 import { generateOpenApiSpec } from './generators/openapi.js';
+import { generateDiagram, type GraphFormat } from './generators/diagram.js';
 import { deliverWebhooks, isSupportedWebhookUrl } from './reporters/webhook.js';
 import { runDashboard, supportsDashboard } from './ui/dashboard.js';
+import { loadPolicy, validatePolicy, evaluatePolicy } from './policy/engine.js';
+import { createFixtureFetch } from './mock-fixtures.js';
+import { runLspServer } from './lsp/server.js';
+import { getTomlJsonSchema } from './schema.js';
 import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
 
 const VERSION = '0.1.0';
 const DEFAULT_PATH = 'stellar.toml';
 
-type Format = 'text' | 'json' | 'sarif' | 'github' | 'junit';
+type Format = 'text' | 'json' | 'ndjson' | 'sarif' | 'github' | 'junit' | 'html' | 'checkstyle';
 
 interface Cli {
   noSuggestions?: boolean;
@@ -45,6 +64,7 @@ interface Cli {
   rules: RuleOverrides;
   maxWarnings?: number;
   checkNetwork: boolean;
+  verifySep10: boolean;
   badgeSvg?: string;
   badgeJson?: string;
   exportApConfig?: boolean;
@@ -54,6 +74,13 @@ interface Cli {
   interactive?: boolean;
   checkContracts: boolean;
   sorobanRpc?: string;
+  graph?: GraphFormat;
+  graphIncludeContracts?: boolean;
+  graphIncludeValidators?: boolean;
+  graphColorByProtocol?: boolean;
+  policy?: string;
+  mockFixtures?: string;
+  lsp?: boolean;
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -62,14 +89,16 @@ Validate a Stellar Info File (stellar.toml) against SEP-1 — offline.
 
 USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
+  stellar-toml-lint "configs/**/*.toml"  Lint a glob — quote it so the shell
+                                         passes the pattern through instead of
+                                         expanding it (or failing to)
   stellar-toml-lint --domain <domain>    Fetch and lint https://<domain>/.well-known/stellar.toml
   cat stellar.toml | stellar-toml-lint - Lint stdin
 
 OPTIONS
-  -d, --domain <domain>   Domain serving the file. Enables CORS, content-type,
-                          image-asset and ORG_URL same-domain checks. Fetches
-                          unless files are given.
-  -f, --format <fmt>      text (default), json, sarif, github, or junit
+  -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
+                          ORG_URL same-domain checks. Fetches unless files are given.
+  -f, --format <fmt>      text (default), json, ndjson, sarif, github, junit, html, or checkstyle
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
       --off <rule>        Disable a rule (repeatable)
@@ -77,14 +106,21 @@ OPTIONS
       --warn <rule>       Lower a rule to warning (repeatable)
   -i, --interactive       Full-screen dashboard to walk the findings. Needs a TTY;
                           without one the text reporter is used instead
+      --lsp               Run as a Language Server on stdio (diagnostics,
+                          quick-fix code actions, and SEP-1 hover docs)
   -q, --quiet             Report errors only
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, SEP-8
                           regulated issuer flags, and ANCHOR_QUOTE_SERVER
                           against the network
+      --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --check-contracts   Verify Soroban contract and WASM TTL liveliness
       --soroban-rpc <url> Soroban RPC endpoint to use with --check-contracts
+      --mock-fixtures <dir>
+                          Serve network checks from recorded JSON responses under
+                          <dir> instead of the network. A URL with no fixture
+                          fails instead of making a request (hermetic CI)
       --webhook-slack <url>
                           POST a Slack Block Kit card with the run summary
       --webhook-discord <url>
@@ -94,18 +130,40 @@ OPTIONS
       --export-ap-config  Export Anchor Platform YAML config to stdout
       --generate-openapi <file>
                           Generate an OpenAPI 3.1 spec (json or yaml extension)
+      --graph <fmt>       Generate architecture diagram: mermaid or dot
+      --graph-contracts   Include Soroban contracts in diagram
+      --graph-validators  Include validators in diagram
+      --graph-color       Color nodes by protocol type
+      --policy <file>     Evaluate enterprise policy file (JSON or YAML)
+      --json-schema       Print a JSON Schema (Draft 2020-12) for stellar.toml
+                          to stdout, for editor autocompletion via schema
+                          associations
       --color / --no-color
       --list-rules        Print every rule and exit
   -v, --version
   -h, --help
 
+CONFIG
+  .stellartomlrc.json    Project defaults, discovered upward from the linted
+                         file's directory (from the current directory for stdin
+                         and --domain), stopping at the filesystem root.
+                         Recognises "rules", "strict", and "maxWarnings".
+                         CLI flags always override the file; a malformed config
+                         or an unknown rule id exits with code 2.
+
 EXIT CODES
-  0  no errors            1  errors found            2  bad usage or I/O failure
+  0  no errors     1  errors found     2  bad usage, unmatched glob, or I/O failure
 
 EXAMPLES
   stellar-toml-lint public/.well-known/stellar.toml
+  stellar-toml-lint "accounts/*/stellar.toml"
   stellar-toml-lint --domain example.com --strict
   stellar-toml-lint -f sarif > results.sarif
+  stellar-toml-lint --graph mermaid > diagram.mmd
+  stellar-toml-lint --graph dot --graph-contracts > diagram.dot
+  stellar-toml-lint --policy policy.yaml public/.well-known/stellar.toml
+  stellar-toml-lint public/.well-known/stellar.toml --check-network \\\\
+    --mock-fixtures ./test/fixtures/network
 `;
 
 async function main(argv: string[]): Promise<number> {
@@ -120,25 +178,55 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const color = cli.color ?? shouldUseColor();
+
+  if (cli.lsp) {
+    // The framed stdio server: diagnostics, quick fixes, and hover. It used to
+    // be `lspMain()`, which registered a stdin listener and then let `main()`
+    // fall through to `process.exit` — so `--lsp` printed nothing and exited
+    // before a client could send a single message.
+    await runLspServer();
+    return 0;
+  }
+
   const results: { name: string; result: LintResult }[] = [];
+  // Project defaults from .stellartomlrc.json, overridden by any CLI flag.
+  let strict = cli.strict;
+  let maxWarnings = cli.maxWarnings;
 
   try {
+    // Fixture mode replaces the transport for every network-bound check, so a
+    // hermetic run can never reach the internet by accident.
+    const fetchImpl = cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
+
     if (cli.domain && cli.paths.length === 0) {
+      const config = await loadConfig(process.cwd());
+      strict = strict || config.strict;
+      maxWarnings ??= config.maxWarnings;
       results.push({
         name: cli.domain,
-        result: await lintDomain(cli.domain, {
-          strict: cli.strict,
-          rules: cli.rules,
-          checkNetwork: cli.checkNetwork,
-        }),
+        result: await lintDomain(
+          cli.domain,
+          {
+            strict,
+            rules: { ...config.rules, ...cli.rules },
+            checkNetwork: cli.checkNetwork,
+          },
+          fetchImpl,
+        ),
       });
     } else {
-      const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
+      const paths = await expandInputs(cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH]);
       for (const path of paths) {
+        const config = await loadConfig(path === '-' ? process.cwd() : dirname(resolve(path)));
+        const fileStrict = cli.strict || config.strict;
+        strict = strict || config.strict;
+        maxWarnings ??= config.maxWarnings;
+        const rules = { ...config.rules, ...cli.rules };
+
         const source = path === '-' ? await readStdin() : await readFile(path, 'utf8');
         let fileResult = lint(source, {
-          strict: cli.strict,
-          rules: cli.rules,
+          strict: fileStrict,
+          rules,
           checkNetwork: cli.checkNetwork,
           ...(cli.domain ? { domain: cli.domain } : {}),
         });
@@ -148,19 +236,45 @@ async function main(argv: string[]): Promise<number> {
 
           if (cli.checkNetwork) {
             networkDiagnostics.push(
-              ...(await checkHorizon(fileResult.parsed, fetch, { rules: cli.rules })),
-              ...(await checkNetworkAccounts(fileResult.parsed)),
-              ...(await checkDisplayDecimals(fileResult.parsed, fetch, { rules: cli.rules })),
-              ...(await checkSep38(fileResult.parsed, fetch, { rules: cli.rules })),
-              ...(await checkRegulatedIssuerFlags(fileResult.parsed, fetch, {
+              ...(await checkHorizon(fileResult.parsed, fetchImpl, { rules: cli.rules })),
+              ...(await checkNetworkAccounts(fileResult.parsed, fetchImpl)),
+              ...(await checkDisplayDecimals(fileResult.parsed, fetchImpl, { rules: cli.rules })),
+              ...(await checkSep38(fileResult.parsed, fetchImpl, { rules: cli.rules })),
+              ...(await checkRegulatedIssuerFlags(fileResult.parsed, fetchImpl, {
                 rules: cli.rules,
+              })),
+            );
+          }
+
+          if (cli.verifySep10 && cli.checkNetwork) {
+            const webAuthEndpoint = (fileResult.parsed as Record<string, unknown>)
+              .WEB_AUTH_ENDPOINT;
+            if (typeof webAuthEndpoint === 'string') {
+              const signingKey =
+                typeof (fileResult.parsed as Record<string, unknown>).SIGNING_KEY === 'string'
+                  ? ((fileResult.parsed as Record<string, unknown>).SIGNING_KEY as string)
+                  : '';
+              networkDiagnostics.push(
+                ...(await checkSep10Replay(signingKey, new URL(webAuthEndpoint).origin, {
+                  rules: cli.rules,
+                  fetchImpl: fetch,
+                })),
+              );
+            }
+          }
+
+          if (cli.checkNetwork) {
+            networkDiagnostics.push(
+              ...(await checkCollateralGovernance(fileResult.parsed, {
+                rules: cli.rules,
+                fetchImpl: fetch,
               })),
             );
           }
 
           if (cli.checkContracts) {
             networkDiagnostics.push(
-              ...(await checkContracts(fileResult.parsed, fetch, {
+              ...(await checkContracts(fileResult.parsed, fetchImpl, {
                 rules: cli.rules,
                 ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
               })),
@@ -170,7 +284,7 @@ async function main(argv: string[]): Promise<number> {
           if (networkDiagnostics.length > 0) {
             fileResult = finalize(
               [...fileResult.diagnostics, ...networkDiagnostics],
-              { strict: cli.strict },
+              { strict: fileStrict },
               fileResult.parsed,
             );
           }
@@ -221,6 +335,50 @@ async function main(argv: string[]): Promise<number> {
     }
   }
 
+  if (cli.graph && firstResult?.parsed) {
+    const diagram = generateDiagram(firstResult.parsed, {
+      format: cli.graph,
+      includeContracts: cli.graphIncludeContracts,
+      includeValidators: cli.graphIncludeValidators,
+      colorByProtocol: cli.graphColorByProtocol,
+    });
+    process.stdout.write(diagram + '\n');
+  }
+
+  // Evaluate enterprise policy
+  if (cli.policy && firstResult?.parsed) {
+    const policy = await loadPolicy(cli.policy);
+    const validation = validatePolicy(policy);
+    if (!validation.valid) {
+      process.stderr.write(`Policy validation failed:\n${validation.errors.join('\n')}\n`);
+      return 2;
+    }
+    const sourcePath = cli.paths[0] ?? DEFAULT_PATH;
+    const source = sourcePath === '-' ? await readStdin() : await readFile(sourcePath, 'utf8');
+    const policyDiagnostics = evaluatePolicy(policy, firstResult.parsed, source);
+
+    // Convert policy diagnostics to standard diagnostics
+    const convertedDiagnostics: Diagnostic[] = policyDiagnostics.map((pd) => ({
+      rule: `policy/${pd.rule}`,
+      severity: pd.severity,
+      category: 'policy',
+      message: pd.message,
+      path: pd.path,
+      position: pd.position,
+      suggestion: pd.suggestion,
+      helpUri: undefined,
+    }));
+
+    if (convertedDiagnostics.length > 0 && results[0]) {
+      const finalized = finalize(
+        [...firstResult.diagnostics, ...convertedDiagnostics],
+        { strict: cli.strict },
+        firstResult.parsed,
+      );
+      results[0] = { name: results[0].name, result: finalized };
+    }
+  }
+
   if (cli.interactive && cli.format !== 'text') {
     process.stderr.write(
       `--interactive draws its own view of the findings; drop --format ${cli.format}.\n\nRun with --help for usage.\n`,
@@ -246,6 +404,14 @@ async function main(argv: string[]): Promise<number> {
 
       process.stdout.write(render(filtered, name, cli, color));
     }
+
+    // One line closing a multi-file run, so a CI log answers "did the whole
+    // set pass?" without anyone counting per-file blocks. Only the text
+    // reporter gets it: appending prose to JSON, SARIF, or XML would break the
+    // parsers those formats exist for.
+    if (results.length > 1 && cli.format === 'text') {
+      process.stdout.write(formatSummary(results, { color }));
+    }
   }
 
   if (cli.webhookSlack !== undefined || cli.webhookDiscord !== undefined) {
@@ -266,19 +432,55 @@ async function main(argv: string[]): Promise<number> {
     }
   }
 
-  return verdict(results, cli) ? 0 : 1;
+  return verdict(results, { strict, maxWarnings }) ? 0 : 1;
+}
+
+/**
+ * Resolves the positional arguments to a concrete list of paths.
+ *
+ * Anything holding glob magic is expanded here rather than by the shell, so
+ * the same quoted argument works under sh, PowerShell, and CMD — the first two
+ * agree on nothing else about quoting. A pattern that matches nothing is a
+ * usage mistake rather than a lint result, so it throws and `main` reports it
+ * with the exit code 2 every other bad-usage path already uses.
+ */
+async function expandInputs(inputs: string[]): Promise<string[]> {
+  const paths: string[] = [];
+
+  for (const input of inputs) {
+    if (input === '-' || !hasMagic(input)) {
+      paths.push(input);
+      continue;
+    }
+
+    const matches = await expandGlob(input);
+    if (matches.length === 0) {
+      throw new Error(
+        `No files matched "${input}". Patterns are expanded by the linter, not the shell — check the path, and quote the pattern so it arrives intact.`,
+      );
+    }
+    paths.push(...matches);
+  }
+
+  return [...new Set(paths)];
 }
 
 function render(result: LintResult, name: string, cli: Cli, color: boolean): string {
   switch (cli.format) {
     case 'json':
       return formatJson(result, name);
+    case 'ndjson':
+      return formatNdjson(result, name);
     case 'sarif':
       return formatSarif(result, name, VERSION);
     case 'github':
       return formatGithub(result, name);
     case 'junit':
       return formatJunit(result, name);
+    case 'html':
+      return formatHtml(result, name);
+    case 'checkstyle':
+      return formatCheckstyle(result, name, VERSION);
     case 'text':
       return formatText(result, {
         filename: name,
@@ -291,7 +493,10 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
 }
 
 /** Combines per-file verdicts, including the `--max-warnings` threshold. */
-function verdict(results: { result: LintResult }[], cli: Cli): boolean {
+function verdict(
+  results: { result: LintResult }[],
+  options: { strict: boolean; maxWarnings?: number },
+): boolean {
   const totals = results.reduce(
     (acc, { result }) => {
       acc.error += result.counts.error;
@@ -302,8 +507,8 @@ function verdict(results: { result: LintResult }[], cli: Cli): boolean {
   );
 
   if (totals.error > 0) return false;
-  if (cli.strict && totals.warning > 0) return false;
-  if (cli.maxWarnings !== undefined && totals.warning > cli.maxWarnings) return false;
+  if (options.strict && totals.warning > 0) return false;
+  if (options.maxWarnings !== undefined && totals.warning > options.maxWarnings) return false;
   return true;
 }
 
@@ -316,7 +521,11 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     showHelp: false,
     rules: {},
     checkNetwork: false,
+    verifySep10: false,
     checkContracts: false,
+    graphIncludeContracts: false,
+    graphIncludeValidators: false,
+    graphColorByProtocol: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -337,6 +546,14 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         process.stdout.write(listRules());
         return 'handled';
 
+      case '--json-schema':
+        process.stdout.write(`${JSON.stringify(getTomlJsonSchema(), null, 2)}\n`);
+        return 'handled';
+
+      case '--lsp':
+        cli.lsp = true;
+        break;
+
       case '-d':
       case '--domain':
         cli.domain = requireValue(argv, ++i, arg);
@@ -347,7 +564,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         const value = requireValue(argv, ++i, arg);
         if (!isFormat(value)) {
           throw new Error(
-            `Unknown format "${value}". Expected text, json, sarif, github, or junit.`,
+            `Unknown format "${value}". Expected text, json, ndjson, sarif, github, junit, html, or checkstyle.`,
           );
         }
         cli.format = value;
@@ -371,12 +588,20 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.checkNetwork = true;
         break;
 
+      case '--verify-sep10':
+        cli.verifySep10 = true;
+        break;
+
       case '--check-contracts':
         cli.checkContracts = true;
         break;
 
       case '--soroban-rpc':
         cli.sorobanRpc = requireValue(argv, ++i, arg);
+        break;
+
+      case '--mock-fixtures':
+        cli.mockFixtures = requireValue(argv, ++i, arg);
         break;
 
       case '--webhook-slack':
@@ -404,6 +629,31 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--generate-openapi':
         cli.generateOpenapi = requireValue(argv, ++i, arg);
+        break;
+
+      case '--graph': {
+        const value = requireValue(argv, ++i, arg);
+        if (value !== 'mermaid' && value !== 'dot') {
+          throw new Error(`Unknown graph format "${value}". Expected mermaid or dot.`);
+        }
+        cli.graph = value;
+        break;
+      }
+
+      case '--graph-contracts':
+        cli.graphIncludeContracts = true;
+        break;
+
+      case '--graph-validators':
+        cli.graphIncludeValidators = true;
+        break;
+
+      case '--graph-color':
+        cli.graphColorByProtocol = true;
+        break;
+
+      case '--policy':
+        cli.policy = requireValue(argv, ++i, arg);
         break;
 
       case '--max-warnings': {
@@ -462,21 +712,12 @@ function isFormat(value: string): value is Format {
   return (
     value === 'text' ||
     value === 'json' ||
+    value === 'ndjson' ||
     value === 'sarif' ||
     value === 'github' ||
-    value === 'junit'
-  );
-}
-
-/** Rejects typo'd rule ids rather than silently ignoring the override. */
-function assertKnownRule(id: string): void {
-  if (allRules.some((rule) => rule.id === id)) return;
-  const near = allRules
-    .map((rule) => rule.id)
-    .filter((candidate) => candidate.includes(id) || id.includes(candidate.split('/')[1] ?? ''))
-    .slice(0, 3);
-  throw new Error(
-    `Unknown rule "${id}".${near.length > 0 ? ` Did you mean: ${near.join(', ')}?` : ''} Run --list-rules to see them all.`,
+    value === 'junit' ||
+    value === 'html' ||
+    value === 'checkstyle'
   );
 }
 

@@ -1,0 +1,28 @@
+# A stellar.toml whose every network-bound check is served from
+# test/fixtures/network, so `--check-network --mock-fixtures` runs end to end
+# with no outbound traffic. See test/mock-fixtures.test.ts.
+
+VERSION="2.0.0"
+NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"
+
+HORIZON_URL="https://horizon.example.com"
+ANCHOR_QUOTE_SERVER="https://quote.example.com"
+WEB_AUTH_ENDPOINT="https://anchor.example.com/auth"
+SIGNING_KEY="GCM5YCQPFIW4ICBPPSKACX56ZTGG6KZ7A53JGUWWAFRZW462YFIK4BZS"
+
+[DOCUMENTATION]
+ORG_NAME="Offline Fixture Anchor"
+ORG_URL="https://anchor.example.com"
+ORG_LOGO="https://anchor.example.com/logo.png"
+ORG_DESCRIPTION="An anchor used to exercise the offline network checks."
+ORG_OFFICIAL_EMAIL="partners@anchor.example.com"
+
+[[CURRENCIES]]
+code="USDX"
+issuer="GAZ3V7WDE3TADF6UQWU3TAWQPVSW6ZV3NCCW6A7UN6HUDI5WXPMLQDFY"
+display_decimals=2
+is_unlimited=true
+is_asset_anchored=true
+anchor_asset_type="fiat"
+redemption_instructions="Contact partners@anchor.example.com."
+status="live"

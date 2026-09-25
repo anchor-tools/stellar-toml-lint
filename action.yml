@@ -25,7 +25,7 @@ inputs:
     description: 'Fail if the warning count exceeds this number.'
     required: false
   format:
-    description: 'Output format: github, text, json, or sarif.'
+    description: 'Output format: github, text, json, ndjson, sarif, junit, or checkstyle.'
     required: false
     default: 'github'
   sarif-file:

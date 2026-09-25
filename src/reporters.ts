@@ -1,5 +1,7 @@
 import type { Diagnostic, LintResult, Severity } from './types.js';
 
+export { formatHtml } from './reporters/html.js';
+
 /** Minimal ANSI helpers. Avoids a dependency for what is a dozen escape codes. */
 function makeColors(enabled: boolean) {
   const wrap = (open: number, close: number) => (s: string) =>
@@ -114,6 +116,51 @@ function summaryLine(result: LintResult, c: ReturnType<typeof makeColors>): stri
 
 function plural(n: number, word: string): string {
   return n === 1 ? word : `${word}s`;
+}
+
+/**
+ * The closing line of a multi-file run: `Checked 4 files: 3 passed, 1 failed
+ * (2 errors, 3 warnings)`.
+ *
+ * Pass/fail is counted per file from each result's own verdict, so `--strict`
+ * is reflected exactly as it is in that file's report; the totals behind the
+ * parentheses are summed across every file, which is what a CI log needs to
+ * judge the whole set at a glance.
+ */
+export function formatSummary(
+  entries: { name: string; result: LintResult }[],
+  options: { color?: boolean } = {},
+): string {
+  const c = makeColors(options.color ?? false);
+
+  const checked = entries.length;
+  const passed = entries.filter((entry) => entry.result.ok).length;
+  const failed = checked - passed;
+
+  const totals = entries.reduce(
+    (acc, { result }) => {
+      acc.error += result.counts.error;
+      acc.warning += result.counts.warning;
+      acc.info += result.counts.info;
+      return acc;
+    },
+    { error: 0, warning: 0, info: 0 },
+  );
+
+  // Errors and warnings are always named, because they are what the exit code
+  // reacts to; info only earns a mention when there is some to mention.
+  const parts = [
+    `${totals.error} ${plural(totals.error, 'error')}`,
+    `${totals.warning} ${plural(totals.warning, 'warning')}`,
+  ];
+  if (totals.info > 0) parts.push(`${totals.info} ${plural(totals.info, 'info')}`);
+
+  const line = `Checked ${checked} ${plural(checked, 'file')}: ${passed} passed, ${failed} failed (${parts.join(', ')})`;
+
+  // The leading newline separates it from the last file's own summary, which
+  // every text block already ends with.
+  const text = `\n${line}\n`;
+  return failed > 0 ? c.red(c.bold(text)) : totals.warning > 0 ? c.yellow(text) : c.grey(text);
 }
 
 /** Machine-readable output for scripts and dashboards. */
@@ -308,4 +355,79 @@ function sanitizeXmlChars(s: string): string {
 /** Attributes additionally have to escape both quote characters. */
 function escapeXmlAttribute(s: string): string {
   return escapeXml(s).replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+/**
+ * Checkstyle XML, the shape Jenkins (Warnings NG), SonarQube-adjacent
+ * dashboards, and Java-adjacent CI pipelines read for static-analysis results.
+ *
+ * The document mirrors what Checkstyle itself emits: one `<file>` per linted
+ * file, one `<error>` per diagnostic carrying `line`, `column`, `severity`,
+ * `message`, and `source`. `source` holds the rule id so a consumer can group,
+ * baseline, or suppress findings the way it would a Checkstyle check.
+ * Severity maps straight across (`error`, `warning`, `info`).
+ *
+ * `line` and `column` are always present, defaulting to 1: the format treats
+ * them as required attributes even for a finding about an absent key that has
+ * no position of its own — the same compromise SARIF makes for the same
+ * diagnostics.
+ *
+ * Like `formatJunit`, no XML declaration is emitted. A run over several files
+ * concatenates one document per file onto stdout, and a declaration anywhere
+ * but the very first byte is a parse error, so omitting it is the honest
+ * option.
+ */
+export function formatCheckstyle(
+  result: LintResult,
+  filename = 'stellar.toml',
+  version = '0.1.0',
+): string {
+  const errors = result.diagnostics.map((d) => {
+    const attributes = [
+      `line="${Math.max(d.position?.line ?? 1, 1)}"`,
+      `column="${Math.max(d.position?.column ?? 1, 1)}"`,
+      `severity="${d.severity}"`,
+      `message="${escapeXmlAttribute(d.message)}"`,
+      `source="${escapeXmlAttribute(d.rule)}"`,
+    ].join(' ');
+    return `    <error ${attributes} />`;
+  });
+
+  return [
+    `<checkstyle version="${escapeXmlAttribute(version)}">`,
+    `  <file name="${escapeXmlAttribute(filename)}">`,
+    ...errors,
+    '  </file>',
+    '</checkstyle>',
+    '',
+  ].join('\n');
+}
+
+/** Newline-delimited JSON for streaming analysis. */
+export function formatNdjson(result: LintResult, filename = 'stellar.toml'): string {
+  const lines: string[] = [];
+
+  for (const d of result.diagnostics) {
+    lines.push(
+      JSON.stringify({
+        type: 'diagnostic',
+        file: filename,
+        rule: d.rule,
+        severity: d.severity,
+        message: d.message,
+        ...(d.position ? { position: d.position } : {}),
+      }),
+    );
+  }
+
+  lines.push(
+    JSON.stringify({
+      type: 'summary',
+      file: filename,
+      ok: result.ok,
+      counts: result.counts,
+    }),
+  );
+
+  return `${lines.join('\n')}\n`;
 }

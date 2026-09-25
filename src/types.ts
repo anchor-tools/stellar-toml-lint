@@ -11,7 +11,14 @@ export type Severity = 'error' | 'warning' | 'info';
 
 /** Which part of SEP-1 a rule covers. Used for grouping in reports. */
 export type RuleCategory =
-  'file' | 'general' | 'documentation' | 'principals' | 'currencies' | 'validators' | 'network';
+  | 'file'
+  | 'general'
+  | 'documentation'
+  | 'principals'
+  | 'currencies'
+  | 'validators'
+  | 'network'
+  | 'policy';
 
 /** A 1-based position in the source file. */
 export interface Position {
@@ -35,6 +42,18 @@ export interface Diagnostic {
   helpUri?: string;
   /** Concrete next step for the maintainer. */
   suggestion?: string;
+  /**
+   * Replacement text for the value at {@link Diagnostic.path}, when the rule
+   * can correct itself mechanically. The value is the raw TOML string content
+   * (no surrounding quotes), so `fix.value` is ready to drop into a text edit.
+   */
+  fix?: Fix;
+}
+
+/** A mechanically safe replacement for a diagnostic's offending value. */
+export interface Fix {
+  /** Corrected value content, without TOML quoting. */
+  value: string;
 }
 
 /** Per-rule severity overrides. `'off'` disables the rule entirely. */
@@ -90,7 +109,100 @@ export interface LintResult {
   ok: boolean;
   counts: Record<Severity, number>;
   /** Parsed document, or `undefined` when the file could not be parsed. */
-  parsed?: Record<string, unknown>;
+  parsed?: StellarToml;
+}
+
+export interface StellarToml {
+  VERSION?: string;
+  NETWORK_PASSPHRASE?: string;
+  HORIZON_URL?: string;
+  ACCOUNTS?: string[];
+  WEB_AUTH_CONTRACT_ID?: string;
+  SIGNING_KEY?: string;
+  URI_REQUEST_SIGNING_KEY?: string;
+  FEDERATION_SERVER?: string;
+  AUTH_SERVER?: string;
+  TRANSFER_SERVER?: string;
+  TRANSFER_SERVER_SEP0024?: string;
+  KYC_SERVER?: string;
+  WEB_AUTH_ENDPOINT?: string;
+  WEB_AUTH_FOR_CONTRACTS_ENDPOINT?: string;
+  DIRECT_PAYMENT_SERVER?: string;
+  ANCHOR_QUOTE_SERVER?: string;
+  DOCUMENTATION?: {
+    ORG_NAME?: string;
+    ORG_DBA?: string;
+    ORG_URL?: string;
+    ORG_LOGO?: string;
+    ORG_DESCRIPTION?: string;
+    ORG_PHYSICAL_ADDRESS?: string;
+    ORG_PHYSICAL_ADDRESS_ATTESTATION?: string;
+    ORG_PHONE_NUMBER?: string;
+    ORG_PHONE_NUMBER_ATTESTATION?: string;
+    ORG_KEYBASE?: string;
+    ORG_TWITTER?: string;
+    ORG_GITHUB?: string;
+    ORG_OFFICIAL_EMAIL?: string;
+    ORG_SUPPORT_EMAIL?: string;
+    ORG_LICENSING_AUTHORITY?: string;
+    ORG_LICENSE_TYPE?: string;
+    ORG_LICENSE_NUMBER?: string;
+  };
+  PRINCIPALS?: Array<{
+    name?: string;
+    email?: string;
+    keybase?: string;
+    telegram?: string;
+    twitter?: string;
+    github?: string;
+    id_photo_hash?: string;
+    verification_photo_hash?: string;
+  }>;
+  CURRENCIES?: Array<{
+    code?: string;
+    issuer?: string;
+    contract?: string;
+    code_template?: string;
+    status?: string;
+    display_decimals?: number;
+    name?: string;
+    desc?: string;
+    conditions?: string;
+    image?: string;
+    fixed_number?: string;
+    max_number?: string;
+    is_unlimited?: boolean;
+    is_asset_anchored?: boolean;
+    anchor_asset_type?: string;
+    anchor_asset?: string;
+    attestation_of_reserve?: string;
+    redemption_instructions?: string;
+    collateral_addresses?: string[];
+    collateral_address_messages?: string[];
+    collateral_address_signatures?: string[];
+    regulated?: boolean;
+    approval_server?: string;
+    approval_criteria?: string;
+    toml?: string;
+  }>;
+  VALIDATORS?: Array<{
+    ALIAS?: string;
+    DISPLAY_NAME?: string;
+    PUBLIC_KEY?: string;
+    HOST?: string;
+    HISTORY?: string;
+  }>;
+  SERVERS?: Array<{
+    WEB_AUTH_ENDPOINT?: string;
+    TRANSFER_SERVER?: string;
+    TRANSFER_SERVER_SEP0024?: string;
+    KYC_SERVER?: string;
+    ANCHOR_QUOTE_SERVER?: string;
+    DIRECT_PAYMENT_SERVER?: string;
+    WEB_AUTH_CONTRACT_ID?: string;
+    TLS_CERT?: string;
+  }>;
+  [key: string]: unknown;
 }
 
 /** Everything a rule needs to inspect a document. */

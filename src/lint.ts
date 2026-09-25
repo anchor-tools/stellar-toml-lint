@@ -22,6 +22,7 @@ import { SourceIndex } from './source-index.js';
 import { MAX_FILE_BYTES, isString, isUrl } from './predicates.js';
 import { specUrl } from './spec.js';
 import { probeTls, type TlsProbe } from './tls.js';
+import { checkOrgUrl } from './rules/org-url-check.js';
 
 /** Severity ordering used for sorting and for `--max-warnings` style counts. */
 const SEVERITY_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -182,20 +183,45 @@ export async function lintDomain(
   }
 
   if (!response.ok) {
-    return finalize(
-      [
-        {
-          rule: 'network/unreachable',
-          severity: 'error',
-          category: 'network',
-          message: `${url} returned HTTP ${response.status}`,
-          helpUri: specUrl('specification'),
-          suggestion: 'SEP-1 requires the file at exactly /.well-known/stellar.toml.',
-        },
-      ],
-      options,
-      undefined,
-    );
+    const failed: Diagnostic[] = [
+      {
+        rule: 'network/unreachable',
+        severity: 'error',
+        category: 'network',
+        message: `${url} returned HTTP ${response.status}`,
+        helpUri: specUrl('specification'),
+        suggestion: 'SEP-1 requires the file at exactly /.well-known/stellar.toml.',
+      },
+    ];
+
+    // A 404 is often a deploy mistake rather than a missing file: the anchor
+    // published stellar.toml at the site root. One bounded probe of that path
+    // turns a dead-end status code into a fix the maintainer can act on.
+    if (response.status === 404) {
+      const rootUrl = `https://${host}/stellar.toml`;
+      try {
+        const root = await fetchImpl(rootUrl, {
+          redirect: 'follow',
+          headers: { Origin: 'https://stellar-toml-lint.invalid' },
+        });
+        if (root.ok) {
+          failed.push({
+            rule: 'network/wrong-path',
+            severity: 'error',
+            category: 'network',
+            message: `Found stellar.toml at ${rootUrl}, but SEP-1 requires /.well-known/stellar.toml`,
+            helpUri: specUrl('specification'),
+            suggestion:
+              'Move the file to /.well-known/stellar.toml — wallets only discover it there.',
+          });
+        }
+      } catch {
+        // The root probe is a hint, not a requirement: a transport failure
+        // here leaves today's network/unreachable behaviour unchanged.
+      }
+    }
+
+    return finalize(failed, options, undefined);
   }
 
   // Anchors sign SEP-10 challenges over this same host, so deprecated protocol
@@ -249,222 +275,21 @@ export async function lintDomain(
     ...(tls ? { tls } : {}),
   });
 
-  // The images the file points at are fetched by wallets next, so they get the
-  // same treatment the file itself just got: reachability, CORS, content type,
-  // and size, reported before the file's own findings are folded in.
-  const images = await probeImages(fileResult.parsed, fetchImpl, options.rules);
+  // The identity anchor itself must also be alive: probe ORG_URL so a dead
+  // endpoint is caught here rather than by the next wallet that vetts the
+  // anchor. Same transport as the file fetch, so tests can stub both.
+  let orgUrlDiagnostics: Diagnostic[] = [];
+  if (fileResult.parsed) {
+    orgUrlDiagnostics = await checkOrgUrl(fileResult.parsed, fetchImpl, {
+      rules: options.rules,
+    });
+  }
 
   return finalize(
-    [...diagnostics, ...images, ...fileResult.diagnostics],
+    [...diagnostics, ...fileResult.diagnostics, ...orgUrlDiagnostics],
     options,
     fileResult.parsed,
   );
-}
-
-/** One branding image, and the TOML path that declared it. */
-interface ImageRef {
-  url: string;
-  path: string;
-}
-
-/**
- * Collects every image URL a wallet would download from this file:
- * `DOCUMENTATION.ORG_LOGO`, then at most {@link MAX_CURRENCY_IMAGES} of the
- * `[[CURRENCIES]].image` entries.
- *
- * Values the offline rules already reject as non-URLs are skipped rather than
- * probed: they would earn a second, vaguer finding on top of the precise one
- * `currencies/urls` or `documentation/urls` already gave. A URL declared
- * twice is probed once.
- */
-function imageRefsOf(doc: Record<string, unknown> | undefined): ImageRef[] {
-  if (!doc) return [];
-
-  const refs: ImageRef[] = [];
-  const seen = new Set<string>();
-
-  const add = (value: unknown, path: string): boolean => {
-    if (!isString(value) || !isUrl(value) || seen.has(value)) return false;
-    seen.add(value);
-    refs.push({ url: value, path });
-    return true;
-  };
-
-  const documentation = doc.DOCUMENTATION;
-  if (
-    typeof documentation === 'object' &&
-    documentation !== null &&
-    !Array.isArray(documentation)
-  ) {
-    add((documentation as Record<string, unknown>).ORG_LOGO, 'DOCUMENTATION.ORG_LOGO');
-  }
-
-  if (Array.isArray(doc.CURRENCIES)) {
-    let probed = 0;
-    for (const [index, entry] of doc.CURRENCIES.entries()) {
-      if (probed >= MAX_CURRENCY_IMAGES) break;
-      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue;
-      if (add((entry as Record<string, unknown>).image, `CURRENCIES[${index}].image`)) probed++;
-    }
-  }
-
-  return refs;
-}
-
-/**
- * Probes every branding image the parsed document advertises.
- *
- * No requests are made when the caller has switched every image rule off —
- * a run that does not want the findings does not pay for the traffic either,
- * the same bargain {@link observeTls} strikes with the TLS probe.
- */
-async function probeImages(
-  doc: Record<string, unknown> | undefined,
-  fetchImpl: typeof fetch,
-  overrides: RuleOverrides | undefined,
-): Promise<Diagnostic[]> {
-  if (imageAssetRules.every((rule) => overrides?.[rule.id] === 'off')) return [];
-
-  const diagnostics: Diagnostic[] = [];
-  for (const ref of imageRefsOf(doc)) {
-    diagnostics.push(...(await probeImage(ref, fetchImpl, overrides)));
-  }
-  return diagnostics;
-}
-
-/**
- * Checks one branding image the way a browser-based wallet would fetch it.
- *
- * A HEAD keeps the probe cheap — a CDN answers without shipping the body — and
- * a server that rejects HEAD falls back to GET, because "does not answer HEAD"
- * says nothing about whether a wallet can render the image. Both requests
- * carry an `Origin`, so `Access-Control-Allow-Origin` is judged the way a
- * wallet's own fetch would see it.
- *
- * Four things can be wrong with the answer, and each is its own finding:
- * unreachable, without CORS, not an image, or too big to hand to a phone.
- */
-async function probeImage(
-  ref: ImageRef,
-  fetchImpl: typeof fetch,
-  overrides: RuleOverrides | undefined,
-): Promise<Diagnostic[]> {
-  const diagnostics: Diagnostic[] = [];
-  const report = (rule: string, message: string, suggestion: string): void => {
-    const finding = imageFinding(ref, rule, message, suggestion, overrides);
-    if (finding) diagnostics.push(finding);
-  };
-
-  const request = (method: 'HEAD' | 'GET'): Promise<Response> =>
-    fetchImpl(ref.url, {
-      method,
-      redirect: 'follow',
-      headers: { Origin: PROBE_ORIGIN },
-    });
-
-  let response: Response;
-  try {
-    response = await request('HEAD');
-    if (response.status === 405 || response.status === 501) {
-      await discard(response);
-      response = await request('GET');
-    }
-  } catch (error) {
-    report(
-      IMAGE_UNREACHABLE_RULE,
-      `Could not fetch ${ref.url}: ${errorMessage(error)}`,
-      'Confirm the image exists and that DNS and TLS resolve correctly.',
-    );
-    return diagnostics;
-  }
-
-  if (response.status !== 200) {
-    const status = response.status;
-    await discard(response);
-    report(
-      IMAGE_UNREACHABLE_RULE,
-      `${ref.url} returned HTTP ${status}`,
-      'Point the image URL at a file that resolves — wallets draw a blank tile otherwise.',
-    );
-    return diagnostics;
-  }
-
-  const cors = response.headers.get('access-control-allow-origin');
-  if (cors !== '*') {
-    report(
-      IMAGE_CORS_RULE,
-      cors
-        ? `Access-Control-Allow-Origin is "${cors}", but wallets need "*"`
-        : 'Access-Control-Allow-Origin header is missing, so browser wallets cannot load the image',
-      'Serve the image with `Access-Control-Allow-Origin: *`.',
-    );
-  }
-
-  const contentType = (response.headers.get('content-type') ?? '').split(';')[0]?.trim() ?? '';
-  if (!contentType.toLowerCase().startsWith('image/')) {
-    report(
-      IMAGE_CONTENT_TYPE_RULE,
-      contentType
-        ? `${ref.url} is served as "${contentType}", not an image/* content type`
-        : `${ref.url} is served without a Content-Type header`,
-      'An image URL should answer as image/png, image/webp, or image/svg+xml.',
-    );
-  }
-
-  const contentLength = Number(response.headers.get('content-length'));
-  if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
-    report(
-      IMAGE_MAX_SIZE_RULE,
-      `${ref.url} is ${contentLength} bytes, over the ${MAX_IMAGE_BYTES} byte budget`,
-      'Compress the image — a multi-megabyte logo stalls asset lists on mobile data.',
-    );
-  }
-
-  await discard(response);
-  return diagnostics;
-}
-
-/**
- * Shapes one probe finding, honouring the caller's severity override.
- *
- * Returns `undefined` when the rule is switched off, so `--off
- * network/image-cors` silences that one finding without hiding the other
- * three the same request is still there to produce.
- */
-function imageFinding(
-  ref: ImageRef,
-  rule: string,
-  message: string,
-  suggestion: string,
-  overrides: RuleOverrides | undefined,
-): Diagnostic | undefined {
-  const override = overrides?.[rule];
-  if (override === 'off') return undefined;
-  const severity: Severity = override === 'error' || override === 'warning' ? override : 'warning';
-
-  return {
-    rule,
-    severity,
-    category: 'network',
-    message,
-    path: ref.path,
-    helpUri: specUrl(
-      ref.path.startsWith('DOCUMENTATION')
-        ? 'organization-documentation'
-        : 'currency-documentation',
-    ),
-    suggestion,
-  };
-}
-
-/** Releases a response body the probe never reads, so the socket is not held. */
-async function discard(response: Response): Promise<void> {
-  try {
-    await response.body?.cancel();
-  } catch {
-    // The bytes were never the point; a stream that refuses to cancel is not
-    // a finding about the anchor.
-  }
 }
 
 /**

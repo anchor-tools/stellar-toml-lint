@@ -1,0 +1,19 @@
+%YAML 1.1
+---
+name: Stellar TOML
+scope: source.stellar-toml
+file_types:
+  - stellar.toml
+  - .well-known/stellar.toml
+  - toml
+contexts:
+  main:
+    - match: '^(VERSION|NETWORK_PASSPHRASE|DOMAIN|SIGNING_KEY|CURRENCIES|VALIDATORS|DOCUMENTATION|WEB_AUTH_ENDPOINT|TRANSFER_SERVER|HORIZON_URL|ANCHOR_QUOTE_SERVER|TRANSFER_SERVER_SEP0024|KYC_SERVER|ORG_NAME|ORG_URL|ORG_EMAIL|ORG_GITHUB|WEB_AUTH_CONTRACT_ID|URI_REQUEST_SIGNING_KEY|ANCHOR_QUOTE_SERVER|DIRECT_PAYMENT_SERVER)'
+      scope: entity.name.field.stellar-toml
+      comment: Top-level stellar.toml keys
+    - match: '^\s*\[([A-Z_]+)\]'
+      scope: meta.section.stellar-toml
+      comment: TOML table headers
+    - match: '^\s*\[\[([A-Z_]+)\]\]'
+      scope: meta.array-table.stellar-toml
+      comment: TOML array-of-tables headers
