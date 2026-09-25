@@ -77,6 +77,7 @@ interface Cli {
   rules: RuleOverrides;
   preset?: PresetName;
   maxWarnings?: number;
+  failOn?: Severity;
   checkNetwork: boolean;
   followLinks: boolean;
   verifySep10: boolean;
@@ -119,6 +120,9 @@ OPTIONS
                           checkstyle, or markdown (for GitHub step summaries)
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
+      --fail-on <sev>     Exit 1 when any diagnostic meets or exceeds <sev>:
+                          error, warning, or info. Takes precedence over
+                          --strict
       --off <rule>        Disable a rule (repeatable)
       --error <rule>      Raise a rule to error (repeatable)
       --warn <rule>       Lower a rule to warning (repeatable)
@@ -203,7 +207,8 @@ PRESETS
                          with code 2.
 
 EXIT CODES
-  0  no errors     1  errors found     2  bad usage, unmatched glob, or I/O failure
+  0  no errors     1  errors found, or a --fail-on threshold met
+  2  bad usage, unmatched glob, or I/O failure
 
 EXAMPLES
   stellar-toml-lint public/.well-known/stellar.toml
@@ -552,7 +557,7 @@ async function main(argv: string[]): Promise<number> {
       }
     }
 
-    const lintPassed = verdict(results, { strict, maxWarnings });
+    const lintPassed = verdict(results, { strict, failOn: cli.failOn, maxWarnings });
     return lintPassed && !healthCheckFailed ? 0 : 1;
   };
 
@@ -625,19 +630,27 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
 /** Combines per-file verdicts, including the `--max-warnings` threshold. */
 function verdict(
   results: { result: LintResult }[],
-  options: { strict: boolean; maxWarnings?: number },
+  options: { strict: boolean; failOn?: Severity; maxWarnings?: number },
 ): boolean {
   const totals = results.reduce(
     (acc, { result }) => {
       acc.error += result.counts.error;
       acc.warning += result.counts.warning;
+      acc.info += result.counts.info;
       return acc;
     },
-    { error: 0, warning: 0 },
+    { error: 0, warning: 0, info: 0 },
   );
 
+  // `--fail-on` names the threshold explicitly, so it wins over `--strict`'s
+  // implicit one; without either, only errors fail the run. The threshold is
+  // the least severe diagnostic that still fails CI — everything ranked at or
+  // above it does.
+  const threshold = options.failOn ?? (options.strict ? 'warning' : 'error');
+
   if (totals.error > 0) return false;
-  if (options.strict && totals.warning > 0) return false;
+  if (threshold !== 'error' && totals.warning > 0) return false;
+  if (threshold === 'info' && totals.info > 0) return false;
   if (options.maxWarnings !== undefined && totals.warning > options.maxWarnings) return false;
   return true;
 }
@@ -825,6 +838,17 @@ function parseArgs(argv: string[]): Cli | 'handled' {
           throw new Error('--max-warnings expects a non-negative integer.');
         }
         cli.maxWarnings = value;
+        break;
+      }
+
+      case '--fail-on': {
+        const value = requireValue(argv, ++i, arg);
+        if (value !== 'error' && value !== 'warning' && value !== 'info') {
+          throw new Error(
+            `Unknown --fail-on severity "${value}". Expected error, warning, or info.`,
+          );
+        }
+        cli.failOn = value;
         break;
       }
 

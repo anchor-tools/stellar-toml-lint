@@ -9,6 +9,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--fail-on <error|warning|info>` sets the severity threshold that makes the CLI exit `1`, so CI
+  can fail on warnings without turning every info into a build failure — or the other way round.
+  Errors keep failing at every threshold; `--fail-on` takes precedence over `--strict`'s implicit
+  warning threshold when both are given; an unknown severity is a usage error (exit `2`); and the
+  flag completes in all three shells (#139).
+
 - Follow and lint `toml` currency pointers. A `[[CURRENCIES]]` entry that points at a separate
   document via `toml` now has that document fetched and linted as part of the same run, so an
   anchor cannot pass with a broken linked asset. Enabled by `--follow-links` and implied by

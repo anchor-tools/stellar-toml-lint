@@ -65,6 +65,11 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--format', short: '-f', description: 'Output format', values: FORMATS },
   { long: '--strict', description: 'Treat warnings as errors' },
   { long: '--max-warnings', description: 'Fail if warnings exceed n', takesValue: true },
+  {
+    long: '--fail-on',
+    description: 'Exit 1 at this severity or above',
+    values: ['error', 'warning', 'info'],
+  },
   { long: '--off', description: 'Disable a rule' },
   { long: '--error', description: 'Raise a rule to error' },
   { long: '--warn', description: 'Lower a rule to warning' },
