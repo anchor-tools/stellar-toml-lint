@@ -63,7 +63,9 @@ KYC_SERVER="${serverUrl}/broken"
     server.close();
     try {
       await fs.unlink(tomlPath);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   });
 
   it('prints the latency matrix and sets exit code 1 for broken endpoints', async () => {
