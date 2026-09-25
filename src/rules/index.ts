@@ -16,6 +16,7 @@ import { sep38Rules } from './sep38-endpoints.js';
 import { sorobanRules } from '../soroban.js';
 import { sep12Rules } from './sep12-schema.js';
 import { sep6Rules } from '../cross-sep/sep6.js';
+import { corsPreflightRules } from '../network/cors-preflight.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -36,6 +37,7 @@ export const allRules: Rule[] = [
   ...sorobanRules,
   ...sep12Rules,
   ...sep6Rules,
+  ...corsPreflightRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -55,4 +57,5 @@ export {
   sorobanRules,
   sep12Rules,
   sep6Rules,
+  corsPreflightRules,
 };
