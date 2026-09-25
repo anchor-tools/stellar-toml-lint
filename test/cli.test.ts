@@ -292,3 +292,46 @@ describe('glob patterns and multi-file summaries', () => {
     expect(stderr).toContain('quote the pattern');
   });
 });
+
+describe('cli --completion', () => {
+  it('prints a bash completion script and exits 0', async () => {
+    const { code, stdout } = await cli(['--completion', 'bash']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('complete -F _stellar_toml_lint');
+    expect(stdout).toContain('--check-contracts');
+  });
+
+  it('prints a zsh completion script and exits 0', async () => {
+    const { code, stdout } = await cli(['--completion', 'zsh']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('#compdef stellar-toml-lint');
+  });
+
+  it('exits 2 for an unsupported shell', async () => {
+    const { code, stderr } = await cli(['--completion', 'unknown']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('Unknown shell');
+  });
+
+  it('exits 2 when --completion has no value', async () => {
+    const { code, stderr } = await cli(['--completion']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('expects a value');
+  });
+});
+
+describe('cli -f markdown', () => {
+  it('emits a step-summary table for a broken file and still exits 1', async () => {
+    const { code, stdout } = await cli([fixture('broken.toml'), '-f', 'markdown']);
+    expect(code).toBe(1);
+    expect(stdout).toContain('### ❌ Failed');
+    expect(stdout).toContain('| Location | Severity | Rule | Message |');
+    expect(stdout).toContain('<details>');
+  });
+
+  it('emits a green pass header for a clean file', async () => {
+    const { code, stdout } = await cli([fixture('valid.toml'), '-f', 'markdown']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('No SEP-1 issues found');
+  });
+});

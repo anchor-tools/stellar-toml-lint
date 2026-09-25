@@ -32,6 +32,7 @@ export type {
 } from './readiness.js';
   formatHtml,
   formatCheckstyle,
+  formatMarkdown,
 } from './reporters.js';
 export type { TextReporterOptions } from './reporters.js';
 export { probeTls } from './tls.js';

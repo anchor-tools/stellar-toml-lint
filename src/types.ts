@@ -18,7 +18,8 @@ export type RuleCategory =
   | 'currencies'
   | 'validators'
   | 'network'
-  | 'policy';
+  | 'policy'
+  | 'sep12';
 
 /** A 1-based position in the source file. */
 export interface Position {

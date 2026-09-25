@@ -35,11 +35,13 @@
     },
     "./browser": {
       "types": "./dist/browser.d.ts",
-      "import": "./dist/browser.js"
+      "import": "./dist/browser/index.js",
+      "default": "./dist/browser/stellar-toml-lint.esm.min.js"
     },
     "./worker": {
       "types": "./dist/worker.d.ts",
-      "import": "./dist/worker.js"
+      "import": "./dist/browser/worker.js",
+      "default": "./dist/browser/stellar-toml-lint.worker.min.js"
     }
   },
   "files": [
@@ -50,7 +52,8 @@
     "packaging/homebrew/stellar-toml-lint.rb"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && npm run build:browser",
+    "build:browser": "node scripts/build-browser.js",
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",

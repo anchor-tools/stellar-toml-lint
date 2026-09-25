@@ -7,11 +7,13 @@
  * dependency tree small enough to audit by eye.
  */
 import { readFile, writeFile } from 'node:fs/promises';
+import { watch } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
 import { lint, lintDomain, finalize } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
+import { checkCorsPreflight } from './network/cors-preflight.js';
 import {
   formatCheckstyle,
   formatGithub,
@@ -25,6 +27,7 @@ import {
   formatText,
 } from './reporters.js';
 import { calculateReadiness } from './readiness.js';
+  formatMarkdown,
   formatNdjson,
   formatJunit,
   formatSarif,
@@ -37,6 +40,7 @@ import { checkHorizon } from './rules/horizon-check.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
 import { checkRegulatedIssuerFlags } from './rules/currencies.js';
 import { checkContracts } from './soroban.js';
+import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { allRules } from './rules/index.js';
@@ -48,17 +52,20 @@ import {
 import { generateOpenApiSpec } from './generators/openapi.js';
 import { generateDiagram, type GraphFormat } from './generators/diagram.js';
 import { deliverWebhooks, isSupportedWebhookUrl } from './reporters/webhook.js';
+import { runHealthCheck, formatHealthCheckTable } from './health-check.js';
 import { runDashboard, supportsDashboard } from './ui/dashboard.js';
 import { loadPolicy, validatePolicy, evaluatePolicy } from './policy/engine.js';
 import { createFixtureFetch } from './mock-fixtures.js';
 import { runLspServer } from './lsp/server.js';
 import { getTomlJsonSchema } from './schema.js';
+import { generateCompletion, isCompletionShell } from './completion.js';
 import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
 
 const VERSION = '0.1.0';
 const DEFAULT_PATH = 'stellar.toml';
 
-type Format = 'text' | 'json' | 'ndjson' | 'sarif' | 'github' | 'junit' | 'html' | 'checkstyle';
+type Format =
+  'text' | 'json' | 'ndjson' | 'sarif' | 'github' | 'junit' | 'html' | 'checkstyle' | 'markdown';
 
 interface Cli {
   noSuggestions?: boolean;
@@ -66,7 +73,9 @@ interface Cli {
   domain?: string;
   format: Format;
   readiness?: boolean;
+  healthCheck?: boolean;
   strict: boolean;
+  watch?: boolean;
   color?: boolean;
   quiet: boolean;
   showHelp: boolean;
@@ -116,6 +125,8 @@ OPTIONS
   -f, --format <fmt>      text (default), json, ndjson, sarif, github, junit,
                           or checkstyle
   -f, --format <fmt>      text (default), json, ndjson, sarif, github, junit, html, or checkstyle
+  -f, --format <fmt>      text (default), json, ndjson, sarif, github, junit, html,
+                          checkstyle, or markdown (for GitHub step summaries)
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
       --off <rule>        Disable a rule (repeatable)
@@ -128,6 +139,7 @@ OPTIONS
   -q, --quiet             Report errors only
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
+      --health-check      Ping declared endpoint URLs to ensure they are live
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, SEP-8
                           regulated issuer flags, and ANCHOR_QUOTE_SERVER
                           against the network
@@ -157,6 +169,8 @@ OPTIONS
                           associations
       --color / --no-color
       --list-rules        Print every rule and exit
+      --completion <sh>   Print a shell completion script for bash, zsh, or fish
+                          (e.g. eval "$(stellar-toml-lint --completion zsh)")
   -v, --version
   -h, --help
 
@@ -207,212 +221,260 @@ async function main(argv: string[]): Promise<number> {
 
   const color = cli.color ?? shouldUseColor();
 
-  if (cli.lsp) {
-    // The framed stdio server: diagnostics, quick fixes, and hover. It used to
-    // be `lspMain()`, which registered a stdin listener and then let `main()`
-    // fall through to `process.exit` — so `--lsp` printed nothing and exited
-    // before a client could send a single message.
-    await runLspServer();
-    return 0;
-  }
+  const runLint = async (cli: Cli, color: boolean): Promise<number> => {
+    if (cli.lsp) {
+      // The framed stdio server: diagnostics, quick fixes, and hover. It used to
+      // be `lspMain()`, which registered a stdin listener and then let `main()`
+      // fall through to `process.exit` — so `--lsp` printed nothing and exited
+      // before a client could send a single message.
+      await runLspServer();
+      return 0;
+    }
 
-  const results: { name: string; result: LintResult }[] = [];
-  // Project defaults from .stellartomlrc.json, overridden by any CLI flag.
-  let strict = cli.strict;
-  let maxWarnings = cli.maxWarnings;
+    const results: { name: string; result: LintResult }[] = [];
+    // Project defaults from .stellartomlrc.json, overridden by any CLI flag.
+    let strict = cli.strict;
+    let maxWarnings = cli.maxWarnings;
 
-  try {
-    // Fixture mode replaces the transport for every network-bound check, so a
-    // hermetic run can never reach the internet by accident.
-    const fetchImpl = cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
+    try {
+      // Fixture mode replaces the transport for every network-bound check, so a
+      // hermetic run can never reach the internet by accident.
+      const fetchImpl =
+        cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
 
-    if (cli.domain && cli.paths.length === 0) {
-      const config = await loadConfig(process.cwd());
-      strict = strict || config.strict;
-      maxWarnings ??= config.maxWarnings;
-      results.push({
-        name: cli.domain,
-        result: await lintDomain(
-          cli.domain,
-          {
-            strict,
-            rules: { ...config.rules, ...cli.rules },
-            checkNetwork: cli.checkNetwork,
-          },
-          fetchImpl,
-        ),
-      });
-    } else {
-      const paths = await expandInputs(cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH]);
-      for (const path of paths) {
-        const config = await loadConfig(path === '-' ? process.cwd() : dirname(resolve(path)));
-        const fileStrict = cli.strict || config.strict;
+      if (cli.domain && cli.paths.length === 0) {
+        const config = await loadConfig(process.cwd());
         strict = strict || config.strict;
         maxWarnings ??= config.maxWarnings;
-        const rules = { ...config.rules, ...cli.rules };
-
-        const source = path === '-' ? await readStdin() : await readFile(path, 'utf8');
-        let fileResult = lint(source, {
-          strict: fileStrict,
-          rules,
-          checkNetwork: cli.checkNetwork,
-          ...(cli.domain ? { domain: cli.domain } : {}),
+        results.push({
+          name: cli.domain,
+          result: await lintDomain(
+            cli.domain,
+            {
+              strict,
+              rules: { ...config.rules, ...cli.rules },
+              checkNetwork: cli.checkNetwork,
+            },
+            fetchImpl,
+          ),
         });
+      } else {
+        const paths = await expandInputs(cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH]);
+        for (const path of paths) {
+          const config = await loadConfig(path === '-' ? process.cwd() : dirname(resolve(path)));
+          const fileStrict = cli.strict || config.strict;
+          strict = strict || config.strict;
+          maxWarnings ??= config.maxWarnings;
+          const rules = { ...config.rules, ...cli.rules };
 
-        if (fileResult.parsed && (cli.checkNetwork || cli.checkContracts)) {
-          const networkDiagnostics: Diagnostic[] = [];
+          const source = path === '-' ? await readStdin() : await readFile(path, 'utf8');
+          let fileResult = lint(source, {
+            strict: fileStrict,
+            rules,
+            checkNetwork: cli.checkNetwork,
+            ...(cli.domain ? { domain: cli.domain } : {}),
+          });
 
-          if (cli.checkNetwork) {
-            networkDiagnostics.push(
-              ...(await checkHorizon(fileResult.parsed, fetchImpl, { rules: cli.rules })),
-              ...(await checkNetworkAccounts(fileResult.parsed, fetchImpl)),
-              ...(await checkDisplayDecimals(fileResult.parsed, fetchImpl, { rules: cli.rules })),
-              ...(await checkSep38(fileResult.parsed, fetchImpl, { rules: cli.rules })),
-              ...(await checkRegulatedIssuerFlags(fileResult.parsed, fetchImpl, {
-                rules: cli.rules,
-              })),
-            );
-          }
+          if (
+            fileResult.parsed &&
+            (cli.checkNetwork || cli.checkContracts || cli.domain !== undefined)
+          ) {
+            const networkDiagnostics: Diagnostic[] = [];
 
-          if (cli.verifySep10 && cli.checkNetwork) {
-            const webAuthEndpoint = (fileResult.parsed as Record<string, unknown>)
-              .WEB_AUTH_ENDPOINT;
-            if (typeof webAuthEndpoint === 'string') {
-              const signingKey =
-                typeof (fileResult.parsed as Record<string, unknown>).SIGNING_KEY === 'string'
-                  ? ((fileResult.parsed as Record<string, unknown>).SIGNING_KEY as string)
-                  : '';
+            // SEP-6 is reachable under either flag: `--domain` already means the
+            // file was fetched from a live host, and `--check-network` is the
+            // explicit opt-in for a local file.
+            if (cli.checkNetwork || cli.domain !== undefined) {
               networkDiagnostics.push(
-                ...(await checkSep10Replay(signingKey, new URL(webAuthEndpoint).origin, {
+                ...(await checkSep6(fileResult.parsed, fetchImpl, { rules: cli.rules })),
+              );
+            }
+
+            if (cli.verifySep10 && cli.checkNetwork) {
+              const webAuthEndpoint = (fileResult.parsed as Record<string, unknown>)
+                .WEB_AUTH_ENDPOINT;
+              if (typeof webAuthEndpoint === 'string') {
+                const signingKey =
+                  typeof (fileResult.parsed as Record<string, unknown>).SIGNING_KEY === 'string'
+                    ? ((fileResult.parsed as Record<string, unknown>).SIGNING_KEY as string)
+                    : '';
+                networkDiagnostics.push(
+                  ...(await checkSep10Replay(signingKey, new URL(webAuthEndpoint).origin, {
+                    rules: cli.rules,
+                    fetchImpl: fetch,
+                  })),
+                );
+              }
+            }
+            if (cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await checkHorizon(fileResult.parsed, fetchImpl, { rules: cli.rules })),
+                ...(await checkNetworkAccounts(fileResult.parsed, fetchImpl)),
+                ...(await checkDisplayDecimals(fileResult.parsed, fetchImpl, { rules: cli.rules })),
+                ...(await checkSep38(fileResult.parsed, fetchImpl, { rules: cli.rules })),
+                ...(await checkRegulatedIssuerFlags(fileResult.parsed, fetchImpl, {
+                  rules: cli.rules,
+                })),
+                ...(await checkCorsPreflight(fileResult.parsed, fetchImpl, { rules: cli.rules })),
+              );
+            }
+
+            if (cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await checkCollateralGovernance(fileResult.parsed, {
                   rules: cli.rules,
                   fetchImpl: fetch,
                 })),
               );
             }
+
+            if (cli.checkContracts) {
+              networkDiagnostics.push(
+                ...(await checkContracts(fileResult.parsed, fetchImpl, {
+                  rules: cli.rules,
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })),
+              );
+            }
+
+            if (networkDiagnostics.length > 0) {
+              fileResult = finalize(
+                [...fileResult.diagnostics, ...networkDiagnostics],
+                { strict: fileStrict },
+                fileResult.parsed,
+              );
+            }
           }
 
-          if (cli.checkNetwork) {
-            networkDiagnostics.push(
-              ...(await checkCollateralGovernance(fileResult.parsed, {
-                rules: cli.rules,
-                fetchImpl: fetch,
-              })),
-            );
-          }
-
-          if (cli.checkContracts) {
-            networkDiagnostics.push(
-              ...(await checkContracts(fileResult.parsed, fetchImpl, {
-                rules: cli.rules,
-                ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
-              })),
-            );
-          }
-
-          if (networkDiagnostics.length > 0) {
-            fileResult = finalize(
-              [...fileResult.diagnostics, ...networkDiagnostics],
-              { strict: fileStrict },
-              fileResult.parsed,
-            );
-          }
+          results.push({
+            name: path === '-' ? 'stdin' : path,
+            result: fileResult,
+          });
         }
-
-        results.push({
-          name: path === '-' ? 'stdin' : path,
-          result: fileResult,
-        });
       }
-    }
-  } catch (error) {
-    process.stderr.write(`${message(error)}\n`);
-    return 2;
-  }
-
-  const firstResult = results[0]?.result;
-
-  if (cli.badgeSvg && firstResult) {
-    await writeFile(cli.badgeSvg, generateBadgeSvg(firstResult));
-  }
-  if (cli.badgeJson && firstResult) {
-    await writeFile(
-      cli.badgeJson,
-      JSON.stringify(generateShieldsEndpoint(firstResult), null, 2) + '\n',
-    );
-  }
-  if (cli.exportApConfig && firstResult?.parsed) {
-    const config = generateAnchorPlatformConfig(firstResult.parsed);
-    process.stdout.write(formatAnchorPlatformYaml(config));
-  }
-  if (cli.generateOpenapi && firstResult?.parsed) {
-    const spec = generateOpenApiSpec(firstResult.parsed);
-    const ext =
-      cli.generateOpenapi.endsWith('.yaml') || cli.generateOpenapi.endsWith('.yml')
-        ? 'yaml'
-        : 'json';
-    if (ext === 'yaml') {
-      const yamlLines: string[] = [];
-      yamlLines.push(`openapi: "${spec.openapi}"`);
-      yamlLines.push(`info:`);
-      yamlLines.push(`  title: "${spec.info.title}"`);
-      yamlLines.push(`  version: "${spec.info.version}"`);
-      yamlLines.push(`  description: "${spec.info.description}"`);
-      await writeFile(cli.generateOpenapi, yamlLines.join('\n') + '\n');
-    } else {
-      await writeFile(cli.generateOpenapi, JSON.stringify(spec, null, 2) + '\n');
-    }
-  }
-
-  if (cli.graph && firstResult?.parsed) {
-    const diagram = generateDiagram(firstResult.parsed, {
-      format: cli.graph,
-      includeContracts: cli.graphIncludeContracts,
-      includeValidators: cli.graphIncludeValidators,
-      colorByProtocol: cli.graphColorByProtocol,
-    });
-    process.stdout.write(diagram + '\n');
-  }
-
-  // Evaluate enterprise policy
-  if (cli.policy && firstResult?.parsed) {
-    const policy = await loadPolicy(cli.policy);
-    const validation = validatePolicy(policy);
-    if (!validation.valid) {
-      process.stderr.write(`Policy validation failed:\n${validation.errors.join('\n')}\n`);
+    } catch (error) {
+      process.stderr.write(`${message(error)}\n`);
       return 2;
     }
-    const sourcePath = cli.paths[0] ?? DEFAULT_PATH;
-    const source = sourcePath === '-' ? await readStdin() : await readFile(sourcePath, 'utf8');
-    const policyDiagnostics = evaluatePolicy(policy, firstResult.parsed, source);
 
-    // Convert policy diagnostics to standard diagnostics
-    const convertedDiagnostics: Diagnostic[] = policyDiagnostics.map((pd) => ({
-      rule: `policy/${pd.rule}`,
-      severity: pd.severity,
-      category: 'policy',
-      message: pd.message,
-      path: pd.path,
-      position: pd.position,
-      suggestion: pd.suggestion,
-      helpUri: undefined,
-    }));
+    const firstResult = results[0]?.result;
 
-    if (convertedDiagnostics.length > 0 && results[0]) {
-      const finalized = finalize(
-        [...firstResult.diagnostics, ...convertedDiagnostics],
-        { strict: cli.strict },
-        firstResult.parsed,
-      );
-      results[0] = { name: results[0].name, result: finalized };
+    if (cli.badgeSvg && firstResult) {
+      await writeFile(cli.badgeSvg, generateBadgeSvg(firstResult));
     }
-  }
+    if (cli.badgeJson && firstResult) {
+      await writeFile(
+        cli.badgeJson,
+        JSON.stringify(generateShieldsEndpoint(firstResult), null, 2) + '\n',
+      );
+    }
+    if (cli.exportApConfig && firstResult?.parsed) {
+      const config = generateAnchorPlatformConfig(firstResult.parsed);
+      process.stdout.write(formatAnchorPlatformYaml(config));
+    }
+    if (cli.generateOpenapi && firstResult?.parsed) {
+      const spec = generateOpenApiSpec(firstResult.parsed);
+      const ext =
+        cli.generateOpenapi.endsWith('.yaml') || cli.generateOpenapi.endsWith('.yml')
+          ? 'yaml'
+          : 'json';
+      if (ext === 'yaml') {
+        const yamlLines: string[] = [];
+        yamlLines.push(`openapi: "${spec.openapi}"`);
+        yamlLines.push(`info:`);
+        yamlLines.push(`  title: "${spec.info.title}"`);
+        yamlLines.push(`  version: "${spec.info.version}"`);
+        yamlLines.push(`  description: "${spec.info.description}"`);
+        await writeFile(cli.generateOpenapi, yamlLines.join('\n') + '\n');
+      } else {
+        await writeFile(cli.generateOpenapi, JSON.stringify(spec, null, 2) + '\n');
+      }
+    }
 
-  if (cli.interactive && cli.format !== 'text') {
-    process.stderr.write(
-      `--interactive draws its own view of the findings; drop --format ${cli.format}.\n\nRun with --help for usage.\n`,
-    );
-    return 2;
-  }
+    if (cli.graph && firstResult?.parsed) {
+      const diagram = generateDiagram(firstResult.parsed, {
+        format: cli.graph,
+        includeContracts: cli.graphIncludeContracts,
+        includeValidators: cli.graphIncludeValidators,
+        colorByProtocol: cli.graphColorByProtocol,
+      });
+      process.stdout.write(diagram + '\n');
+    }
+
+    // Evaluate enterprise policy
+    if (cli.policy && firstResult?.parsed) {
+      const policy = await loadPolicy(cli.policy);
+      const validation = validatePolicy(policy);
+      if (!validation.valid) {
+        process.stderr.write(`Policy validation failed:\n${validation.errors.join('\n')}\n`);
+        return 2;
+      }
+      const sourcePath = cli.paths[0] ?? DEFAULT_PATH;
+      const source = sourcePath === '-' ? await readStdin() : await readFile(sourcePath, 'utf8');
+      const policyDiagnostics = evaluatePolicy(policy, firstResult.parsed, source);
+
+      // Convert policy diagnostics to standard diagnostics
+      const convertedDiagnostics: Diagnostic[] = policyDiagnostics.map((pd) => ({
+        rule: `policy/${pd.rule}`,
+        severity: pd.severity,
+        category: 'policy',
+        message: pd.message,
+        path: pd.path,
+        position: pd.position,
+        suggestion: pd.suggestion,
+        helpUri: undefined,
+      }));
+
+      if (convertedDiagnostics.length > 0 && results[0]) {
+        const finalized = finalize(
+          [...firstResult.diagnostics, ...convertedDiagnostics],
+          { strict: cli.strict },
+          firstResult.parsed,
+        );
+        results[0] = { name: results[0].name, result: finalized };
+      }
+    }
+
+    if (cli.interactive && cli.format !== 'text') {
+      process.stderr.write(
+        `--interactive draws its own view of the findings; drop --format ${cli.format}.\n\nRun with --help for usage.\n`,
+      );
+      return 2;
+    }
+
+    // A dashboard written into a pipe or a file would corrupt the output it is
+    // meant to replace, so anything that is not a terminal keeps the text report.
+    const dashboard = cli.interactive === true && supportsDashboard(process.stdout);
+
+    if (!cli.exportApConfig && dashboard) {
+      await runDashboard(
+        results,
+        { stdin: process.stdin, stdout: process.stdout },
+        { color, ...(cli.quiet ? { filter: 'error' as const } : {}) },
+      );
+    } else if (!cli.exportApConfig) {
+      for (const { name, result } of results) {
+        const filtered = cli.quiet
+          ? { ...result, diagnostics: result.diagnostics.filter((d) => d.severity === 'error') }
+          : result;
+
+        process.stdout.write(render(filtered, name, cli, color));
+      }
+
+      // One line closing a multi-file run, so a CI log answers "did the whole
+      // set pass?" without anyone counting per-file blocks. Only the text
+      // reporter gets it: appending prose to JSON, SARIF, or XML would break the
+      // parsers those formats exist for.
+      if (results.length > 1 && cli.format === 'text') {
+        process.stdout.write(formatSummary(results, { color }));
+      }
+    }
+
+    if (cli.webhookSlack !== undefined || cli.webhookDiscord !== undefined) {
+      const deliveries = await deliverWebhooks(results, {
+        ...(cli.webhookSlack !== undefined ? { slack: cli.webhookSlack } : {}),
+        ...(cli.webhookDiscord !== undefined ? { discord: cli.webhookDiscord } : {}),
+      });
 
   // A dashboard written into a pipe or a file would corrupt the output it is
   // meant to replace, so anything that is not a terminal keeps the text report.
@@ -438,36 +500,40 @@ async function main(argv: string[]): Promise<number> {
         : result;
 
       process.stdout.write(render(filtered, name, cli, color));
+      for (const delivery of deliveries) {
+        if (delivery.ok) continue;
+        // The exit code stays tied to the diagnostics: a broken alert endpoint
+        // must not turn a clean file into a failing build.
+        process.stderr.write(
+          `Warning: ${delivery.channel} webhook failed after ${delivery.attempts} attempt(s)${
+            delivery.error === undefined ? '' : `: ${delivery.error}`
+          }\n`,
+        );
+      }
     }
 
-    // One line closing a multi-file run, so a CI log answers "did the whole
-    // set pass?" without anyone counting per-file blocks. Only the text
-    // reporter gets it: appending prose to JSON, SARIF, or XML would break the
-    // parsers those formats exist for.
-    if (results.length > 1 && cli.format === 'text') {
-      process.stdout.write(formatSummary(results, { color }));
+    let healthCheckFailed = false;
+    if (cli.healthCheck) {
+      for (const { result } of results) {
+        const hcResults = await runHealthCheck(result);
+        if (hcResults.length > 0) {
+          process.stdout.write(formatHealthCheckTable(hcResults, color));
+          if (hcResults.some((r) => r.error || (r.statusCode && r.statusCode >= 400))) {
+            healthCheckFailed = true;
+          }
+        }
+      }
     }
+
+    const lintPassed = verdict(results, { strict, maxWarnings });
+    return lintPassed && !healthCheckFailed ? 0 : 1;
+  };
+
+  const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
+  if (cli.watch) {
+    return watchFiles(cli.domain ? [] : paths, cli, color, runLint);
   }
-
-  if (cli.webhookSlack !== undefined || cli.webhookDiscord !== undefined) {
-    const deliveries = await deliverWebhooks(results, {
-      ...(cli.webhookSlack !== undefined ? { slack: cli.webhookSlack } : {}),
-      ...(cli.webhookDiscord !== undefined ? { discord: cli.webhookDiscord } : {}),
-    });
-
-    for (const delivery of deliveries) {
-      if (delivery.ok) continue;
-      // The exit code stays tied to the diagnostics: a broken alert endpoint
-      // must not turn a clean file into a failing build.
-      process.stderr.write(
-        `Warning: ${delivery.channel} webhook failed after ${delivery.attempts} attempt(s)${
-          delivery.error === undefined ? '' : `: ${delivery.error}`
-        }\n`,
-      );
-    }
-  }
-
-  return verdict(results, { strict, maxWarnings }) ? 0 : 1;
+  return runLint(cli, color);
 }
 
 /**
@@ -516,6 +582,8 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
       return formatHtml(result, name);
     case 'checkstyle':
       return formatCheckstyle(result, name, VERSION);
+    case 'markdown':
+      return formatMarkdown(result, name);
     case 'text':
       return formatText(result, {
         filename: name,
@@ -593,6 +661,15 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         process.stdout.write(`${JSON.stringify(getTomlJsonSchema(), null, 2)}\n`);
         return 'handled';
 
+      case '--completion': {
+        const shell = requireValue(argv, ++i, arg);
+        if (!isCompletionShell(shell)) {
+          throw new Error(`Unknown shell "${shell}". Expected bash, zsh, or fish.`);
+        }
+        process.stdout.write(generateCompletion(shell, allRules));
+        return 'handled';
+      }
+
       case '--lsp':
         cli.lsp = true;
         break;
@@ -607,7 +684,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         const value = requireValue(argv, ++i, arg);
         if (!isFormat(value)) {
           throw new Error(
-            `Unknown format "${value}". Expected text, json, ndjson, sarif, github, junit, html, or checkstyle.`,
+            `Unknown format "${value}". Expected text, json, ndjson, sarif, github, junit, html, checkstyle, or markdown.`,
           );
         }
         cli.format = value;
@@ -621,6 +698,9 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--readiness':
       case '--score':
         cli.readiness = true;
+      case '-w':
+      case '--watch':
+        cli.watch = true;
         break;
 
       case '-i':
@@ -630,6 +710,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--no-suggestions':
         cli.noSuggestions = true;
+        break;
+
+      case '--health-check':
+        cli.healthCheck = true;
         break;
 
       case '--check-network':
@@ -765,7 +849,8 @@ function isFormat(value: string): value is Format {
     value === 'github' ||
     value === 'junit' ||
     value === 'html' ||
-    value === 'checkstyle'
+    value === 'checkstyle' ||
+    value === 'markdown'
   );
 }
 
@@ -818,8 +903,45 @@ function message(error: unknown): string {
 }
 
 main(process.argv.slice(2))
-  .then((code) => process.exit(code))
+  .then((code) => {
+    process.exitCode = code;
+  })
   .catch((error: unknown) => {
     process.stderr.write(`Unexpected failure: ${message(error)}\n`);
-    process.exit(2);
+    process.exitCode = 2;
   });
+
+async function watchFiles(
+  paths: string[],
+  cli: Cli,
+  color: boolean,
+  runLint: (cli: Cli, color: boolean) => Promise<number>,
+) {
+  await runLint(cli, color);
+
+  for (const path of paths) {
+    if (path === '-') continue; // can't watch stdin
+    let timer: NodeJS.Timeout | null = null;
+    try {
+      const watcher = watch(path, () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(async () => {
+          timer = null;
+          if (process.stdout.isTTY) process.stdout.write('\x1Bc');
+          await runLint(cli, color);
+        }, 100);
+      });
+      watcher.on('error', (error) => {
+        process.stderr.write(`Warning: Watcher error on ${path}: ${error.message}\n`);
+      });
+    } catch (error) {
+      const e = error as Error;
+      process.stderr.write(`Warning: Could not watch ${path}: ${e.message}\n`);
+    }
+  }
+
+  // Wait indefinitely, exit on SIGINT
+  return new Promise<number>(() => {
+    process.on('SIGINT', () => process.exit(0));
+  });
+}
