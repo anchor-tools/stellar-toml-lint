@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import * as http from 'node:http';
+import * as os from 'node:os';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,18 +52,21 @@ describe('Health Check', () => {
       });
     });
 
+    // Written to a temp directory: test/fixtures is swept by the glob tests,
+    // and a new fixture there would change the file counts they assert.
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'stellar-toml-lint-health-'));
     const tomlContent = `
 WEB_AUTH_ENDPOINT="${serverUrl}/auth"
 KYC_SERVER="${serverUrl}/broken"
 `;
-    tomlPath = path.join(here, 'fixtures', 'health.toml');
+    tomlPath = path.join(dir, 'health.toml');
     await fs.writeFile(tomlPath, tomlContent);
   });
 
   afterAll(async () => {
     server.close();
     try {
-      await fs.unlink(tomlPath);
+      await fs.rm(path.dirname(tomlPath), { recursive: true, force: true });
     } catch {
       /* ignore */
     }

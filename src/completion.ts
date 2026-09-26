@@ -80,6 +80,7 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--show-help-urls', description: 'Print the spec link for each finding' },
   { long: '--no-suggestions', description: 'Hide diagnostic suggestions' },
   { long: '--check-network', description: 'Verify accounts and endpoints online' },
+  { long: '--audit-quorum', description: 'Solve declared quorum sets for split-brain risk' },
   { long: '--verify-sep10', description: 'Verify SEP-10 nonce replay resistance' },
   { long: '--crawl-peers', description: 'Discover and audit overlay peers' },
   { long: '--verify-dnssec', description: 'Compare DNSSEC-validating DNS resolvers' },

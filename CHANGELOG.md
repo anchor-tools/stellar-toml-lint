@@ -9,6 +9,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `validators/quorum-intersection-failure` (error) and `validators/fragile-quorum-threshold`
+  (warning) under `--check-network --audit-quorum`: the quorum sets declared by
+  `[[VALIDATORS]].QUORUM_SET` — or the `[QUORUM_SET]` stanzas fetched from each validator's
+  `CONFIG_URL` `stellar-core.cfg` — are solved for safety. Minimal quorums are enumerated per node
+  and across nodes, and two disjoint quorums on different nodes mean the network can split-brain;
+  minimal blocking sets give each node's failure resilience. A threshold below 67% or zero
+  resilience is reported as fragile. Unreachable or malformed inputs stay silent (#85).
+- `history/archive-lagging` (warning, error past 512 ledgers) and
+  `history/archive-hash-mismatch` (error) under `--check-network`: each validator `HISTORY`
+  archive's root `stellar-history.json` is diffed against the live network — the ledger gap to the
+  matching Horizon's `core_latest_ledger`, and the archive checkpoint hash against the Horizon
+  ledger hash for the same sequence — so a stalled or rebuilt-out-of-sync archive is caught before
+  a relying peer or wallet falls behind (#86).
+
 - `network/image-unreachable`, `network/image-cors`, `network/image-content-type`, and
   `network/image-max-size` (all warnings) under `--domain`: the branding images wallets actually
   download — `DOCUMENTATION.ORG_LOGO` and up to ten `[[CURRENCIES]].image` URLs — are probed with
