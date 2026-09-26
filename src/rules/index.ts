@@ -28,6 +28,7 @@ import { dnsIntegrityRules } from '../security/dns-integrity.js';
 import { certExpiryRules } from '../network/cert-expiry.js';
 import { fixedSupplyLockRules } from './fixed-supply-audit.js';
 import { circularPointerRules } from './circular-pointers.js';
+import { docComplianceRules } from './doc-compliance.js';
 import { networkPassphraseRules } from './network-passphrase.js';
 
 /** Every rule, in report order. */
@@ -64,6 +65,7 @@ export const allRules: Rule[] = [
   ...dnsIntegrityRules,
   ...certExpiryRules,
   ...circularPointerRules,
+  ...docComplianceRules,
   ...networkPassphraseRules,
 ];
 
@@ -100,5 +102,6 @@ export {
   dnsIntegrityRules,
   certExpiryRules,
   circularPointerRules,
+  docComplianceRules,
   networkPassphraseRules,
 };

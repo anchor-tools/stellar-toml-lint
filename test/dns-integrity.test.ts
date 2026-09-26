@@ -13,7 +13,11 @@ const RESOLVERS: readonly DnsResolver[] = [
 ];
 
 const DOC = {
-  DOCUMENTATION: { ORG_URL: 'https://anchor.example.com' },
+  DOCUMENTATION: {
+    ORG_URL: 'https://anchor.example.com',
+    ORG_PRIVACY_POLICY: 'https://anchor.example.com/privacy',
+    ORG_TERMS_OF_SERVICE: 'https://anchor.example.com/terms',
+  },
 };
 
 function response(addresses: string[], ad = true, type = 'A'): Response {

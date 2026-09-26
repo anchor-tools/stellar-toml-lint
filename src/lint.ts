@@ -23,6 +23,7 @@ import { MAX_FILE_BYTES, isString, isUrl } from './predicates.js';
 import { specUrl } from './spec.js';
 import { probeTls, type TlsProbe } from './tls.js';
 import { checkOrgUrl } from './rules/org-url-check.js';
+import { checkDocCompliance } from './rules/doc-compliance.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 
 /** Severity ordering used for sorting and for `--max-warnings` style counts. */
@@ -291,6 +292,16 @@ export async function lintDomain(
     });
   }
 
+  // Legal and privacy policy URLs are required by financial regulators and
+  // anchor listing standards. Presence checks always run; reachability is
+  // probed when the file was fetched from a live host.
+  let docComplianceDiagnostics: Diagnostic[] = [];
+  if (fileResult.parsed) {
+    docComplianceDiagnostics = await checkDocCompliance(fileResult.parsed, fetchImpl, {
+      rules: options.rules,
+    });
+  }
+
   // SEP-6 is the reason many anchors name a TRANSFER_SERVER at all; a wallet
   // that discovers the endpoint here but finds no /info learns that too late.
   let sep6Diagnostics: Diagnostic[] = [];
@@ -313,6 +324,7 @@ export async function lintDomain(
       ...images,
       ...fileResult.diagnostics,
       ...orgUrlDiagnostics,
+      ...docComplianceDiagnostics,
       ...sep6Diagnostics,
       ...linkDiagnostics,
     ],
