@@ -296,7 +296,7 @@ describe('lintDomain', () => {
         'toml="https://example.com/.well-known/stellar.toml"',
       ].join('\n');
 
-      const impl = (async (url: string | URL) => {
+      const impl = (async () => {
         return new Response(mainToml, {
           status: 200,
           headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
@@ -313,18 +313,9 @@ describe('lintDomain', () => {
     });
 
     it('detects a two-step circular chain (A → B → A)', async () => {
-      const mainToml = [
-        '[[CURRENCIES]]',
-        'toml="https://example.com/a.toml"',
-      ].join('\n');
-      const aToml = [
-        '[[CURRENCIES]]',
-        'toml="https://example.com/b.toml"',
-      ].join('\n');
-      const bToml = [
-        '[[CURRENCIES]]',
-        'toml="https://example.com/a.toml"',
-      ].join('\n');
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://example.com/a.toml"'].join('\n');
+      const aToml = ['[[CURRENCIES]]', 'toml="https://example.com/b.toml"'].join('\n');
+      const bToml = ['[[CURRENCIES]]', 'toml="https://example.com/a.toml"'].join('\n');
 
       const impl = (async (url: string | URL) => {
         const target = String(url);
@@ -355,15 +346,8 @@ describe('lintDomain', () => {
     });
 
     it('does not report circular references when pointers are linear', async () => {
-      const mainToml = [
-        '[[CURRENCIES]]',
-        'toml="https://example.com/a.toml"',
-      ].join('\n');
-      const aToml = [
-        '[[CURRENCIES]]',
-        'code="FOO"',
-        'issuer="invalid-account"',
-      ].join('\n');
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://example.com/a.toml"'].join('\n');
+      const aToml = ['[[CURRENCIES]]', 'code="FOO"', 'issuer="invalid-account"'].join('\n');
 
       const impl = (async (url: string | URL) => {
         const target = String(url);
@@ -385,10 +369,7 @@ describe('lintDomain', () => {
     });
 
     it('normalizes pointer URLs when checking for cycles', async () => {
-      const mainToml = [
-        '[[CURRENCIES]]',
-        'toml="https://Example.COM/stellar.toml"',
-      ].join('\n');
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://Example.COM/stellar.toml"'].join('\n');
 
       const impl = (async () => {
         return new Response(mainToml, {

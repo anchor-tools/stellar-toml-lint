@@ -530,7 +530,6 @@ async function discard(response: Response): Promise<void> {
 import { followTomlPointers } from './rules/circular-pointers.js';
 export { followTomlPointers };
 
-
 /**
  * Measures the TLS session the host negotiates, or `undefined` when there is
  * nothing to measure.
