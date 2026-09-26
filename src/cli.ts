@@ -38,6 +38,8 @@ import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
+import { checkArchiveDiff } from './history/archive-diff.js';
+import { checkQuorumIntersection } from './validators/quorum-solver.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { allRules } from './rules/index.js';
@@ -88,6 +90,7 @@ interface Cli {
   maxWarnings?: number;
   failOn?: Severity;
   checkNetwork: boolean;
+  auditQuorum: boolean;
   followLinks: boolean;
   verifySep10: boolean;
   crawlPeers: boolean;
@@ -153,8 +156,13 @@ OPTIONS
       --no-suggestions    Hide diagnostic suggestions in the output
       --health-check      Ping declared endpoint URLs to ensure they are live
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, SEP-8
-                          regulated issuer flags, TLS certificate expiry, and
-                          ANCHOR_QUOTE_SERVER against the network
+                          regulated issuer flags, TLS certificate expiry,
+                          history archive freshness, and ANCHOR_QUOTE_SERVER
+                          against the network
+      --audit-quorum      With --check-network: solve the declared quorum sets
+                          ([[VALIDATORS]].QUORUM_SET or CONFIG_URL-linked
+                          stellar-core.cfg) for split-brain risk and fragile
+                          thresholds
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
@@ -301,6 +309,10 @@ async function main(argv: string[]): Promise<number> {
         if (domainResult.parsed && cli.checkNetwork) {
           const networkDiagnostics: Diagnostic[] = [
             ...(await checkHistoryPublish(domainResult.parsed, fetchImpl, { rules })),
+            ...(await checkArchiveDiff(domainResult.parsed, fetchImpl, { rules })),
+            ...(cli.auditQuorum
+              ? await checkQuorumIntersection(domainResult.parsed, fetchImpl, { rules })
+              : []),
             ...(cli.verifyDnssec
               ? await checkDnsIntegrity(domainResult.parsed, fetchImpl, {
                   rules,
@@ -389,6 +401,10 @@ async function main(argv: string[]): Promise<number> {
                   ? await checkCertExpiry(fileResult.parsed, { rules })
                   : []),
                 ...(await checkHistoryPublish(fileResult.parsed, fetchImpl, { rules })),
+                ...(await checkArchiveDiff(fileResult.parsed, fetchImpl, { rules })),
+                ...(cli.auditQuorum
+                  ? await checkQuorumIntersection(fileResult.parsed, fetchImpl, { rules })
+                  : []),
                 ...(cli.verifyDnssec
                   ? await checkDnsIntegrity(fileResult.parsed, fetchImpl, {
                       rules,
@@ -744,6 +760,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     showHelp: false,
     rules: {},
     checkNetwork: false,
+    auditQuorum: false,
     followLinks: false,
     verifySep10: false,
     crawlPeers: false,
@@ -830,6 +847,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--check-network':
         cli.checkNetwork = true;
+        break;
+
+      case '--audit-quorum':
+        cli.auditQuorum = true;
         break;
 
       case '--verify-sep10':
