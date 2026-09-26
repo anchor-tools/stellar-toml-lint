@@ -618,9 +618,9 @@ permission (default in most workflows); when the token lacks it, the comment is 
 workflow warning and the lint verdict is unaffected. The step is skipped entirely outside
 pull-request contexts (pushes, schedules).
 
-| Input        | Default  | Effect                                                          |
-| ------------ | -------- | --------------------------------------------------------------- |
-| `pr-comment` | `false`  | Post or update the aggregated summary comment on the pull request. |
+| Input        | Default | Effect                                                             |
+| ------------ | ------- | ------------------------------------------------------------------ |
+| `pr-comment` | `false` | Post or update the aggregated summary comment on the pull request. |
 
 To route the findings into the Security tab instead:
 
