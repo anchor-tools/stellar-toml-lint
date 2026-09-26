@@ -38,6 +38,7 @@ const FORMATS = [
   'html',
   'checkstyle',
   'markdown',
+  'pr-comment',
 ] as const;
 
 /** `--graph` choices. */

@@ -1,6 +1,7 @@
 import type { Diagnostic, LintResult, Severity } from './types.js';
 
 export { formatHtml } from './reporters/html.js';
+export { formatPrComment } from './reporters/pr-comment.js';
 
 /** Minimal ANSI helpers. Avoids a dependency for what is a dozen escape codes. */
 export function makeColors(enabled: boolean) {

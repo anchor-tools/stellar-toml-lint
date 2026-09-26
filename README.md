@@ -593,7 +593,36 @@ npm run build:browser
 
 Findings appear as inline annotations on the pull request diff.
 
-To route them into the Security tab instead:
+#### Pull-request summary comment
+
+Set `pr-comment: true` to also post (or update) one aggregated Markdown comment on the pull
+request — a reviewer dashboard rather than a diff annotation:
+
+```yaml
+- uses: anchor-tools/stellar-toml-lint@v1
+  with:
+    file: public/.well-known/stellar.toml
+    pr-comment: true
+```
+
+The comment opens with a Pass/Fail badge and the linter's exit code, the Wallet Readiness score
+with its letter-grade badge, and a breaking-changes section when the change introduces deprecated
+fields; the per-finding suggestions and spec links fold into a collapsible `<details>` block.
+Everything sourced from the linted file is Markdown-escaped, so a hostile `stellar.toml` cannot
+inject markup into the comment.
+
+On repeated commits the action updates its previous comment in place instead of posting a new one
+every run — it looks for an existing `github-actions[bot]` comment carrying the report's marker and
+edits it, so the conversation stays one comment per PR. Posting requires `pull-requests: write`
+permission (default in most workflows); when the token lacks it, the comment is skipped with a
+workflow warning and the lint verdict is unaffected. The step is skipped entirely outside
+pull-request contexts (pushes, schedules).
+
+| Input        | Default  | Effect                                                          |
+| ------------ | -------- | --------------------------------------------------------------- |
+| `pr-comment` | `false`  | Post or update the aggregated summary comment on the pull request. |
+
+To route the findings into the Security tab instead:
 
 ```yaml
 - uses: anchor-tools/stellar-toml-lint@v1
