@@ -23,6 +23,8 @@ FEDERATION_SERVER = "https://api.example.com/federation"
 [DOCUMENTATION]
 ORG_NAME = "Example Anchor"
 ORG_URL = "https://example.com"
+ORG_PRIVACY_POLICY = "https://example.com/privacy"
+ORG_TERMS_OF_SERVICE = "https://example.com/terms"
 `;
 
 const V2_LEGACY_TOML = `# Example with classic asset declarations

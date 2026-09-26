@@ -10,6 +10,8 @@ describe('empty string values rule', () => {
     ORG_DESCRIPTION: 'Test description',
     ORG_LOGO: 'https://example.com/logo.png',
     ORG_OFFICIAL_EMAIL: 'test@example.com',
+    ORG_PRIVACY_POLICY: 'https://example.com/privacy',
+    ORG_TERMS_OF_SERVICE: 'https://example.com/terms',
   };
 
   function makeSource(overrides: Record<string, string>): string {
