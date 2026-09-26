@@ -2,7 +2,7 @@ import type { Rule } from '../types.js';
 import { generalRules } from './general.js';
 import { documentationRules } from './documentation.js';
 import { principalRules } from './principals.js';
-import { currencyRules, sep41MetadataRules } from './currencies.js';
+import { currencyRules, sep41MetadataRules, collateralSigFormatRules } from './currencies.js';
 import { regulatedFlagRules } from './regulated-flags.js';
 import { validatorRules } from './validators.js';
 import { validatorDedupRules } from './validator-dedup.js';
@@ -66,6 +66,7 @@ export {
   documentationRules,
   principalRules,
   currencyRules,
+  collateralSigFormatRules,
   fixedSupplyLockRules,
   regulatedFlagRules,
   maxDecimalsRules,
