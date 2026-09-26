@@ -1024,6 +1024,25 @@ previous-ledger pointers when checkpoint metadata provides them. A missing categ
 `history/broken-checkpoint-chain` (error). The check uses the injected network transport, so
 `--mock-fixtures` remains hermetic.
 
+**History archive delta audit** (with `--check-network`) — each validator `HISTORY` archive is
+compared against the live network: the root `stellar-history.json` is fetched from the archive, its
+latest ledger is diffed against the `core_latest_ledger` of the `HORIZON_URL` matching
+`NETWORK_PASSPHRASE`, and the archive checkpoint hash is verified against the Horizon ledger hash
+for the same sequence. A lag over 128 ledgers emits `history/archive-lagging` (warning), a lag over
+512 emits it as an error, and a hash that disagrees with Horizon emits
+`history/archive-hash-mismatch` (error) — the signature of an archive rebuilt out of sync with the
+core ledger. An archive or Horizon endpoint that cannot be reached degrades to silence.
+
+**Quorum intersection audit** (with `--check-network --audit-quorum`) — the quorum sets declared by
+`[[VALIDATORS]].QUORUM_SET` — or, when absent, the `[QUORUM_SET]` stanzas of each validator's
+`CONFIG_URL` `stellar-core.cfg` — are solved for safety. Minimal quorums are enumerated per node
+and across nodes; when two disjoint quorums can form, the network can split-brain and
+`validators/quorum-intersection-failure` (error) names both quorums. Each node's minimal blocking
+sets give its failure resilience (how many validator failures can disconnect it); a set whose
+threshold is below 67%, or whose resilience is zero, emits
+`validators/fragile-quorum-threshold` (warning). Fewer than two analysable quorum sets, an
+unreachable `CONFIG_URL`, or a malformed set stays silent.
+
 **Overlay peer discovery** (with `--check-network --crawl-peers`) — each `VALIDATORS[i].HOST`
 is contacted over TCP and sent a Stellar overlay `GET_PEERS` XDR message. Returned `PEERS`
 records are decoded, deduplicated, and crawled recursively with bounded depth and timeouts. A

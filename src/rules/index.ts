@@ -22,6 +22,8 @@ import { corsPreflightRules } from '../network/cors-preflight.js';
 import { overlayCrawlerRules } from '../overlay/crawler-rules.js';
 import { cryptoAuditorRules } from '../overlay/crypto-auditor.js';
 import { historyPublishRules } from '../history/publish-validator.js';
+import { archiveDiffRules } from '../history/archive-diff.js';
+import { quorumSolverRules } from '../validators/quorum-solver.js';
 import { dnsIntegrityRules } from '../security/dns-integrity.js';
 import { certExpiryRules } from '../network/cert-expiry.js';
 import { fixedSupplyLockRules } from './fixed-supply-audit.js';
@@ -55,6 +57,8 @@ export const allRules: Rule[] = [
   ...overlayCrawlerRules,
   ...cryptoAuditorRules,
   ...historyPublishRules,
+  ...archiveDiffRules,
+  ...quorumSolverRules,
   ...dnsIntegrityRules,
   ...certExpiryRules,
 ];
@@ -87,6 +91,8 @@ export {
   overlayCrawlerRules,
   cryptoAuditorRules,
   historyPublishRules,
+  archiveDiffRules,
+  quorumSolverRules,
   dnsIntegrityRules,
   certExpiryRules,
 };

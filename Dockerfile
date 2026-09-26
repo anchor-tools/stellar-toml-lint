@@ -13,6 +13,18 @@
 #         language: docker_image
 #         files: (?:.*/)?\.?stellar\.toml$
 
+# `dist/` is generated rather than shipped in the build context (it is git- and
+# docker-ignored), so the image builds it in a throwaway stage.
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
+COPY src ./src
+COPY scripts ./scripts
+
+RUN npm ci && npm run build
+
 FROM node:20-alpine
 
 ARG USER_ID=1000
@@ -27,7 +39,7 @@ COPY package.json package-lock.json ./
 
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY --chown=stellar-toml-lint:stellar-toml-lint dist ./dist
+COPY --from=build --chown=stellar-toml-lint:stellar-toml-lint /app/dist ./dist
 
 USER stellar-toml-lint
 
