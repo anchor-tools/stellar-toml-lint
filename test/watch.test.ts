@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 
@@ -8,15 +9,20 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(here, '..', 'dist', 'cli.js');
 
 describe('Watch mode', () => {
-  const watchFixture = path.join(here, 'fixtures', 'watch.toml');
+  // Written to a temp directory: test/fixtures is swept by the glob tests,
+  // and a new fixture there would change the file counts they assert.
+  let watchDir: string;
+  let watchFixture: string;
 
   beforeAll(async () => {
+    watchDir = await fs.mkdtemp(path.join(os.tmpdir(), 'stellar-toml-lint-watch-'));
+    watchFixture = path.join(watchDir, 'watch.toml');
     await fs.writeFile(watchFixture, 'VERSION="2.0.0"\n');
   });
 
   afterAll(async () => {
     try {
-      await fs.unlink(watchFixture);
+      await fs.rm(watchDir, { recursive: true, force: true });
     } catch {
       /* ignore */
     }

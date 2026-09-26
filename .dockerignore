@@ -6,6 +6,9 @@ node_modules
 coverage
 *.ts
 tsconfig*.json
+# The image's build stage compiles from source, so it needs the tsconfigs.
+!tsconfig.json
+!tsconfig.build.json
 
 # Pre-commit source fixtures
 *.toml
