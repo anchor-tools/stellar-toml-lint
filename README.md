@@ -618,9 +618,9 @@ permission (default in most workflows); when the token lacks it, the comment is 
 workflow warning and the lint verdict is unaffected. The step is skipped entirely outside
 pull-request contexts (pushes, schedules).
 
-| Input        | Default  | Effect                                                          |
-| ------------ | -------- | --------------------------------------------------------------- |
-| `pr-comment` | `false`  | Post or update the aggregated summary comment on the pull request. |
+| Input        | Default | Effect                                                             |
+| ------------ | ------- | ------------------------------------------------------------------ |
+| `pr-comment` | `false` | Post or update the aggregated summary comment on the pull request. |
 
 To route the findings into the Security tab instead:
 
@@ -1009,6 +1009,17 @@ reserved stellar-core config keyword (`self`, `all`, `default`, `none`, `quorum`
 `manual`, `auto`); checksum-valid, unique `PUBLIC_KEY`; `HOST` as `host:port`; `HISTORY` as a
 well-formed archive URL, with the `{0}` template parameter accepted and its braces required to
 balance.
+
+**Validator peer-port reachability** (with `--check-network`) — the `HOST` each
+`[[VALIDATORS]]` entry publishes is the address every peer stellar-core node dials over the
+overlay to exchange SCP messages, so the linter opens one raw TCP connection to each declared
+`host:port` (5-second timeout, deduplicated) and verifies the port actually accepts
+connections. A refused or timed-out handshake emits `validators/peer-port-unreachable`
+(warning) naming the address, with the firewall/NAT and stellar-core process to check — a
+closed port leaves the file syntactically perfect while no peer can ever connect. The check
+never fails the run on its own (tune it with `--off`/`--error`), hosts that cannot be resolved
+are left to the DNS checks, and like the other socket-opening probes it is skipped in
+`--mock-fixtures` mode.
 
 **Network** (with `--domain`) — reachability, `Access-Control-Allow-Origin: *`, `text/plain` content
 type, size, and the security of the TLS session: a negotiated protocol of TLS 1.0, TLS 1.1, SSLv2,

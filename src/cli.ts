@@ -15,6 +15,7 @@ import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import { checkCertExpiry } from './network/cert-expiry.js';
+import { checkPeerPortReachability } from './validators/net-probe.js';
 import {
   formatCheckstyle,
   formatGithub,
@@ -364,6 +365,10 @@ async function main(argv: string[]): Promise<number> {
             ...(cli.mockFixtures === undefined
               ? await checkCertExpiry(domainResult.parsed, { rules })
               : []),
+            // The peer-port probe dials raw TCP for the same reason.
+            ...(cli.mockFixtures === undefined
+              ? await checkPeerPortReachability(domainResult.parsed, { rules })
+              : []),
           ];
           if (networkDiagnostics.length > 0) {
             domainResult = finalize(
@@ -462,6 +467,9 @@ async function main(argv: string[]): Promise<number> {
                 // Opens its own sockets, outside the fixture transport.
                 ...(cli.mockFixtures === undefined
                   ? await checkCertExpiry(fileResult.parsed, { rules })
+                  : []),
+                ...(cli.mockFixtures === undefined
+                  ? await checkPeerPortReachability(fileResult.parsed, { rules })
                   : []),
                 ...(await checkHistoryPublish(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkArchiveDiff(fileResult.parsed, fetchImpl, { rules })),
