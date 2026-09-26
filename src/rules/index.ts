@@ -11,8 +11,9 @@ import { deprecationRules } from './deprecations.js';
 import { emailMxRule } from './email-mx.js';
 import { maxDecimalsRules } from './max-decimals.js';
 import { horizonRules } from './horizon-check.js';
-import { orgUrlRules } from './org-url-check.js';
+import { sep3Rules } from './sep3-auth.js';
 import { sep38Rules } from './sep38-endpoints.js';
+import { orgUrlRules } from './org-url-check.js';
 import { imageAssetRules } from './image-assets.js';
 import { sorobanRules } from '../soroban.js';
 import { sep12Rules } from './sep12-schema.js';
@@ -42,8 +43,9 @@ export const allRules: Rule[] = [
   emailMxRule,
 
   ...horizonRules,
-  ...orgUrlRules,
+  ...sep3Rules,
   ...sep38Rules,
+  ...orgUrlRules,
   ...imageAssetRules,
   ...sorobanRules,
   ...sep41MetadataRules,
@@ -74,6 +76,7 @@ export {
   validatorDedupRules,
   securityRules,
   horizonRules,
+  sep3Rules,
   sep38Rules,
   imageAssetRules,
   sorobanRules,

@@ -112,6 +112,120 @@ it was before.
 
 ### Options
 
+| Flag                 | Effect                                                                          |
+| -------------------- | ------------------------------------------------------------------------------- |
+| `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks           |
+| `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`, `junit`                            |
+| `--strict`           | Treat warnings as errors                                                        |
+| `--max-warnings <n>` | Fail if warnings exceed `n`                                                     |
+| `--check-network`    | Verify accounts, `HORIZON_URL`, `AUTH_SERVER`, and `ANCHOR_QUOTE_SERVER` online |
+| `--off <rule>`       | Disable a rule (repeatable)                                                     |
+| `--error <rule>`     | Raise a rule to error (repeatable)                                              |
+| `--warn <rule>`      | Lower a rule to warning (repeatable)                                            |
+| `-q, --quiet`        | Show errors only                                                                |
+| `--show-help-urls`   | Print the spec link for each finding                                            |
+| `--list-rules`       | Print every rule and exit                                                       |
+| `--no-suggestions`   | Hide diagnostic suggestions in the output                                       |
+| `--check-network`    | Validate `ORG_OFFICIAL_EMAIL` domain MX records for email deliverability        |
+
+| Flag                      | Effect                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `-d, --domain <d>`        | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks           |
+| `-f, --format <fmt>`      | `text` (default), `json`, `sarif`, `github`, `junit`                            |
+| `--strict`                | Treat warnings as errors                                                        |
+| `--max-warnings <n>`      | Fail if warnings exceed `n`                                                     |
+| `--check-network`         | Verify accounts, `HORIZON_URL`, `AUTH_SERVER`, and `ANCHOR_QUOTE_SERVER` online |
+| `--webhook-slack <url>`   | POST a Slack Block Kit card with the run summary                                |
+| `--webhook-discord <url>` | POST a Discord embed with the run summary                                       |
+| `--off <rule>`            | Disable a rule (repeatable)                                                     |
+| `--error <rule>`          | Raise a rule to error (repeatable)                                              |
+| `--warn <rule>`           | Lower a rule to warning (repeatable)                                            |
+| `-q, --quiet`             | Show errors only                                                                |
+| `--show-help-urls`        | Print the spec link for each finding                                            |
+| `--list-rules`            | Print every rule and exit                                                       |
+| `--no-suggestions`        | Hide diagnostic suggestions in the output                                       |
+| `--color`                 | Force colour on, overriding `NO_COLOR`                                          |
+| `--no-color`              | Force colour off                                                                |
+| `-i, --interactive`       | Full-screen dashboard to walk the findings (falls back to text)                 |
+
+Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failure.
+
+| Flag                        | Effect                                                                                                                  |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `-d, --domain <d>`          | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks                                                   |
+| `-f, --format <fmt>`        | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`                        |
+| `--strict`                  | Treat warnings as errors                                                                                                |
+| `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                             |
+| `--check-network`           | Verify accounts, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online                            |
+| `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                       |
+| `--check-contracts`         | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                   |
+| `--soroban-rpc <url>`       | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                       |
+| `--mock-fixtures <dir>`     | Serve network checks from recorded JSON fixtures under `<dir>`, never the network                                       |
+| `--webhook-slack <url>`     | POST a Slack Block Kit card with the run summary                                                                        |
+| `--webhook-discord <url>`   | POST a Discord embed with the run summary                                                                               |
+| `--off <rule>`              | Disable a rule (repeatable)                                                                                             |
+| `--error <rule>`            | Raise a rule to error (repeatable)                                                                                      |
+| `--warn <rule>`             | Lower a rule to warning (repeatable)                                                                                    |
+| `-q, --quiet`               | Show errors only                                                                                                        |
+| `--show-help-urls`          | Print the spec link for each finding                                                                                    |
+| `--list-rules`              | Print every rule and exit                                                                                               |
+| `--completion <shell>`      | Print a `bash`, `zsh`, or `fish` completion script and exit                                                             |
+| `--no-suggestions`          | Hide diagnostic suggestions in the output                                                                               |
+| `--color`                   | Force colour on, overriding `NO_COLOR`                                                                                  |
+| `--no-color`                | Force colour off                                                                                                        |
+| `-w, --watch`               | Watch files and re-run on changes                                                                                       |
+| `-i, --interactive`         | Full-screen dashboard to walk the findings (falls back to text)                                                         |
+| `--lsp`                     | Run as a Language Server on stdio (diagnostics, quick-fixes, hover)                                                     |
+| `--graph <fmt>`             | Generate architecture diagram: `mermaid` or `dot`                                                                       |
+| `--graph-contracts`         | Include Soroban contracts in diagram                                                                                    |
+| `--graph-validators`        | Include validators in diagram                                                                                           |
+| `--graph-color`             | Color nodes by protocol type                                                                                            |
+| `--policy <file>`           | Evaluate enterprise policy file (JSON or YAML)                                                                          |
+| `--export-ap-config`        | Export Anchor Platform YAML config to stdout                                                                            |
+| `--generate-openapi <file>` | Generate an OpenAPI 3.1 spec (json or yaml extension)                                                                   |
+| `--badge-svg <file>`        | Generate an SVG compliance badge                                                                                        |
+| `--badge-json <file>`       | Generate a Shields.io JSON endpoint                                                                                     |
+| `--json-schema`             | Print a JSON Schema (Draft 2020-12) for stellar.toml to stdout                                                          |
+| Flag                        | Effect                                                                                                                  |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `-d, --domain <d>`          | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks                                                   |
+| `-f, --format <fmt>`        | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`                        |
+| `--strict`                  | Treat warnings as errors                                                                                                |
+| `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                             |
+| `--check-network`           | Verify accounts, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online |
+| `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                       |
+| `--check-contracts`         | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                   |
+| `--soroban-rpc <url>`       | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                       |
+| `--mock-fixtures <dir>`     | Serve network checks from recorded JSON fixtures under `<dir>`, never the network                                       |
+| `--webhook-slack <url>`     | POST a Slack Block Kit card with the run summary                                                                        |
+| `--webhook-discord <url>`   | POST a Discord embed with the run summary                                                                               |
+| `--off <rule>`              | Disable a rule (repeatable)                                                                                             |
+| `--error <rule>`            | Raise a rule to error (repeatable)                                                                                      |
+| `--warn <rule>`             | Lower a rule to warning (repeatable)                                                                                    |
+| `-q, --quiet`               | Show errors only                                                                                                        |
+| `--show-help-urls`          | Print the spec link for each finding                                                                                    |
+| `--list-rules`              | Print every rule and exit                                                                                               |
+| `--completion <shell>`      | Print a `bash`, `zsh`, or `fish` completion script and exit                                                             |
+| `--no-suggestions`          | Hide diagnostic suggestions in the output                                                                               |
+| `--color`                   | Force colour on, overriding `NO_COLOR`                                                                                  |
+| `--no-color`                | Force colour off                                                                                                        |
+| `--lsp`                     | Run as a Language Server on stdio (diagnostics, quick-fixes, hover)                                                     |
+| `--graph <fmt>`             | Generate architecture diagram: `mermaid` or `dot`                                                                       |
+| `--graph-contracts`         | Include Soroban contracts in diagram                                                                                    |
+| `--graph-validators`        | Include validators in diagram                                                                                           |
+| `--graph-color`             | Color nodes by protocol type                                                                                            |
+| `--policy <file>`           | Evaluate enterprise policy file (JSON or YAML)                                                                          |
+| `--export-ap-config`        | Export Anchor Platform YAML config to stdout                                                                            |
+| `--generate-openapi <file>` | Generate an OpenAPI 3.1 spec (json or yaml extension)                                                                   |
+| `--badge-svg <file>`        | Generate an SVG compliance badge                                                                                        |
+| `--badge-json <file>`       | Generate a Shields.io JSON endpoint                                                                                     |
+| `--json-schema`             | Print a JSON Schema (Draft 2020-12) for stellar.toml to stdout                                                          |
+
+Every flag above takes precedence over the [configuration file](#configuration-file).
+
+Exit codes: **0** no errors, **1** problems found, **2** bad usage, an unmatched glob, or I/O
+failure.
+
 | Flag                        | Effect                                                                                                                                                                     |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-d, --domain <d>`          | Serving domain. Enables CORS, content-type, TLS, image-asset, and `ORG_URL` checks                                                                                         |
@@ -161,7 +275,6 @@ explicitly, so it — not `--strict` — decides when a run containing warnings 
 
 Exit codes: **0** no errors, **1** problems found or a `--fail-on` threshold met, **2** bad usage,
 an unmatched glob, or I/O failure.
-
 Colour output follows the [NO_COLOR standard](https://no-color.org): setting `NO_COLOR` to any
 non-empty value disables it, an empty value counts as unset, and stdout not being a terminal
 disables it too. An explicit `--color` is the only thing that overrides `NO_COLOR`.
@@ -895,6 +1008,13 @@ wallet that cannot negotiate exchange rates fails the run instead of at transfer
 `/quote` route is probed too: a 5xx emits `sep38/quote-endpoint-error`, and a 200 that is not a JSON
 object emits `sep38/malformed-quote-response`, while the 400/401/404 a bare unauthenticated GET
 legitimately earns stays silent.
+When `AUTH_SERVER` is declared, the same opt-in check sends a form-encoded SEP-3 POST handshake with
+an `Origin` header. HTTPS is required, and the response must use one of SEP-3's documented status
+codes (200, 202, 400, 403, or 500) and include an `Access-Control-Allow-Origin` value accepted by
+browser clients. A connection, TLS, timeout, or invalid-status failure emits
+`sep3/auth-server-unreachable`; a missing or unusable CORS header emits
+`sep3/missing-cors-headers`. This is an endpoint liveness and transport check, not a full signature
+verification.
 
 **History publish validation** (with `--check-network`) — each validator `HISTORY` archive is
 checked for the three most recent checkpoints. The audit verifies that `ledger-*.xdr.gz`,
