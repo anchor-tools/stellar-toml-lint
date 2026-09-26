@@ -2,6 +2,7 @@ import type { Diagnostic, Rule, RuleContext, RuleOverrides } from '../types.js';
 import { displayDecimalsRules } from './display-decimals-audit.js';
 import { anchoredAssetRules } from './anchored-asset-rules.js';
 import { assetCodeFormatRules } from './asset-code-format.js';
+import { collateralSigFormatRules } from './collateral-sig-format.js';
 import { verifyCollateralSignature } from '../crypto/collateral.js';
 import {
   ANCHOR_ASSET_TYPES,
@@ -273,6 +274,7 @@ export const currencyRules: Rule[] = [
 
   ...anchoredAssetRules,
   ...assetCodeFormatRules,
+  ...collateralSigFormatRules,
 
   {
     id: 'currencies/entries-are-tables',
@@ -1015,3 +1017,5 @@ export const currencyRules: Rule[] = [
     },
   },
 ];
+
+export { collateralSigFormatRules };

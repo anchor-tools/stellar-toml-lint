@@ -845,8 +845,10 @@ Collateral signatures are verified cryptographically, offline, not just counted.
 
 A signature that does not verify emits `currencies/collateral-signature-invalid` (error); one that is
 not base64 (or `0x` hex for Ethereum), or decodes to the wrong length, emits
-`currencies/collateral-signature-malformed` (error). Address families the linter cannot verify, such
-as taproot `bc1p...` (BIP-322), are skipped rather than reported.
+`currencies/collateral-signature-malformed` (error). Additionally, each entry in
+`collateral_address_signatures` is validated to ensure proper base64 encoding (`currencies/invalid-signature-encoding`, error)
+and verified to decode to exactly 64 bytes for Ed25519 signatures (`currencies/invalid-signature-length`, error).
+Address families the linter cannot verify, such as taproot `bc1p...` (BIP-322), are skipped rather than reported.
 
 Asset-anchored currencies (`is_asset_anchored = true`) must use one of `fiat`, `crypto`, `stock`,
 `bond`, `commodity`, `real_estate`, or `other` for `anchor_asset_type`. Missing or invalid values
