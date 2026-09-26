@@ -37,6 +37,9 @@ import { checkFixedSupplyIssuerLocks } from './rules/fixed-supply-audit.js';
 import { checkContracts } from './soroban.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
+import { checkTokenBinding } from './security/token-binding.js';
+import { verifySep6Integration } from './protocols/sep6.js';
+import { verifySep31 } from './protocols/sep31.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkArchiveDiff } from './history/archive-diff.js';
@@ -94,6 +97,9 @@ interface Cli {
   auditQuorum: boolean;
   followLinks: boolean;
   verifySep10: boolean;
+  auditSecurity?: boolean;
+  verifySep6?: boolean;
+  verifySep31?: boolean;
   crawlPeers: boolean;
   verifyDnssec: boolean;
   badgeSvg?: string;
@@ -167,6 +173,10 @@ OPTIONS
                           stellar-core.cfg) for split-brain risk and fragile
                           thresholds
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
+      --audit-security    Audit cross-server token binding (SEP-10 JWT against
+                          TRANSFER_SERVER_SEP0024, KYC_SERVER, DIRECT_PAYMENT_SERVER)
+      --verify-sep6       Run end-to-end programmatic SEP-6 integration tester
+      --verify-sep31      Audit SEP-31 cross-border payment lifecycle and schema
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
@@ -323,6 +333,18 @@ async function main(argv: string[]): Promise<number> {
                   domain: cli.domain,
                 })
               : []),
+            ...(cli.auditSecurity
+              ? await checkTokenBinding(domainResult.parsed, fetchImpl, {
+                  rules,
+                  domain: cli.domain,
+                })
+              : []),
+            ...(cli.verifySep6
+              ? await verifySep6Integration(domainResult.parsed, fetchImpl, { rules })
+              : []),
+            ...(cli.verifySep31
+              ? await verifySep31(domainResult.parsed, fetchImpl, { rules })
+              : []),
             ...(cli.crawlPeers && cli.mockFixtures === undefined
               ? await checkOverlayPeers(domainResult.parsed, { rules })
               : []),
@@ -388,6 +410,27 @@ async function main(argv: string[]): Promise<number> {
                   })),
                 );
               }
+            }
+
+            if (cli.auditSecurity && cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await checkTokenBinding(fileResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                })),
+              );
+            }
+
+            if (cli.verifySep6 && cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await verifySep6Integration(fileResult.parsed, fetchImpl, { rules })),
+              );
+            }
+
+            if (cli.verifySep31 && cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await verifySep31(fileResult.parsed, fetchImpl, { rules })),
+              );
             }
             if (cli.checkNetwork) {
               networkDiagnostics.push(
@@ -864,6 +907,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-sep10':
         cli.verifySep10 = true;
+        break;
+
+      case '--audit-security':
+        cli.auditSecurity = true;
+        break;
+
+      case '--verify-sep6':
+        cli.verifySep6 = true;
+        break;
+
+      case '--verify-sep31':
+        cli.verifySep31 = true;
         break;
 
       case '--crawl-peers':

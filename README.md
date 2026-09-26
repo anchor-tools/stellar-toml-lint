@@ -158,6 +158,9 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                             |
 | `--check-network`           | Verify accounts, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online                            |
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                       |
+| `--audit-security`          | Audit cross-server token binding (SEP-10 JWT vs downstream endpoints) (requires `--check-network`)                      |
+| `--verify-sep6`             | Run end-to-end programmatic SEP-6 integration tester (requires `--check-network`)                                       |
+| `--verify-sep31`            | Audit SEP-31 cross-border payment lifecycle and schema (requires `--check-network`)                                     |
 | `--check-contracts`         | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                   |
 | `--soroban-rpc <url>`       | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                       |
 | `--mock-fixtures <dir>`     | Serve network checks from recorded JSON fixtures under `<dir>`, never the network                                       |
@@ -1142,6 +1145,27 @@ Required field keys that are not standard [SEP-9][sep9] names (`first_name`, `la
 `email_address`, `id_country_code`, …) emit `sep12/unknown-kyc-field-name` (warning), and a customer
 type whose name is not a lowercase identifier emits `sep12/invalid-customer-type-syntax` (error).
 Nothing here fires for a local file without the flag: offline linting never opens a connection.
+
+**SEP-7 URI verification** — Validates `web+stellar:` links across documentation and currency descriptions.
+Validates operation types (`pay`, `tx`), recipient accounts, asset codes, issuers, and memo types. Decodes
+`replace` parameter variables (`sep7/unsupported-replacement-field`, warning) and cryptographically
+verifies Ed25519 signatures in `signature` query parameters against `SIGNING_KEY` (`sep7/invalid-signature`, error;
+`sep7/invalid-uri-scheme`, error).
+
+**Cross-server token binding auditor** (with `--check-network --audit-security`) — Executes the SEP-10 challenge flow
+to acquire a test JWT from `WEB_AUTH_ENDPOINT` and verifies that declared downstream endpoints (`TRANSFER_SERVER_SEP0024`,
+`KYC_SERVER`, and `DIRECT_PAYMENT_SERVER`) authenticate and accept the token (`security/jwt-rejected-by-transfer-server`, error).
+Validates domain binding between the JWT `iss` claim and the anchor host domain (`security/jwt-domain-mismatch`, error).
+
+**SEP-6 programmatic integration tester** (with `--check-network --verify-sep6`) — Performs end-to-end simulation of
+programmatic deposit and withdrawal flows against `TRANSFER_SERVER`. Validates GET `/deposit` and `/withdraw` parameter
+schemas (`sep6/deposit-parameter-mismatch`, error), validates GET `/fee` dynamic fee calculations against `/info` fee
+rules (`sep6/fee-calculation-mismatch`, warning), and validates transaction status codes across lifecycle states (`sep6/invalid-transaction-status`, error).
+
+**SEP-31 cross-border direct payment lifecycle auditor** (with `--check-network --verify-sep31`) — Audits
+`DIRECT_PAYMENT_SERVER` GET `/info` response schema (`sep31/info-schema-invalid`, error), verifies sender and receiver
+KYC requirements (`sep31/missing-kyc-requirements`, error), and cross-references SEP-31 supported assets against
+`stellar.toml` `[[CURRENCIES]]` (`sep31/asset-unsupported`, warning).
 
 ### Severity
 
