@@ -198,6 +198,35 @@ export {
 } from './protocols/sep31.js';
 export type { Sep31Options } from './protocols/sep31.js';
 
+export {
+  verifySep8,
+  buildSyntheticSep8Transaction,
+  isValidTransactionXdr,
+  sep8Rules,
+  sep8RuleIds,
+  APPROVAL_SERVER_UNRESPONSIVE_RULE,
+  INVALID_RESPONSE_STATUS_RULE,
+  INVALID_REVISED_TX_XDR_RULE,
+} from './protocols/sep8.js';
+export type { Sep8Options } from './protocols/sep8.js';
+
+export {
+  auditContractWasm,
+  auditTomlContractWasm,
+  verifySep41Wasm,
+  decompressWasm,
+  extractContractSpecEntries,
+  getWasmCustomSection,
+  wasmAuditorRules,
+  wasmAuditorRuleIds,
+  WASM_NOT_FOUND_RULE,
+  MISSING_CONTRACT_SPEC_RULE,
+  MISSING_SEP41_FUNCTION_RULE,
+  INVALID_SEP41_SIGNATURE_RULE,
+  SEP41_MANDATORY_FUNCTIONS,
+} from './soroban/wasm-auditor.js';
+export type { WasmAuditorOptions } from './soroban/wasm-auditor.js';
+
 export type {
   Diagnostic,
   Fix,

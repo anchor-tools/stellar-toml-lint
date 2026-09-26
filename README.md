@@ -161,6 +161,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--audit-security`          | Audit cross-server token binding (SEP-10 JWT vs downstream endpoints) (requires `--check-network`)                      |
 | `--verify-sep6`             | Run end-to-end programmatic SEP-6 integration tester (requires `--check-network`)                                       |
 | `--verify-sep31`            | Audit SEP-31 cross-border payment lifecycle and schema (requires `--check-network`)                                     |
+| `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                      |
 | `--check-contracts`         | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                   |
 | `--soroban-rpc <url>`       | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                       |
 | `--mock-fixtures <dir>`     | Serve network checks from recorded JSON fixtures under `<dir>`, never the network                                       |
@@ -238,6 +239,7 @@ failure.
 | `--fail-on <severity>`      | Exit `1` when any diagnostic meets or exceeds `error`, `warning`, or `info`; takes precedence over `--strict`                                                              |
 | `--check-network`           | Verify accounts, fixed-supply issuer locks, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, TLS certificate expiry, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online |
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                                                                          |
+| `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                                                                         |
 | `--crawl-peers`             | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                                                                    |
 | `--verify-dnssec`           | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                                                                     |
 | `--follow-links`            | Fetch and lint the `toml` pointers in `CURRENCIES` (implied by `--domain`)                                                                                                 |
@@ -1206,6 +1208,21 @@ rules (`sep6/fee-calculation-mismatch`, warning), and validates transaction stat
 `DIRECT_PAYMENT_SERVER` GET `/info` response schema (`sep31/info-schema-invalid`, error), verifies sender and receiver
 KYC requirements (`sep31/missing-kyc-requirements`, error), and cross-references SEP-31 supported assets against
 `stellar.toml` `[[CURRENCIES]]` (`sep31/asset-unsupported`, warning).
+
+**SEP-8 dynamic compliance approval server simulation engine** (with `--check-network --verify-sep8`) — Generates
+synthetic payment transaction envelopes for regulated assets declared with `approval_server` or `regulated = true`,
+submits the envelopes to the compliance server, and validates response schemas across all lifecycle statuses (`success`,
+`revised`, `pending`, `rejected`, `action_required`). Emits `sep8/approval-server-unresponsive` (error) when unreachable,
+`sep8/invalid-response-status` (error) on unrecognized status or missing `action_url`, and `sep8/invalid-revised-tx-xdr`
+(error) when returned transaction envelopes fail XDR parsing.
+
+**Soroban WASM bytecode disassembler and SEP-41 conformance auditor** (with `--check-network`) — Fetches compiled WebAssembly
+bytecode for Soroban smart contracts declared under `[[CURRENCIES]].contract`, `[[CONTRACTS]]`, or `WEB_AUTH_CONTRACT_ID`.
+Decompresses binary WASM payloads and inspects the `contractspecv0` custom section to disassemble the exported Soroban Contract Spec (SCS)
+XDR stream. Verifies that token contracts implement all 11 mandatory SEP-41 functions (`initialize`, `balance`, `spendable_balance`,
+`authorized`, `transfer`, `transfer_from`, `burn`, `burn_from`, `decimals`, `name`, `symbol`), validating parameter counts,
+argument types, and return types. Emits `soroban/wasm-not-found` (error), `soroban/missing-contract-spec` (error),
+`soroban/missing-sep41-function` (error), or `soroban/invalid-sep41-signature` (error).
 
 ### Severity
 

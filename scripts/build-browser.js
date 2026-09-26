@@ -17,19 +17,32 @@ mkdirSync(outDir, { recursive: true });
 const nodeShimPlugin = {
   name: 'node-builtins-shim',
   setup(build) {
-    build.onResolve({ filter: /^node:tls$/ }, (args) => ({
+    build.onResolve({ filter: /^node:(tls|net|zlib|fs|path|process)$/ }, (args) => ({
       path: args.path,
       namespace: 'node-shim',
     }));
-    build.onLoad({ filter: /.*/, namespace: 'node-shim' }, () => ({
-      contents: `
-        export function connect() {
-          throw new Error('TLS audit is not supported in browser environments.');
-        }
-        export default { connect };
-      `,
-      loader: 'js',
-    }));
+    build.onLoad({ filter: /.*/, namespace: 'node-shim' }, (args) => {
+      if (args.path === 'node:zlib') {
+        return {
+          contents: `
+            export function gunzipSync(b) { return b; }
+            export function inflateSync(b) { return b; }
+            export function unzipSync(b) { return b; }
+            export default { gunzipSync, inflateSync, unzipSync };
+          `,
+          loader: 'js',
+        };
+      }
+      return {
+        contents: `
+          export function connect() {
+            throw new Error('Node API is not supported in browser environments.');
+          }
+          export default { connect };
+        `,
+        loader: 'js',
+      };
+    });
   },
 };
 

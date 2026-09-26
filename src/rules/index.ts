@@ -34,6 +34,8 @@ import { networkPassphraseRules } from './network-passphrase.js';
 import { sep7Rules } from '../protocols/sep7.js';
 import { sep6IntegrationRules } from '../protocols/sep6.js';
 import { sep31Rules } from '../protocols/sep31.js';
+import { sep8Rules } from '../protocols/sep8.js';
+import { wasmAuditorRules } from '../soroban/wasm-auditor.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -57,11 +59,13 @@ export const allRules: Rule[] = [
   ...orgUrlRules,
   ...imageAssetRules,
   ...sorobanRules,
+  ...wasmAuditorRules,
   ...sep41MetadataRules,
   ...sep12Rules,
   ...sep6Rules,
   ...sep6IntegrationRules,
   ...sep31Rules,
+  ...sep8Rules,
   ...sep7Rules,
   ...corsPreflightRules,
   ...overlayCrawlerRules,
@@ -116,4 +120,6 @@ export {
   sep7Rules,
   sep6IntegrationRules,
   sep31Rules,
+  sep8Rules,
+  wasmAuditorRules,
 };
