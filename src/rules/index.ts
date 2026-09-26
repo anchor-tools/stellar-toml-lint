@@ -27,6 +27,7 @@ import { quorumSolverRules } from '../validators/quorum-solver.js';
 import { dnsIntegrityRules } from '../security/dns-integrity.js';
 import { certExpiryRules } from '../network/cert-expiry.js';
 import { fixedSupplyLockRules } from './fixed-supply-audit.js';
+import { circularPointerRules } from './circular-pointers.js';
 import { docComplianceRules } from './doc-compliance.js';
 import { networkPassphraseRules } from './network-passphrase.js';
 
@@ -63,6 +64,7 @@ export const allRules: Rule[] = [
   ...quorumSolverRules,
   ...dnsIntegrityRules,
   ...certExpiryRules,
+  ...circularPointerRules,
   ...docComplianceRules,
   ...networkPassphraseRules,
 ];
@@ -99,6 +101,7 @@ export {
   quorumSolverRules,
   dnsIntegrityRules,
   certExpiryRules,
+  circularPointerRules,
   docComplianceRules,
   networkPassphraseRules,
 };

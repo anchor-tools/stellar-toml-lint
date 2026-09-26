@@ -291,6 +291,99 @@ describe('lintDomain', () => {
       expect(warn?.severity).toBe('warning');
       expect(warn?.message).toContain('HTTP 404');
     });
+
+    it('detects a self-referencing circular toml pointer', async () => {
+      const mainToml = [
+        '[[CURRENCIES]]',
+        'toml="https://example.com/.well-known/stellar.toml"',
+      ].join('\n');
+
+      const impl = (async () => {
+        return new Response(mainToml, {
+          status: 200,
+          headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+        });
+      }) as unknown as typeof fetch;
+
+      const result = await lintDomain('example.com', { followLinks: true }, impl);
+
+      expect(ruleIds(result)).toContain('currencies/circular-toml-pointer');
+      const err = result.diagnostics.find((d) => d.rule === 'currencies/circular-toml-pointer');
+      expect(err?.severity).toBe('error');
+      expect(err?.message).toContain('Circular currency reference');
+      expect(err?.path).toBe('CURRENCIES[0].toml');
+    });
+
+    it('detects a two-step circular chain (A → B → A)', async () => {
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://example.com/a.toml"'].join('\n');
+      const aToml = ['[[CURRENCIES]]', 'toml="https://example.com/b.toml"'].join('\n');
+      const bToml = ['[[CURRENCIES]]', 'toml="https://example.com/a.toml"'].join('\n');
+
+      const impl = (async (url: string | URL) => {
+        const target = String(url);
+        if (target.endsWith('stellar.toml')) {
+          return new Response(mainToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        } else if (target.endsWith('a.toml')) {
+          return new Response(aToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        } else {
+          return new Response(bToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        }
+      }) as unknown as typeof fetch;
+
+      const result = await lintDomain('example.com', { followLinks: true }, impl);
+
+      expect(ruleIds(result)).toContain('currencies/circular-toml-pointer');
+      const err = result.diagnostics.find((d) => d.rule === 'currencies/circular-toml-pointer');
+      expect(err?.severity).toBe('error');
+      expect(err?.message).toContain('Circular currency reference');
+    });
+
+    it('does not report circular references when pointers are linear', async () => {
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://example.com/a.toml"'].join('\n');
+      const aToml = ['[[CURRENCIES]]', 'code="FOO"', 'issuer="invalid-account"'].join('\n');
+
+      const impl = (async (url: string | URL) => {
+        const target = String(url);
+        if (target.endsWith('stellar.toml')) {
+          return new Response(mainToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        }
+        return new Response(aToml, {
+          status: 200,
+          headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+        });
+      }) as unknown as typeof fetch;
+
+      const result = await lintDomain('example.com', { followLinks: true }, impl);
+
+      expect(ruleIds(result)).not.toContain('currencies/circular-toml-pointer');
+    });
+
+    it('normalizes pointer URLs when checking for cycles', async () => {
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://Example.COM/stellar.toml"'].join('\n');
+
+      const impl = (async () => {
+        return new Response(mainToml, {
+          status: 200,
+          headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+        });
+      }) as unknown as typeof fetch;
+
+      const result = await lintDomain('example.com', { followLinks: true }, impl);
+
+      expect(ruleIds(result)).toContain('currencies/circular-toml-pointer');
+    });
   });
 });
 
