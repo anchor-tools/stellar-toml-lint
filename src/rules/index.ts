@@ -30,6 +30,9 @@ import { fixedSupplyLockRules } from './fixed-supply-audit.js';
 import { circularPointerRules } from './circular-pointers.js';
 import { docComplianceRules } from './doc-compliance.js';
 import { networkPassphraseRules } from './network-passphrase.js';
+import { sep7Rules } from '../protocols/sep7.js';
+import { sep6IntegrationRules } from '../protocols/sep6.js';
+import { sep31Rules } from '../protocols/sep31.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -56,6 +59,9 @@ export const allRules: Rule[] = [
   ...sep41MetadataRules,
   ...sep12Rules,
   ...sep6Rules,
+  ...sep6IntegrationRules,
+  ...sep31Rules,
+  ...sep7Rules,
   ...corsPreflightRules,
   ...overlayCrawlerRules,
   ...cryptoAuditorRules,
@@ -104,4 +110,7 @@ export {
   circularPointerRules,
   docComplianceRules,
   networkPassphraseRules,
+  sep7Rules,
+  sep6IntegrationRules,
+  sep31Rules,
 };

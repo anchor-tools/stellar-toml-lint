@@ -145,6 +145,49 @@ export type {
   DnsResolver,
   DnsResolverResult,
 } from './security/dns-integrity.js';
+export {
+  parseSep7Uri,
+  validateSep7Uri,
+  verifySep7Signature,
+  signSep7Uri,
+  checkSep7Uris,
+  sep7Rules,
+  sep7RuleIds,
+  INVALID_URI_SCHEME_RULE,
+  INVALID_SIGNATURE_RULE,
+  UNSUPPORTED_REPLACEMENT_FIELD_RULE,
+} from './protocols/sep7.js';
+export type { ParsedSep7Uri, Sep7Options } from './protocols/sep7.js';
+
+export {
+  checkTokenBinding,
+  acquireSep10Token,
+  parseJwtPayload,
+  JWT_REJECTED_RULE,
+  JWT_DOMAIN_MISMATCH_RULE,
+} from './security/token-binding.js';
+export type { TokenBindingOptions } from './security/token-binding.js';
+
+export {
+  verifySep6Integration,
+  sep6IntegrationRules,
+  sep6IntegrationRuleIds,
+  DEPOSIT_PARAMETER_MISMATCH_RULE,
+  FEE_CALCULATION_MISMATCH_RULE,
+  INVALID_TRANSACTION_STATUS_RULE,
+} from './protocols/sep6.js';
+export type { Sep6IntegrationOptions } from './protocols/sep6.js';
+
+export {
+  verifySep31,
+  sep31Rules,
+  sep31RuleIds,
+  INFO_SCHEMA_INVALID_RULE,
+  ASSET_UNSUPPORTED_RULE,
+  MISSING_KYC_REQUIREMENTS_RULE,
+} from './protocols/sep31.js';
+export type { Sep31Options } from './protocols/sep31.js';
+
 export type {
   Diagnostic,
   Fix,
