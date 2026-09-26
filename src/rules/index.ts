@@ -24,6 +24,7 @@ import { historyPublishRules } from '../history/publish-validator.js';
 import { dnsIntegrityRules } from '../security/dns-integrity.js';
 import { certExpiryRules } from '../network/cert-expiry.js';
 import { fixedSupplyLockRules } from './fixed-supply-audit.js';
+import { circularPointerRules } from './circular-pointers.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -55,6 +56,7 @@ export const allRules: Rule[] = [
   ...historyPublishRules,
   ...dnsIntegrityRules,
   ...certExpiryRules,
+  ...circularPointerRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -85,4 +87,5 @@ export {
   historyPublishRules,
   dnsIntegrityRules,
   certExpiryRules,
+  circularPointerRules,
 };

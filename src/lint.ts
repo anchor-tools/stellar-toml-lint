@@ -527,86 +527,9 @@ async function discard(response: Response): Promise<void> {
   }
 }
 
-/** Upper bound on linked documents fetched, so a long list cannot fan out. */
-const MAX_POINTER_FETCHES = 20;
+import { followTomlPointers } from './rules/circular-pointers.js';
+export { followTomlPointers };
 
-/**
- * Fetches every `toml` pointer under `CURRENCIES` and lints the linked
- * documents, folding their findings into this run.
- *
- * A pointer that cannot be fetched is a `network/toml-pointer-fetch` warning
- * rather than a hard failure: the anchor published a link we cannot read, which
- * is worth reporting but should not mask the findings from the file itself.
- * Each linked document is linted with `followLinks` off, so a pointer pointing
- * at another pointer terminates instead of recursing.
- *
- * Findings are prefixed with the URL they came from, since the caller is
- * auditing several files at once and a bare message would be ambiguous.
- */
-export async function followTomlPointers(
-  doc: Record<string, unknown>,
-  options: LintOptions,
-  fetchImpl: typeof fetch = globalFetch,
-): Promise<Diagnostic[]> {
-  const diagnostics: Diagnostic[] = [];
-  const currencies = doc.CURRENCIES;
-  if (!Array.isArray(currencies)) return diagnostics;
-
-  const pointers = currencies
-    .map((entry, index) => ({ entry, path: `CURRENCIES[${index}]` }))
-    .filter(
-      ({ entry }) =>
-        typeof entry === 'object' &&
-        entry !== null &&
-        typeof (entry as Record<string, unknown>).toml === 'string',
-    )
-    .slice(0, MAX_POINTER_FETCHES);
-
-  for (const { entry, path } of pointers) {
-    const url = (entry as Record<string, unknown>).toml as string;
-
-    let response: Response;
-    try {
-      response = await fetchImpl(url, { redirect: 'follow' });
-    } catch (error) {
-      diagnostics.push({
-        rule: 'network/toml-pointer-fetch',
-        severity: 'warning',
-        category: 'network',
-        message: `Could not fetch TOML pointer ${url}: ${errorMessage(error)}`,
-        path: `${path}.toml`,
-        helpUri: specUrl('currency-documentation'),
-      });
-      continue;
-    }
-
-    if (!response.ok) {
-      diagnostics.push({
-        rule: 'network/toml-pointer-fetch',
-        severity: 'warning',
-        category: 'network',
-        message: `Could not fetch TOML pointer ${url}: HTTP ${response.status}`,
-        path: `${path}.toml`,
-        helpUri: specUrl('currency-documentation'),
-      });
-      continue;
-    }
-
-    const linked = lint(await response.text(), {
-      ...options,
-      // The linked document was not itself fetched from the domain under
-      // audit, and re-following its pointers would let two files loop.
-      checkNetwork: false,
-      followLinks: false,
-    });
-
-    for (const diagnostic of linked.diagnostics) {
-      diagnostics.push({ ...diagnostic, message: `[${url}] ${diagnostic.message}` });
-    }
-  }
-
-  return diagnostics;
-}
 
 /**
  * Measures the TLS session the host negotiates, or `undefined` when there is
