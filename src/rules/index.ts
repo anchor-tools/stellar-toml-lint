@@ -2,7 +2,7 @@ import type { Rule } from '../types.js';
 import { generalRules } from './general.js';
 import { documentationRules } from './documentation.js';
 import { principalRules } from './principals.js';
-import { currencyRules, sep41MetadataRules } from './currencies.js';
+import { currencyRules, sep41MetadataRules, collateralSigFormatRules } from './currencies.js';
 import { regulatedFlagRules } from './regulated-flags.js';
 import { validatorRules } from './validators.js';
 import { validatorDedupRules } from './validator-dedup.js';
@@ -11,8 +11,9 @@ import { deprecationRules } from './deprecations.js';
 import { emailMxRule } from './email-mx.js';
 import { maxDecimalsRules } from './max-decimals.js';
 import { horizonRules } from './horizon-check.js';
-import { orgUrlRules } from './org-url-check.js';
+import { sep3Rules } from './sep3-auth.js';
 import { sep38Rules } from './sep38-endpoints.js';
+import { orgUrlRules } from './org-url-check.js';
 import { imageAssetRules } from './image-assets.js';
 import { sorobanRules } from '../soroban.js';
 import { sep12Rules } from './sep12-schema.js';
@@ -44,8 +45,9 @@ export const allRules: Rule[] = [
   emailMxRule,
 
   ...horizonRules,
-  ...orgUrlRules,
+  ...sep3Rules,
   ...sep38Rules,
+  ...orgUrlRules,
   ...imageAssetRules,
   ...sorobanRules,
   ...sep41MetadataRules,
@@ -70,6 +72,7 @@ export {
   documentationRules,
   principalRules,
   currencyRules,
+  collateralSigFormatRules,
   fixedSupplyLockRules,
   regulatedFlagRules,
   maxDecimalsRules,
@@ -77,6 +80,7 @@ export {
   validatorDedupRules,
   securityRules,
   horizonRules,
+  sep3Rules,
   sep38Rules,
   imageAssetRules,
   sorobanRules,

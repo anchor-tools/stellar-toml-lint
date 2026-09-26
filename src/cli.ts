@@ -30,6 +30,7 @@ import {
 import { expandGlob, hasMagic } from './glob.js';
 import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
+import { checkSep3Auth } from './rules/sep3-auth.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
 import { checkRegulatedIssuerFlags } from './rules/regulated-flags.js';
 import { checkFixedSupplyIssuerLocks } from './rules/fixed-supply-audit.js';
@@ -154,6 +155,8 @@ OPTIONS
   -q, --quiet             Report errors only
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
+      --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL,
+                          AUTH_SERVER, and ANCHOR_QUOTE_SERVER against the network
       --health-check      Ping declared endpoint URLs to ensure they are live
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, SEP-8
                           regulated issuer flags, TLS certificate expiry,
@@ -176,6 +179,7 @@ OPTIONS
                           Serve network checks from recorded JSON responses under
                           <dir> instead of the network. A URL with no fixture
                           fails instead of making a request (hermetic CI)
+
       --webhook-slack <url>
                           POST a Slack Block Kit card with the run summary
       --webhook-discord <url>
@@ -389,8 +393,13 @@ async function main(argv: string[]): Promise<number> {
               networkDiagnostics.push(
                 ...(await checkHorizon(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkNetworkAccounts(fileResult.parsed, fetchImpl)),
+                ...(await checkDisplayDecimals(fileResult.parsed, fetchImpl, { rules: cli.rules })),
+                ...(await checkSep3Auth(fileResult.parsed, fetchImpl, { rules: cli.rules })),
+                ...(await checkSep38(fileResult.parsed, fetchImpl, { rules: cli.rules })),
+
                 ...(await checkDisplayDecimals(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkSep38(fileResult.parsed, fetchImpl, { rules })),
+
                 ...(await checkRegulatedIssuerFlags(fileResult.parsed, fetchImpl, {
                   rules,
                 })),
