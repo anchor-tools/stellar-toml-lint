@@ -102,7 +102,11 @@ describe('checkValidatorActivity', () => {
       { ...VALIDATOR, PUBLIC_KEY: 'GCM5YCQPFIW4ICBPPSKACX56ZTGG6KZ7A53JGUWWAFRRW462YFIK4BZS' },
     ]);
 
-    const diagnostics = await checkValidatorActivity(doc, fetchReject(new Error('connect ECONNREFUSED')), { rules: {} });
+    const diagnostics = await checkValidatorActivity(
+      doc,
+      fetchReject(new Error('connect ECONNREFUSED')),
+      { rules: {} },
+    );
     expect(diagnostics).toEqual([]);
   });
 
@@ -120,7 +124,11 @@ describe('checkValidatorActivity', () => {
       { ...VALIDATOR, PUBLIC_KEY: 'GCM5YCQPFIW4ICBPPSKACX56ZTGG6KZ7A53JGUWWAFRRW462YFIK4BZS' },
     ]);
 
-    const diagnostics = await checkValidatorActivity(doc, fetchReject(new TypeError('failed to fetch')), { rules: {} });
+    const diagnostics = await checkValidatorActivity(
+      doc,
+      fetchReject(new TypeError('failed to fetch')),
+      { rules: {} },
+    );
     expect(diagnostics).toEqual([]);
   });
 });

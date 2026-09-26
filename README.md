@@ -114,7 +114,7 @@ it was before.
 
 | Flag                        | Effect                                                                                                                                                                     |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `-d, --domain <d>`          | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks                                                                                                      |
+| `-d, --domain <d>`          | Serving domain. Enables CORS, content-type, TLS, image-asset, and `ORG_URL` checks                                                                                         |
 | `-f, --format <fmt>`        | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`                                                                           |
 | `--strict`                  | Treat warnings as errors                                                                                                                                                   |
 | `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                                                                                |
@@ -867,7 +867,15 @@ balance.
 type, size, and the security of the TLS session: a negotiated protocol of TLS 1.0, TLS 1.1, SSLv2,
 or SSLv3, and cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. A 404 on
 `/.well-known/stellar.toml` triggers one probe of `https://<host>/stellar.toml`: if the file is
-served there, `network/wrong-path` (error) says to move it under `.well-known`. Nothing here fires
+served there, `network/wrong-path` (error) says to move it under `.well-known`. The branding
+images wallets download — `DOCUMENTATION.ORG_LOGO` and up to ten `[[CURRENCIES]].image` URLs — are
+probed too, with an `Origin`-carrying HEAD that falls back to GET when the server rejects HEAD: a
+URL that fails to resolve, times out, or answers with anything but HTTP 200 emits
+`network/image-unreachable`; a response without `Access-Control-Allow-Origin: *` emits
+`network/image-cors`; a Content-Type that is not an `image/*` type emits
+`network/image-content-type`; and a `Content-Length` over 500KB emits `network/image-max-size`.
+All four are warnings — the file itself is fine, the branding is what will break in the wallet.
+Nothing here fires
 for a local file, so offline linting never depends on a network connection.
 
 **Network** (with `--check-network`) — queries the `HORIZON_URL` endpoint the file advertises and

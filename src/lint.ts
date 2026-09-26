@@ -276,6 +276,11 @@ export async function lintDomain(
     ...(tls ? { tls } : {}),
   });
 
+  // The images the file points at are fetched by wallets next, so they get the
+  // same treatment the file itself just got: reachability, CORS, content type,
+  // and size.
+  const images = await probeImages(fileResult.parsed, fetchImpl, options.rules);
+
   // The identity anchor itself must also be alive: probe ORG_URL so a dead
   // endpoint is caught here rather than by the next wallet that vetts the
   // anchor. Same transport as the file fetch, so tests can stub both.
@@ -305,6 +310,7 @@ export async function lintDomain(
   return finalize(
     [
       ...diagnostics,
+      ...images,
       ...fileResult.diagnostics,
       ...orgUrlDiagnostics,
       ...sep6Diagnostics,
@@ -313,6 +319,212 @@ export async function lintDomain(
     options,
     fileResult.parsed,
   );
+}
+
+/** One branding image, and the TOML path that declared it. */
+interface ImageRef {
+  url: string;
+  path: string;
+}
+
+/**
+ * Collects every image URL a wallet would download from this file:
+ * `DOCUMENTATION.ORG_LOGO`, then at most {@link MAX_CURRENCY_IMAGES} of the
+ * `[[CURRENCIES]].image` entries.
+ *
+ * Values the offline rules already reject as non-URLs are skipped rather than
+ * probed: they would earn a second, vaguer finding on top of the precise one
+ * `currencies/urls` or `documentation/urls` already gave. A URL declared
+ * twice is probed once.
+ */
+function imageRefsOf(doc: Record<string, unknown> | undefined): ImageRef[] {
+  if (!doc) return [];
+
+  const refs: ImageRef[] = [];
+  const seen = new Set<string>();
+
+  const add = (value: unknown, path: string): boolean => {
+    if (!isString(value) || !isUrl(value) || seen.has(value)) return false;
+    seen.add(value);
+    refs.push({ url: value, path });
+    return true;
+  };
+
+  const documentation = doc.DOCUMENTATION;
+  if (
+    typeof documentation === 'object' &&
+    documentation !== null &&
+    !Array.isArray(documentation)
+  ) {
+    add((documentation as Record<string, unknown>).ORG_LOGO, 'DOCUMENTATION.ORG_LOGO');
+  }
+
+  if (Array.isArray(doc.CURRENCIES)) {
+    let probed = 0;
+    for (const [index, entry] of doc.CURRENCIES.entries()) {
+      if (probed >= MAX_CURRENCY_IMAGES) break;
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue;
+      if (add((entry as Record<string, unknown>).image, `CURRENCIES[${index}].image`)) probed++;
+    }
+  }
+
+  return refs;
+}
+
+/**
+ * Probes every branding image the parsed document advertises.
+ *
+ * No requests are made when the caller has switched every image rule off —
+ * a run that does not want the findings does not pay for the traffic either,
+ * the same bargain {@link observeTls} strikes with the TLS probe.
+ */
+async function probeImages(
+  doc: Record<string, unknown> | undefined,
+  fetchImpl: typeof fetch,
+  overrides: RuleOverrides | undefined,
+): Promise<Diagnostic[]> {
+  if (imageAssetRules.every((rule) => overrides?.[rule.id] === 'off')) return [];
+
+  const diagnostics: Diagnostic[] = [];
+  for (const ref of imageRefsOf(doc)) {
+    diagnostics.push(...(await probeImage(ref, fetchImpl, overrides)));
+  }
+  return diagnostics;
+}
+
+/**
+ * Checks one branding image the way a browser-based wallet would fetch it.
+ *
+ * A HEAD keeps the probe cheap — a CDN answers without shipping the body — and
+ * a server that rejects HEAD falls back to GET, because "does not answer HEAD"
+ * says nothing about whether a wallet can render the image. Both requests
+ * carry an `Origin`, so `Access-Control-Allow-Origin` is judged the way a
+ * wallet's own fetch would see it.
+ *
+ * Four things can be wrong with the answer, and each is its own finding:
+ * unreachable, without CORS, not an image, or too big to hand to a phone.
+ */
+async function probeImage(
+  ref: ImageRef,
+  fetchImpl: typeof fetch,
+  overrides: RuleOverrides | undefined,
+): Promise<Diagnostic[]> {
+  const diagnostics: Diagnostic[] = [];
+  const report = (rule: string, message: string, suggestion: string): void => {
+    const finding = imageFinding(ref, rule, message, suggestion, overrides);
+    if (finding) diagnostics.push(finding);
+  };
+
+  const request = (method: 'HEAD' | 'GET'): Promise<Response> =>
+    fetchImpl(ref.url, {
+      method,
+      redirect: 'follow',
+      headers: { Origin: PROBE_ORIGIN },
+    });
+
+  let response: Response;
+  try {
+    response = await request('HEAD');
+    if (response.status === 405 || response.status === 501) {
+      await discard(response);
+      response = await request('GET');
+    }
+  } catch (error) {
+    report(
+      IMAGE_UNREACHABLE_RULE,
+      `Could not fetch ${ref.url}: ${errorMessage(error)}`,
+      'Confirm the image exists and that DNS and TLS resolve correctly.',
+    );
+    return diagnostics;
+  }
+
+  if (response.status !== 200) {
+    const status = response.status;
+    await discard(response);
+    report(
+      IMAGE_UNREACHABLE_RULE,
+      `${ref.url} returned HTTP ${status}`,
+      'Point the image URL at a file that resolves — wallets draw a blank tile otherwise.',
+    );
+    return diagnostics;
+  }
+
+  const cors = response.headers.get('access-control-allow-origin');
+  if (cors !== '*') {
+    report(
+      IMAGE_CORS_RULE,
+      cors
+        ? `Access-Control-Allow-Origin is "${cors}", but wallets need "*"`
+        : 'Access-Control-Allow-Origin header is missing, so browser wallets cannot load the image',
+      'Serve the image with `Access-Control-Allow-Origin: *`.',
+    );
+  }
+
+  const contentType = (response.headers.get('content-type') ?? '').split(';')[0]?.trim() ?? '';
+  if (!contentType.toLowerCase().startsWith('image/')) {
+    report(
+      IMAGE_CONTENT_TYPE_RULE,
+      contentType
+        ? `${ref.url} is served as "${contentType}", not an image/* content type`
+        : `${ref.url} is served without a Content-Type header`,
+      'An image URL should answer as image/png, image/webp, or image/svg+xml.',
+    );
+  }
+
+  const contentLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
+    report(
+      IMAGE_MAX_SIZE_RULE,
+      `${ref.url} is ${contentLength} bytes, over the ${MAX_IMAGE_BYTES} byte budget`,
+      'Compress the image — a multi-megabyte logo stalls asset lists on mobile data.',
+    );
+  }
+
+  await discard(response);
+  return diagnostics;
+}
+
+/**
+ * Shapes one probe finding, honouring the caller's severity override.
+ *
+ * Returns `undefined` when the rule is switched off, so `--off
+ * network/image-cors` silences that one finding without hiding the other
+ * three the same request is still there to produce.
+ */
+function imageFinding(
+  ref: ImageRef,
+  rule: string,
+  message: string,
+  suggestion: string,
+  overrides: RuleOverrides | undefined,
+): Diagnostic | undefined {
+  const override = overrides?.[rule];
+  if (override === 'off') return undefined;
+  const severity: Severity = override === 'error' || override === 'warning' ? override : 'warning';
+
+  return {
+    rule,
+    severity,
+    category: 'network',
+    message,
+    path: ref.path,
+    helpUri: specUrl(
+      ref.path.startsWith('DOCUMENTATION')
+        ? 'organization-documentation'
+        : 'currency-documentation',
+    ),
+    suggestion,
+  };
+}
+
+/** Releases a response body the probe never reads, so the socket is not held. */
+async function discard(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The bytes were never the point; a stream that refuses to cancel is not
+    // a finding about the anchor.
+  }
 }
 
 /** Upper bound on linked documents fetched, so a long list cannot fan out. */

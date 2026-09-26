@@ -40,6 +40,22 @@ export async function checkValidatorActivity(
   }
 
   const diagnostics: Diagnostic[] = [];
+
+  /**
+   * Pushes one finding, honouring `--off` / `--error` / `--warn` on its id —
+   * the same bargain the image probes and the TLS audit strike with the
+   * caller's rule overrides.
+   */
+  const report = (rule: string, finding: Omit<Diagnostic, 'rule' | 'severity'>): void => {
+    const override = options.rules?.[rule];
+    if (override === 'off') return;
+    diagnostics.push({
+      ...finding,
+      rule,
+      severity: override === 'error' || override === 'warning' ? override : 'warning',
+    });
+  };
+
   for (let index = 0; index < validators.length; index += 1) {
     const entry = validators[index];
     if (!isRecord(entry)) continue;
@@ -50,30 +66,26 @@ export async function checkValidatorActivity(
     const path = `VALIDATORS[${index}].PUBLIC_KEY`;
     const node = telemetry.nodes?.find((candidate) => candidate.id === publicKey);
     if (node === undefined) {
-      diagnostics.push({
-        rule: VALIDATOR_NODE_NOT_SEEN_RULE,
-        severity: 'warning',
+      report(VALIDATOR_NODE_NOT_SEEN_RULE, {
         category: 'validators',
         message: `Validator ${publicKey} is not seen in the active overlay node index`,
         path,
-        suggestion: 'Confirm the same account is publishing its node identity and is online in the active network.',
+        suggestion:
+          'Confirm the same account is publishing its node identity and is online in the active network.',
       });
       continue;
     }
 
     if (!node.active) {
       const stallDays =
-        typeof node.stalls === 'number'
-          ? node.stalls
-          : node.id.startsWith('stage-') ? 7 : 8;
+        typeof node.stalls === 'number' ? node.stalls : node.id.startsWith('stage-') ? 7 : 8;
       if (stallDays > 7) {
-        diagnostics.push({
-          rule: VALIDATOR_NODE_CONSENSUS_STALLED_RULE,
-          severity: 'warning',
+        report(VALIDATOR_NODE_CONSENSUS_STALLED_RULE, {
           category: 'validators',
           message: `Validator ${publicKey} has been failing consensus for more than 7 days`,
           path,
-          suggestion: 'Verify the node is online, correctly configured, and signed into SCP consensus before trusting the published key.',
+          suggestion:
+            'Verify the node is online, correctly configured, and signed into SCP consensus before trusting the published key.',
         });
       }
     }
@@ -87,9 +99,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function fetchTelemetry(fetchImpl: typeof fetch): Promise<CrawlerResponse | undefined> {
-  const url =
-    process.env.STELLARCRAWLER_URL ??
-    'https://api.stellarbeat.io/v1/nodes';
+  const url = process.env.STELLARCRAWLER_URL ?? 'https://api.stellarbeat.io/v1/nodes';
 
   try {
     const response = await fetchImpl(url);
@@ -102,8 +112,9 @@ async function fetchTelemetry(fetchImpl: typeof fetch): Promise<CrawlerResponse 
     if (nodes.length === 0) return undefined;
 
     return {
-      nodes: nodes.filter((node): node is NodeTelemetry =>
-        isRecord(node) && isString(node.id) && typeof node.active === 'boolean',
+      nodes: nodes.filter(
+        (node): node is NodeTelemetry =>
+          isRecord(node) && isString(node.id) && typeof node.active === 'boolean',
       ),
     };
   } catch {
