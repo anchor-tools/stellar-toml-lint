@@ -23,6 +23,7 @@ export {
   formatHtml,
   formatCheckstyle,
   formatMarkdown,
+  formatPrComment,
 } from './reporters.js';
 export type { TextReporterOptions } from './reporters.js';
 export { probeTls } from './tls.js';

@@ -23,6 +23,7 @@ import {
   formatMarkdown,
   formatNdjson,
   formatJunit,
+  formatPrComment,
   formatSarif,
   formatSummary,
   formatText,
@@ -73,7 +74,16 @@ const VERSION = '0.1.0';
 const DEFAULT_PATH = 'stellar.toml';
 
 type Format =
-  'text' | 'json' | 'ndjson' | 'sarif' | 'github' | 'junit' | 'html' | 'checkstyle' | 'markdown';
+  | 'text'
+  | 'json'
+  | 'ndjson'
+  | 'sarif'
+  | 'github'
+  | 'junit'
+  | 'html'
+  | 'checkstyle'
+  | 'markdown'
+  | 'pr-comment';
 
 interface Cli {
   noSuggestions?: boolean;
@@ -137,7 +147,8 @@ OPTIONS
                           image-asset and ORG_URL same-domain checks. Fetches
                           unless files are given.
   -f, --format <fmt>      text (default), json, ndjson, sarif, github, junit, html,
-                          checkstyle, or markdown (for GitHub step summaries)
+                          checkstyle, markdown (for GitHub step summaries), or
+                          pr-comment (for the aggregate pull-request comment)
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
       --fail-on <sev>     Exit 1 when any diagnostic meets or exceeds <sev>:
@@ -721,6 +732,8 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
       return formatCheckstyle(result, name, VERSION);
     case 'markdown':
       return formatMarkdown(result, name);
+    case 'pr-comment':
+      return formatPrComment(result, { filename: name });
     case 'text':
       return formatText(result, {
         filename: name,
@@ -825,7 +838,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         const value = requireValue(argv, ++i, arg);
         if (!isFormat(value)) {
           throw new Error(
-            `Unknown format "${value}". Expected text, json, ndjson, sarif, github, junit, html, checkstyle, or markdown.`,
+            `Unknown format "${value}". Expected text, json, ndjson, sarif, github, junit, html, checkstyle, markdown, or pr-comment.`,
           );
         }
         cli.format = value;
@@ -1133,7 +1146,8 @@ function isFormat(value: string): value is Format {
     value === 'junit' ||
     value === 'html' ||
     value === 'checkstyle' ||
-    value === 'markdown'
+    value === 'markdown' ||
+    value === 'pr-comment'
   );
 }
 
