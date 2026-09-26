@@ -125,7 +125,7 @@ export const docComplianceRules: Rule[] = [
           message: 'DOCUMENTATION.ORG_PRIVACY_POLICY is missing',
           path: 'DOCUMENTATION.ORG_PRIVACY_POLICY',
           helpUri: specUrl('organization-documentation'),
-          suggestion: 'Add a link to your organization\'s privacy policy.',
+          suggestion: "Add a link to your organization's privacy policy.",
         });
       }
     },
@@ -147,7 +147,7 @@ export const docComplianceRules: Rule[] = [
           message: 'DOCUMENTATION.ORG_TERMS_OF_SERVICE is missing',
           path: 'DOCUMENTATION.ORG_TERMS_OF_SERVICE',
           helpUri: specUrl('organization-documentation'),
-          suggestion: 'Add a link to your organization\'s terms of service.',
+          suggestion: "Add a link to your organization's terms of service.",
         });
       }
     },

@@ -551,14 +551,14 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
     section: 'DOCUMENTATION',
     name: 'ORG_TERMS_OF_SERVICE',
     type: 'url (`https://`)',
-    description: 'URL to your organization\'s terms of service.',
+    description: "URL to your organization's terms of service.",
     anchor: 'organization-documentation',
   },
   {
     section: 'DOCUMENTATION',
     name: 'ORG_PRIVACY_POLICY',
     type: 'url (`https://`)',
-    description: 'URL to your organization\'s privacy policy.',
+    description: "URL to your organization's privacy policy.",
     anchor: 'organization-documentation',
   },
 
