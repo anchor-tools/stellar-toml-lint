@@ -86,6 +86,8 @@ export const KNOWN_DOCUMENTATION_FIELDS = new Set<string>([
   'ORG_LICENSING_AUTHORITY',
   'ORG_LICENSE_TYPE',
   'ORG_LICENSE_NUMBER',
+  'ORG_TERMS_OF_SERVICE',
+  'ORG_PRIVACY_POLICY',
 ]);
 
 /** Every field SEP-1 defines in a `[[PRINCIPALS]]` entry. */
@@ -543,6 +545,20 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
     type: 'string',
     description:
       'Official license, registration, or authorization number of your organization, if applicable.',
+    anchor: 'organization-documentation',
+  },
+  {
+    section: 'DOCUMENTATION',
+    name: 'ORG_TERMS_OF_SERVICE',
+    type: 'url (`https://`)',
+    description: "URL to your organization's terms of service.",
+    anchor: 'organization-documentation',
+  },
+  {
+    section: 'DOCUMENTATION',
+    name: 'ORG_PRIVACY_POLICY',
+    type: 'url (`https://`)',
+    description: "URL to your organization's privacy policy.",
     anchor: 'organization-documentation',
   },
 

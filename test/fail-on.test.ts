@@ -73,6 +73,8 @@ describe('--fail-on', () => {
         'ORG_DESCRIPTION="A minimal but valid info file."',
         'ORG_LOGO="https://example.com/logo.png"',
         'ORG_OFFICIAL_EMAIL="partners@example.com"',
+        'ORG_PRIVACY_POLICY="https://example.com/privacy"',
+        'ORG_TERMS_OF_SERVICE="https://example.com/terms"',
         '',
         '[[CURRENCIES]]',
         'code="USDX"',

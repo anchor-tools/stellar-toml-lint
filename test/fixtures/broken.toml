@@ -35,6 +35,8 @@ ORG_KEYBASE="https://keybase.io/exampleanchor"
 ORG_OFFICIAL_EMAIL="ops@gmail.com"
 ORG_SUPPORT_EMAIL="not-an-email"
 ORG_PHYSICAL_ADDRESS_ATTESTATION="https://cdn.other-domain.net/address.pdf"
+ORG_PRIVACY_POLICY="https://example-anchor.net/privacy"
+ORG_TERMS_OF_SERVICE="https://example-anchor.net/terms"
 
 [[PRINCIPALS]]
 email="jane@@example.com"

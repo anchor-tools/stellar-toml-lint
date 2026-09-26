@@ -11,6 +11,8 @@ const GOOD_TOML = [
   'ORG_DESCRIPTION="Example"',
   'ORG_LOGO="https://example.com/logo.png"',
   'ORG_OFFICIAL_EMAIL="ops@example.com"',
+  'ORG_PRIVACY_POLICY="https://example.com/privacy"',
+  'ORG_TERMS_OF_SERVICE="https://example.com/terms"',
 ].join('\n');
 
 /** Image URLs are routed to their own stub, separate from the file itself. */

@@ -84,6 +84,8 @@ describe('codeActionsFor', () => {
       'ORG_URL = "https://example.com"',
       'ORG_DESCRIPTION = "Example anchor"',
       'ORG_TWITTER = "https://twitter.com/example"',
+      'ORG_PRIVACY_POLICY = "https://example.com/privacy"',
+      'ORG_TERMS_OF_SERVICE = "https://example.com/terms"',
       '',
     ].join('\n');
     const uri = 'file:///stellar.toml';
