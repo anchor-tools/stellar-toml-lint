@@ -79,7 +79,7 @@ describe('cli', () => {
     const { code, stdout } = await cli(['--list-rules']);
     expect(code).toBe(0);
     expect(stdout).toContain('currencies/issuance-exclusive');
-    expect(stdout).toContain('currencies/regulated-missing-auth-required-flag');
+    expect(stdout).toContain('currencies/regulated-asset-missing-auth-required');
     expect(stdout).toContain('currencies/regulated-missing-auth-revocable-flag');
     expect(stdout).toContain('soroban/contract-ttl-expiring-soon');
     expect(stdout).toContain('soroban/contract-expired');
@@ -95,6 +95,15 @@ describe('cli', () => {
       'currencies/regulated-missing-auth-revocable-flag',
     ]);
     expect(accepted.code).toBe(0);
+  });
+
+  it('documents --rpc-url and rejects it without a value', async () => {
+    const help = await cli(['--help']);
+    expect(help.stdout).toContain('--rpc-url');
+
+    const { code, stderr } = await cli(['--check-contracts', '--rpc-url']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('expects a value');
   });
 
   it('rejects --soroban-rpc without a value', async () => {

@@ -1,8 +1,8 @@
-import type { Diagnostic, Rule, RuleContext, RuleOverrides, Severity } from '../types.js';
+import type { Diagnostic, Rule, RuleContext, RuleOverrides } from '../types.js';
 import { displayDecimalsRules } from './display-decimals-audit.js';
 import { anchoredAssetRules } from './anchored-asset-rules.js';
 import { assetCodeFormatRules } from './asset-code-format.js';
-import { checkIssuerFlags, horizonUrlFor } from '../network-checks.js';
+import { verifyCollateralSignature } from '../crypto/collateral.js';
 import {
   ANCHOR_ASSET_TYPES,
   CURRENCY_STATUSES,
@@ -22,7 +22,7 @@ import {
 } from '../predicates.js';
 
 /** Reads `[[CURRENCIES]]` as a list of tables, ignoring malformed entries. */
-function currenciesOf(doc: Record<string, unknown>): Record<string, unknown>[] {
+export function currenciesOf(doc: Record<string, unknown>): Record<string, unknown>[] {
   const list = doc.CURRENCIES;
   if (!Array.isArray(list)) return [];
   return list.filter(
@@ -36,7 +36,7 @@ function currenciesOf(doc: Record<string, unknown>): Record<string, unknown>[] {
  * per-currency file. Those entries are exempt from the field rules, since the
  * real definition lives elsewhere.
  */
-function isTomlPointer(entry: Record<string, unknown>): boolean {
+export function isTomlPointer(entry: Record<string, unknown>): boolean {
   return entry.toml !== undefined;
 }
 
@@ -64,178 +64,207 @@ function eachCurrency(
     if (isTomlPointer(entry)) return;
     visit(entry, `CURRENCIES[${i}]`, i);
   });
+} /** A `[[CURRENCIES]]` entry backed by a Soroban contract. */
+export interface ContractCurrency {
+  entry: Record<string, unknown>;
+  index: number;
+  id: string;
+  path: string;
 }
 
-/** Rules covering the `[[CURRENCIES]]` list. */
-
-const SEP8_SPEC_URL =
-  'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0008.md';
-
-const REGULATED_FLAG_REQUIRED_RULE = 'currencies/regulated-missing-auth-required-flag';
-const REGULATED_FLAG_REVOCABLE_RULE = 'currencies/regulated-missing-auth-revocable-flag';
-const REGULATED_FLAGS_UNVERIFIABLE_RULE = 'currencies/regulated-issuer-flags-unverifiable';
+/**
+ * The currency entries that name a Soroban contract, for network checks.
+ * Native assets and `toml` pointers are not contracts this file owns, so they
+ * are skipped.
+ */
+export function contractCurrenciesOf(doc: Record<string, unknown>): ContractCurrency[] {
+  const contracts: ContractCurrency[] = [];
+  currenciesOf(doc).forEach((entry, index) => {
+    if (isTomlPointer(entry) || isNativeAsset(entry)) return;
+    if (isString(entry.contract) && isContractId(entry.contract)) {
+      contracts.push({ entry, index, id: entry.contract, path: `CURRENCIES[${index}].contract` });
+    }
+  });
+  return contracts;
+}
 
 /**
- * The rule objects behind the SEP-8 issuer-flags audit.
- *
- * Like the other network-bound rules, `run()` is empty: the diagnostics are
- * emitted by the async {@link checkRegulatedIssuerFlags}, and these entries
- * exist so `--list-rules` and `--off`/`--warn`/`--error` know the ids.
+ * The Soroban contract ids declared in `[[CURRENCIES]]`, with the path each
+ * came from.
  */
-export const regulatedFlagRules: Rule[] = [
-  {
-    id: REGULATED_FLAG_REQUIRED_RULE,
-    category: 'currencies',
-    severity: 'error',
-    description:
-      'A SEP-8 regulated issuer must set AUTH_REQUIRED_FLAG so the issuer controls who may hold the asset',
-    run() {},
-  },
-  {
-    id: REGULATED_FLAG_REVOCABLE_RULE,
-    category: 'currencies',
-    severity: 'warning',
-    description:
-      'A SEP-8 regulated issuer should set AUTH_REVOCABLE_FLAG so unauthorized holders can be frozen',
-    run() {},
-  },
-  {
-    id: REGULATED_FLAGS_UNVERIFIABLE_RULE,
-    category: 'currencies',
-    severity: 'warning',
-    description: 'A SEP-8 issuer authorization flags could not be verified against Horizon',
-    run() {},
-  },
-];
+export function contractIdsOf(doc: Record<string, unknown>): { id: string; path: string }[] {
+  return contractCurrenciesOf(doc).map(({ id, path }) => ({ id, path }));
+}
 
-function severityFor(
-  rule: string,
-  fallback: 'error' | 'warning',
+/** SEP-41 token metadata, as read from a contract's instance storage. */
+export interface Sep41Metadata {
+  symbol?: string;
+  name?: string;
+  decimal?: number;
+  /**
+   * True for a Stellar Asset Contract. Its on-chain `name` is `CODE:ISSUER`,
+   * never a display name, so it is not compared against `name`.
+   */
+  stellarAsset: boolean;
+}
+
+const SYMBOL_MISMATCH_RULE = 'soroban/symbol-mismatch';
+const DECIMALS_MISMATCH_RULE = 'soroban/decimals-mismatch';
+const NAME_MISMATCH_RULE = 'soroban/name-mismatch';
+
+/**
+ * Compares a currency entry against the SEP-41 metadata its contract reports.
+ *
+ * Wallets read `symbol`, `decimal`, and `name` from the contract, not from the
+ * file, so a file that disagrees misleads anyone who trusts it: a wrong
+ * decimal in particular scales every balance by a power of ten. A field the
+ * file leaves unset, or the contract does not store, is not compared.
+ */
+export function sep41MetadataDiagnostics(
+  currency: ContractCurrency,
+  metadata: Sep41Metadata,
   rules?: RuleOverrides,
-): Severity | undefined {
-  const override = rules?.[rule];
-  if (override === 'off') return undefined;
-  return override === 'error' || override === 'warning' ? override : fallback;
-}
-
-function finding(
-  rule: string,
-  fallback: 'error' | 'warning',
-  detail: string,
-  path: string,
-  helpUri: string,
-  suggestion: string,
-  rules: RuleOverrides | undefined,
 ): Diagnostic[] {
-  const severity = severityFor(rule, fallback, rules);
-  if (severity === undefined) return [];
-
-  return [
-    {
-      rule,
-      severity,
-      category: 'currencies',
-      message: detail,
-      path,
-      helpUri,
-      suggestion,
-    },
-  ];
-}
-
-/**
- * Audits the issuer accounts behind every `regulated=true` classic currency.
- *
- * SEP-8 requires the issuer to have set `AUTH_REQUIRED` and `AUTH_REVOCABLE`.
- * Each entry is checked once against Horizon; when flags cannot be obtained
- * (outage, missing account) the entry degrades to a warning rather than
- * failing the run.
- */
-export async function checkRegulatedIssuerFlags(
-  doc: Record<string, unknown>,
-  fetchImpl: typeof fetch = fetch,
-  options: { rules?: RuleOverrides } = {},
-): Promise<Diagnostic[]> {
-  const horizonUrl = horizonUrlFor(
-    typeof doc.NETWORK_PASSPHRASE === 'string' ? doc.NETWORK_PASSPHRASE : undefined,
-  );
+  const { entry, id } = currency;
+  const base = `CURRENCIES[${currency.index}]`;
   const diagnostics: Diagnostic[] = [];
 
-  for (const [index, entry] of currenciesOf(doc).entries()) {
-    const issuer = entry.issuer;
-    if (
-      isTomlPointer(entry) ||
-      entry.regulated !== true ||
-      !isString(issuer) ||
-      !isAccountId(issuer)
-    ) {
-      continue;
-    }
+  const report = (
+    rule: string,
+    fallback: 'error' | 'warning',
+    field: string,
+    message: string,
+    suggestion: string,
+  ): void => {
+    const override = rules?.[rule];
+    if (override === 'off') return;
+    diagnostics.push({
+      rule,
+      severity: override ?? fallback,
+      category: 'network',
+      message,
+      path: `${base}.${field}`,
+      suggestion,
+    });
+  };
 
-    const path = `CURRENCIES[${index}].issuer`;
+  if (isString(entry.code) && metadata.symbol !== undefined && entry.code !== metadata.symbol) {
+    report(
+      SYMBOL_MISMATCH_RULE,
+      'error',
+      'code',
+      `${base}.code is "${entry.code}", but contract ${id} reports symbol "${metadata.symbol}"`,
+      `Set code to "${metadata.symbol}" to match the on-chain symbol, or point contract at the ${entry.code} token.`,
+    );
+  }
 
-    const flags = await checkIssuerFlags(issuer, horizonUrl, fetchImpl);
-    if (flags === undefined) {
-      diagnostics.push(
-        ...finding(
-          REGULATED_FLAGS_UNVERIFIABLE_RULE,
-          'warning',
-          `Could not verify the authorization flags of SEP-8 issuer ${issuer} on Horizon`,
-          path,
-          SEP8_SPEC_URL,
-          'Confirm the issuer account exists on the network and that Horizon is reachable.',
-          options.rules,
-        ),
-      );
-      continue;
-    }
+  if (
+    isInteger(entry.display_decimals) &&
+    metadata.decimal !== undefined &&
+    entry.display_decimals !== metadata.decimal
+  ) {
+    report(
+      DECIMALS_MISMATCH_RULE,
+      'error',
+      'display_decimals',
+      `${base}.display_decimals is ${entry.display_decimals}, but contract ${id} reports decimal ${metadata.decimal}`,
+      `Set display_decimals to ${metadata.decimal}; wallets scale balances by the on-chain decimal.`,
+    );
+  }
 
-    if (!flags.authRequired) {
-      diagnostics.push(
-        ...finding(
-          REGULATED_FLAG_REQUIRED_RULE,
-          'error',
-          `SEP-8 issuer ${issuer} does not set AUTH_REQUIRED_FLAG on the network`,
-          path,
-          SEP8_SPEC_URL,
-          'SEP-8 requires the issuer to set AUTH_REQUIRED so only authorized accounts can hold the asset.',
-          options.rules,
-        ),
-      );
-    }
-
-    if (!flags.authRevocable) {
-      diagnostics.push(
-        ...finding(
-          REGULATED_FLAG_REVOCABLE_RULE,
-          'warning',
-          `SEP-8 issuer ${issuer} does not set AUTH_REVOCABLE_FLAG on the network`,
-          path,
-          SEP8_SPEC_URL,
-          'SEP-8 requires AUTH_REVOCABLE so the issuer can freeze accounts that violate its terms.',
-          options.rules,
-        ),
-      );
-    }
+  if (
+    !metadata.stellarAsset &&
+    isString(entry.name) &&
+    metadata.name !== undefined &&
+    entry.name !== metadata.name
+  ) {
+    report(
+      NAME_MISMATCH_RULE,
+      'warning',
+      'name',
+      `${base}.name is "${entry.name}", but contract ${id} reports name "${metadata.name}"`,
+      `Set name to "${metadata.name}" so the file and the contract describe the token the same way.`,
+    );
   }
 
   return diagnostics;
 }
 
+/** Registered so `--list-rules` and `--off`/`--warn`/`--error` know these ids. */
+export const sep41MetadataRules: Rule[] = [
+  {
+    id: SYMBOL_MISMATCH_RULE,
+    category: 'network',
+    severity: 'error',
+    description: 'CURRENCIES code must match the SEP-41 symbol its contract reports',
+    run() {},
+  },
+  {
+    id: DECIMALS_MISMATCH_RULE,
+    category: 'network',
+    severity: 'error',
+    description: 'CURRENCIES display_decimals must match the SEP-41 decimal its contract reports',
+    run() {},
+  },
+  {
+    id: NAME_MISMATCH_RULE,
+    category: 'network',
+    severity: 'warning',
+    description: 'CURRENCIES name should match the SEP-41 name its contract reports',
+    run() {},
+  },
+];
+
 /**
- * The Soroban contract ids declared in `[[CURRENCIES]]`, with the path each
- * came from, for network checks. Native assets and `toml` pointers are not
- * contracts this file owns, so they are skipped.
+ * Verifies each collateral signature against its address and message, and
+ * reports the ones whose verdict is `wanted`. Lists that are not string lists
+ * are left to `currencies/collateral-consistency`; a length mismatch there
+ * still leaves the aligned prefix checkable, so that much is verified.
  */
-export function contractIdsOf(doc: Record<string, unknown>): { id: string; path: string }[] {
-  const contracts: { id: string; path: string }[] = [];
-  currenciesOf(doc).forEach((entry, index) => {
-    if (isTomlPointer(entry) || isNativeAsset(entry)) return;
-    if (isString(entry.contract) && isContractId(entry.contract)) {
-      contracts.push({ id: entry.contract, path: `CURRENCIES[${index}].contract` });
+function eachCollateralSignature(
+  ctx: RuleContext,
+  wanted: 'invalid' | 'malformed',
+  describe: (
+    path: string,
+    address: string,
+    messagePath: string,
+  ) => { rule: string; message: string; suggestion: string },
+): void {
+  eachCurrency(ctx, (entry, base) => {
+    const addresses = entry.collateral_addresses;
+    const messages = entry.collateral_address_messages;
+    const signatures = entry.collateral_address_signatures;
+    if (!isStringArray(addresses) || !isStringArray(messages) || !isStringArray(signatures)) {
+      return;
+    }
+
+    const count = Math.min(addresses.length, messages.length, signatures.length);
+    for (let i = 0; i < count; i++) {
+      const address = addresses[i] as string;
+      const verdict = verifyCollateralSignature(
+        address,
+        messages[i] as string,
+        signatures[i] as string,
+      );
+      if (verdict !== wanted) continue;
+
+      const field = `${base}.collateral_address_signatures`;
+      const { rule, message, suggestion } = describe(
+        `${field}[${i}]`,
+        address,
+        `${base}.collateral_address_messages[${i}]`,
+      );
+      ctx.report({
+        rule,
+        category: 'currencies',
+        message,
+        path: field,
+        position: ctx.locate(field),
+        helpUri: specUrl('currency-documentation'),
+        suggestion,
+      });
     }
   });
-  return contracts;
 }
 
 /** Rules covering the `[[CURRENCIES]]` list. */
@@ -244,8 +273,6 @@ export const currencyRules: Rule[] = [
 
   ...anchoredAssetRules,
   ...assetCodeFormatRules,
-
-  ...regulatedFlagRules,
 
   {
     id: 'currencies/entries-are-tables',
@@ -865,6 +892,34 @@ export const currencyRules: Rule[] = [
           }
         }
       });
+    },
+  },
+  {
+    id: 'currencies/collateral-signature-malformed',
+    category: 'currencies',
+    severity: 'error',
+    description: 'Each collateral signature must decode to a signature of the right length',
+    run(ctx) {
+      eachCollateralSignature(ctx, 'malformed', (path, address) => ({
+        rule: 'currencies/collateral-signature-malformed',
+        message: `${path} cannot be decoded as a signature for ${address}`,
+        suggestion:
+          'Publish the raw signature base64-encoded (Ethereum signatures may also be 0x hex), 64 bytes for Stellar and 65 for Bitcoin or Ethereum.',
+      }));
+    },
+  },
+  {
+    id: 'currencies/collateral-signature-invalid',
+    category: 'currencies',
+    severity: 'error',
+    description: 'Each collateral signature must verify against its address and message',
+    run(ctx) {
+      eachCollateralSignature(ctx, 'invalid', (path, address, messagePath) => ({
+        rule: 'currencies/collateral-signature-invalid',
+        message: `${path} is not a valid signature of ${messagePath} by ${address}`,
+        suggestion:
+          'Re-sign the message with the collateral address key and publish the new signature in the same position.',
+      }));
     },
   },
 

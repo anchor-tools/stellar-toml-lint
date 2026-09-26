@@ -1,0 +1,12 @@
+# Keep the image small and avoid shipping build or lint tooling
+node_modules
+.git
+*.log
+.DS_Store
+coverage
+dist
+*.ts
+tsconfig*.json
+
+# Pre-commit source fixtures
+*.toml

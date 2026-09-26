@@ -2,7 +2,8 @@ import type { Rule } from '../types.js';
 import { generalRules } from './general.js';
 import { documentationRules } from './documentation.js';
 import { principalRules } from './principals.js';
-import { currencyRules } from './currencies.js';
+import { currencyRules, sep41MetadataRules } from './currencies.js';
+import { regulatedFlagRules } from './regulated-flags.js';
 import { validatorRules } from './validators.js';
 import { validatorDedupRules } from './validator-dedup.js';
 import { securityRules } from './security.js';
@@ -21,6 +22,8 @@ import { overlayCrawlerRules } from '../overlay/crawler-rules.js';
 import { cryptoAuditorRules } from '../overlay/crypto-auditor.js';
 import { historyPublishRules } from '../history/publish-validator.js';
 import { dnsIntegrityRules } from '../security/dns-integrity.js';
+import { certExpiryRules } from '../network/cert-expiry.js';
+import { fixedSupplyLockRules } from './fixed-supply-audit.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -29,6 +32,8 @@ export const allRules: Rule[] = [
   ...documentationRules,
   ...principalRules,
   ...currencyRules,
+  ...fixedSupplyLockRules,
+  ...regulatedFlagRules,
   ...maxDecimalsRules,
   ...validatorRules,
   ...validatorDedupRules,
@@ -41,6 +46,7 @@ export const allRules: Rule[] = [
   ...sep38Rules,
   ...imageAssetRules,
   ...sorobanRules,
+  ...sep41MetadataRules,
   ...sep12Rules,
   ...sep6Rules,
   ...corsPreflightRules,
@@ -48,6 +54,7 @@ export const allRules: Rule[] = [
   ...cryptoAuditorRules,
   ...historyPublishRules,
   ...dnsIntegrityRules,
+  ...certExpiryRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -59,6 +66,8 @@ export {
   documentationRules,
   principalRules,
   currencyRules,
+  fixedSupplyLockRules,
+  regulatedFlagRules,
   maxDecimalsRules,
   validatorRules,
   validatorDedupRules,
@@ -67,6 +76,7 @@ export {
   sep38Rules,
   imageAssetRules,
   sorobanRules,
+  sep41MetadataRules,
   sep12Rules,
   sep6Rules,
   corsPreflightRules,
@@ -74,4 +84,5 @@ export {
   cryptoAuditorRules,
   historyPublishRules,
   dnsIntegrityRules,
+  certExpiryRules,
 };

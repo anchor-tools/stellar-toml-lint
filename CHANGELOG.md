@@ -9,6 +9,49 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--serve-mock [port]` starts a local mock anchor on `node:http` (default port `8080`): the file at
+  `/.well-known/stellar.toml` with `Access-Control-Allow-Origin: *`, SEP-10 challenges at `/auth`
+  for `NETWORK_PASSPHRASE`, and SEP-24 `/sep24/info` plus SEP-38 `/sep38/info` and `/sep38/prices`
+  generated from `[[CURRENCIES]]`. Challenges are signed with `SIGNING_KEY` when
+  `STELLAR_TOML_MOCK_SIGNING_SECRET` holds its secret and with a named ephemeral key otherwise; the
+  boot banner prints the routing table, and `SIGINT`/`SIGTERM` shut it down cleanly (#34).
+- `currencies/collateral-signature-invalid` (error) and `currencies/collateral-signature-malformed`
+  (error): each `collateral_address_signatures[i]` is now verified, offline, as the signature of
+  `collateral_address_messages[i]` by `collateral_addresses[i]` — Ed25519 (raw or SEP-53) for
+  Stellar `G...` accounts, BIP-137 secp256k1 for Bitcoin `1...`/`3...`/`bc1q...` addresses, and
+  EIP-191 recovery for Ethereum `0x...` addresses. `@noble/curves` and `@noble/hashes`, already
+  installed by `@stellar/stellar-base`, are now declared as direct dependencies (#33).
+- `soroban/symbol-mismatch` (error), `soroban/decimals-mismatch` (error), and
+  `soroban/name-mismatch` (warning) under `--check-contracts`: the SEP-41 `symbol`, `decimal`, and
+  `name` each currency contract keeps in its instance storage are read over `getLedgerEntries` and
+  compared against `code`, `display_decimals`, and `name`, with a suggestion naming the on-chain
+  value. A Stellar Asset Contract's `CODE:ISSUER` name is not compared, and unreadable metadata is
+  skipped rather than reported (#32).
+- `soroban/contract-not-found` (error) and `soroban/contract-evicted` (error) under
+  `--check-contracts`: every `[[CURRENCIES]].contract` and `WEB_AUTH_CONTRACT_ID` is looked up with
+  the Soroban RPC's `getLedgerEntries`, so a contract that was never deployed, or whose WASM has been
+  archived, is reported against the field that declared it instead of as a generic expiry. Every RPC
+  request is bounded by a 10-second timeout and degrades to `soroban/contract-ttl-unavailable`
+  (warning); `--rpc-url` is the new name for `--soroban-rpc`, which stays as an alias (#31).
+- `general/invalid-twitter-handle` (warning) validates `[DOCUMENTATION].ORG_TWITTER` as a bare
+  Twitter/X handle (`^[A-Za-z0-9_]{1,15}$`). A leading `@` or a pasted `twitter.com`/`x.com` profile
+  URL is reported with the exact bare handle to use instead and carries a quick-fix that applies it,
+  while an over-long or out-of-alphabet handle says which part of the grammar it breaks. The field
+  moves out of `documentation/social-handles`, which now covers `ORG_KEYBASE` only, so one problem
+  produces exactly one diagnostic (#137).
+- `security/tls-cert-expired` (error) and `security/tls-cert-expiring-soon` (warning) under
+  `--check-network`: every HTTPS endpoint the file declares is presented with one short TLS
+  handshake and its peer certificate's `valid_to` is read, so an already-expired certificate fails
+  the run and one with fewer than 30 days left warns in time to renew it. Endpoints sharing a host
+  are probed once, fixture-backed (`--mock-fixtures`) runs never open a socket, and an
+  unobservable certificate is skipped rather than reported (#134).
+
+- `--fail-on <error|warning|info>` sets the severity threshold that makes the CLI exit `1`, so CI
+  can fail on warnings without turning every info into a build failure — or the other way round.
+  Errors keep failing at every threshold; `--fail-on` takes precedence over `--strict`'s implicit
+  warning threshold when both are given; an unknown severity is a usage error (exit `2`); and the
+  flag completes in all three shells (#139).
+
 - Follow and lint `toml` currency pointers. A `[[CURRENCIES]]` entry that points at a separate
   document via `toml` now has that document fetched and linted as part of the same run, so an
   anchor cannot pass with a broken linked asset. Enabled by `--follow-links` and implied by
@@ -127,11 +170,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - SEP-8 regulated issuer flags under `--check-network`: for every `[[CURRENCIES]]` entry marked
   `regulated=true` with a classic `issuer`, the linter reads the issuer account's flags from Horizon.
-  A missing `AUTH_REQUIRED` flag emits `currencies/regulated-missing-auth-required-flag` (error), a
+  A missing `AUTH_REQUIRED` flag emits `currencies/regulated-asset-missing-auth-required` (error), a
   missing `AUTH_REVOCABLE` flag emits `currencies/regulated-missing-auth-revocable-flag` (warning),
   and a Horizon outage or missing account degrades to
   `currencies/regulated-issuer-flags-unverifiable` (warning) so the run still fails cleanly on
-  strengthenable-to-fatal findings without depending on network availability.
+  strengthenable-to-fatal findings without depending on network availability. The audit lives in
+  its own module, `src/rules/regulated-flags.ts`, so the network-bound currency checks stay
+  separable from the offline ones (#136).
 - Soroban contract liveliness under `--check-contracts`: `src/soroban.ts` queries the Soroban RPC's
   `getLedgerEntries` for the contract instance and its WASM behind every `[[CURRENCIES]].contract`
   and `WEB_AUTH_CONTRACT_ID`, comparing `liveUntilLedgerSeq` against `latestLedger`. Within ~a day of

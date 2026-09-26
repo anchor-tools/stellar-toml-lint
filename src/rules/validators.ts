@@ -249,3 +249,5 @@ export const validatorRules: Rule[] = [
     },
   },
 ];
+
+export { checkValidatorNetwork } from '../validators/check-validator.js';

@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { Address, xdr } from '@stellar/stellar-base';
 import { lint } from '../src/lint.js';
+import { allRules } from '../src/rules/index.js';
 import {
   checkContractTtl,
   checkContracts,
+  fetchSep41Metadata,
+  sep41MetadataOf,
   specFunctionNames,
   sorobanRules,
+  verifyContractOnChain,
   verifySep45ContractInterface,
 } from '../src/soroban.js';
 
@@ -137,6 +141,8 @@ function rpcMock(options: RpcOptions): { fetchImpl: typeof fetch; calls: () => n
 const EXPIRING_RULE = 'soroban/contract-ttl-expiring-soon';
 const EXPIRED_RULE = 'soroban/contract-expired';
 const UNAVAILABLE_RULE = 'soroban/contract-ttl-unavailable';
+const NOT_FOUND_RULE = 'soroban/contract-not-found';
+const EVICTED_RULE = 'soroban/contract-evicted';
 
 describe('Soroban contract TTL audit', () => {
   it('is silent while the TTL is ample', async () => {
@@ -178,16 +184,16 @@ describe('Soroban contract TTL audit', () => {
     );
   });
 
-  it('errors when the instance entry is missing (archived)', async () => {
+  it('reports a contract with no instance entry as not found', async () => {
     const { fetchImpl } = rpcMock({ latestLedger: 100_000, missingInstance: true });
 
     const diagnostics = await checkContractTtl(CONTRACT, RPC, fetchImpl);
     expect(diagnostics).toContainEqual(
-      expect.objectContaining({ rule: EXPIRED_RULE, severity: 'error' }),
+      expect.objectContaining({ rule: NOT_FOUND_RULE, severity: 'error' }),
     );
   });
 
-  it('errors when the WASM entry is missing (archived)', async () => {
+  it('reports a contract whose WASM entry is missing as evicted', async () => {
     const { fetchImpl } = rpcMock({
       latestLedger: 100_000,
       instanceLive: 200_000,
@@ -197,7 +203,7 @@ describe('Soroban contract TTL audit', () => {
 
     const diagnostics = await checkContractTtl(CONTRACT, RPC, fetchImpl);
     expect(diagnostics).toContainEqual(
-      expect.objectContaining({ rule: EXPIRED_RULE, severity: 'error' }),
+      expect.objectContaining({ rule: EVICTED_RULE, severity: 'error' }),
     );
   });
 
@@ -242,8 +248,105 @@ describe('Soroban contract TTL audit', () => {
       { id: EXPIRING_RULE, severity: 'warning' },
       { id: EXPIRED_RULE, severity: 'error' },
       { id: UNAVAILABLE_RULE, severity: 'warning' },
+      { id: NOT_FOUND_RULE, severity: 'error' },
+      { id: EVICTED_RULE, severity: 'error' },
       { id: 'soroban/invalid-auth-contract-interface', severity: 'error' },
     ]);
+  });
+});
+
+describe('verifyContractOnChain', () => {
+  it('is clean for a deployed contract whose instance and WASM exist', async () => {
+    const { fetchImpl, calls } = rpcMock({
+      latestLedger: 100_000,
+      instanceLive: 200_000,
+      codeLive: 200_000,
+    });
+
+    expect(await verifyContractOnChain(CONTRACT, RPC, fetchImpl)).toEqual([]);
+    expect(calls()).toBe(2);
+  });
+
+  it("ignores TTL, which is checkContractTtl's concern", async () => {
+    const { fetchImpl } = rpcMock({
+      latestLedger: 100_000,
+      instanceLive: 100_010,
+      codeLive: 200_000,
+    });
+
+    expect(await verifyContractOnChain(CONTRACT, RPC, fetchImpl)).toEqual([]);
+  });
+
+  it('reports soroban/contract-not-found for a missing instance entry', async () => {
+    const { fetchImpl, calls } = rpcMock({ latestLedger: 100_000, missingInstance: true });
+
+    const diagnostics = await verifyContractOnChain(CONTRACT, RPC, fetchImpl, {
+      path: 'CURRENCIES[0].contract',
+    });
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        rule: NOT_FOUND_RULE,
+        severity: 'error',
+        category: 'network',
+        path: 'CURRENCIES[0].contract',
+      }),
+    ]);
+    expect(diagnostics[0]?.message).toContain(CONTRACT);
+    // No WASM lookup without an instance to name it.
+    expect(calls()).toBe(1);
+  });
+
+  it('reports soroban/contract-evicted when the WASM is gone', async () => {
+    const { fetchImpl } = rpcMock({
+      latestLedger: 100_000,
+      instanceLive: 200_000,
+      codeLive: 200_000,
+      missingCode: true,
+    });
+
+    expect(await verifyContractOnChain(CONTRACT, RPC, fetchImpl)).toEqual([
+      expect.objectContaining({ rule: EVICTED_RULE, severity: 'error' }),
+    ]);
+  });
+
+  it('degrades an RPC timeout to a warning instead of throwing', async () => {
+    const fetchImpl = (async () => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    }) as unknown as typeof fetch;
+
+    const diagnostics = await verifyContractOnChain(CONTRACT, RPC, fetchImpl);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ rule: UNAVAILABLE_RULE, severity: 'warning' }),
+    ]);
+  });
+
+  it('bounds every RPC request with an abort signal', async () => {
+    let signal: AbortSignal | null | undefined;
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      signal = init?.signal;
+      throw new Error('offline');
+    }) as unknown as typeof fetch;
+
+    await verifyContractOnChain(CONTRACT, RPC, fetchImpl);
+    expect(signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('degrades a non-200 RPC answer to a warning', async () => {
+    const fetchImpl = (async () =>
+      new Response('bad gateway', { status: 502 })) as unknown as typeof fetch;
+
+    expect(await verifyContractOnChain(CONTRACT, RPC, fetchImpl)).toEqual([
+      expect.objectContaining({ rule: UNAVAILABLE_RULE, severity: 'warning' }),
+    ]);
+  });
+
+  it('honours --off on the not-found rule', async () => {
+    const { fetchImpl } = rpcMock({ latestLedger: 100_000, missingInstance: true });
+
+    const diagnostics = await verifyContractOnChain(CONTRACT, RPC, fetchImpl, {
+      rules: { [NOT_FOUND_RULE]: 'off' },
+    });
+    expect(diagnostics).toEqual([]);
   });
 });
 
@@ -271,9 +374,20 @@ describe('checkContracts', () => {
     const diagnostics = await checkContracts(parsed, fetchImpl);
     expect(diagnostics).toEqual([]);
     // TTL: two targets (CURRENCIES contract and WEB_AUTH_CONTRACT_ID) x two
-    // lookups, plus the auth contract's instance and code reads for the SEP-45
-    // interface check.
-    expect(calls()).toBe(6);
+    // lookups, the currency's SEP-41 metadata read, plus the auth contract's
+    // instance and code reads for the SEP-45 interface check.
+    expect(calls()).toBe(7);
+  });
+
+  it('points each not-found finding at the field that declared the contract', async () => {
+    const parsed = lint(contractsSource()).parsed ?? {};
+    const { fetchImpl } = rpcMock({ latestLedger: 100_000, missingInstance: true });
+
+    const diagnostics = await checkContracts(parsed, fetchImpl);
+    expect(diagnostics.map((d) => [d.rule, d.path])).toEqual([
+      [NOT_FOUND_RULE, 'CURRENCIES[0].contract'],
+      [NOT_FOUND_RULE, 'WEB_AUTH_CONTRACT_ID'],
+    ]);
   });
 
   it('is silent with no contracts declared', async () => {
@@ -428,5 +542,235 @@ describe('specFunctionNames', () => {
 
   it('returns undefined when the module has no spec section', () => {
     expect(specFunctionNames(wasmWithoutSpec())).toBeUndefined();
+  });
+});
+
+interface TokenMetadata {
+  decimal?: number;
+  name?: string;
+  symbol?: string;
+}
+
+/** SEP-41 metadata as the token SDK stores it: a `METADATA` map of symbol keys. */
+function metadataMap(metadata: TokenMetadata): xdr.ScMapEntry[] {
+  const entries: xdr.ScMapEntry[] = [];
+  // ScMap keys are kept sorted, as the host requires.
+  if (metadata.decimal !== undefined) {
+    entries.push(
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol('decimal'),
+        val: xdr.ScVal.scvU32(metadata.decimal),
+      }),
+    );
+  }
+  if (metadata.name !== undefined) {
+    entries.push(
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol('name'),
+        val: xdr.ScVal.scvString(metadata.name),
+      }),
+    );
+  }
+  if (metadata.symbol !== undefined) {
+    entries.push(
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol('symbol'),
+        val: xdr.ScVal.scvString(metadata.symbol),
+      }),
+    );
+  }
+  return entries;
+}
+
+function tokenInstanceXdr(
+  metadata: TokenMetadata,
+  options: { stellarAsset?: boolean; topLevel?: boolean } = {},
+): string {
+  const executable = options.stellarAsset
+    ? xdr.ContractExecutable.contractExecutableStellarAsset()
+    : xdr.ContractExecutable.contractExecutableWasm(WASM);
+  const storage = options.topLevel
+    ? metadataMap(metadata)
+    : [
+        new xdr.ScMapEntry({
+          key: xdr.ScVal.scvSymbol('METADATA'),
+          val: xdr.ScVal.scvMap(metadataMap(metadata)),
+        }),
+      ];
+  const entry = xdr.LedgerEntryData.contractData(
+    new xdr.ContractDataEntry({
+      ext: xdr.ExtensionPoint.fromXDR(Buffer.alloc(4), 'raw'),
+      contract: new Address(CONTRACT).toScAddress(),
+      key: xdr.ScVal.scvLedgerKeyContractInstance(),
+      durability: xdr.ContractDataDurability.persistent(),
+      val: xdr.ScVal.scvContractInstance(new xdr.ScContractInstance({ executable, storage })),
+    }),
+  );
+  return entry.toXDR('base64');
+}
+
+/** An RPC whose contract instance carries `instanceXdr`, live well past the latest ledger. */
+function tokenRpc(instanceXdr: string): typeof fetch {
+  return (async (_url: string | URL | globalThis.Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { params: { keys: string[] } };
+    const key = body.params.keys[0] as string;
+    const isCode = xdr.LedgerKey.fromXDR(key, 'base64').switch().name === 'contractCode';
+    const entry = {
+      key,
+      xdr: isCode ? codeEntryXdr(wasmWithoutSpec()) : instanceXdr,
+      lastModifiedLedgerSeq: 1,
+      liveUntilLedgerSeq: 200_000,
+    };
+    return new Response(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        result: { latestLedger: 100_000, entries: [entry] },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
+  }) as unknown as typeof fetch;
+}
+
+function tokenSource(fields: string[]): Record<string, unknown> {
+  const source = [
+    `NETWORK_PASSPHRASE="${NETWORK}"`,
+    '',
+    '[[CURRENCIES]]',
+    `contract="${CONTRACT}"`,
+    ...fields,
+  ].join('\n');
+  return lint(source).parsed ?? {};
+}
+
+const SYMBOL_RULE = 'soroban/symbol-mismatch';
+const DECIMALS_RULE = 'soroban/decimals-mismatch';
+const NAME_RULE = 'soroban/name-mismatch';
+
+describe('SEP-41 metadata', () => {
+  it('reads the METADATA map from instance storage', () => {
+    expect(
+      sep41MetadataOf(tokenInstanceXdr({ decimal: 7, name: 'USD Coin', symbol: 'USDC' })),
+    ).toEqual({
+      decimal: 7,
+      name: 'USD Coin',
+      symbol: 'USDC',
+      stellarAsset: false,
+    });
+  });
+
+  it('reads metadata stored at the top level of instance storage', () => {
+    expect(
+      sep41MetadataOf(tokenInstanceXdr({ decimal: 6, symbol: 'XYZ' }, { topLevel: true })),
+    ).toEqual({ decimal: 6, symbol: 'XYZ', stellarAsset: false });
+  });
+
+  it('returns undefined for an instance with no metadata or unparseable XDR', () => {
+    expect(sep41MetadataOf(instanceEntryXdr(CONTRACT))).toBeUndefined();
+    expect(sep41MetadataOf('not xdr')).toBeUndefined();
+    expect(sep41MetadataOf(undefined)).toBeUndefined();
+  });
+
+  it('fetches metadata over getLedgerEntries', async () => {
+    const fetchImpl = tokenRpc(tokenInstanceXdr({ decimal: 7, symbol: 'USDC' }));
+    expect(await fetchSep41Metadata(CONTRACT, RPC, fetchImpl)).toEqual({
+      decimal: 7,
+      symbol: 'USDC',
+      stellarAsset: false,
+    });
+  });
+
+  it('returns undefined when the RPC is unreachable', async () => {
+    const fetchImpl = (async () => {
+      throw new Error('offline');
+    }) as unknown as typeof fetch;
+    expect(await fetchSep41Metadata(CONTRACT, RPC, fetchImpl)).toBeUndefined();
+  });
+
+  it('passes cleanly when symbol, decimal, and name match the file', async () => {
+    const doc = tokenSource(['code="USDC"', 'display_decimals=7', 'name="USD Coin"']);
+    const fetchImpl = tokenRpc(tokenInstanceXdr({ decimal: 7, name: 'USD Coin', symbol: 'USDC' }));
+
+    expect(await checkContracts(doc, fetchImpl)).toEqual([]);
+  });
+
+  it('reports soroban/decimals-mismatch when decimal disagrees with display_decimals', async () => {
+    const doc = tokenSource(['code="USDC"', 'display_decimals=7']);
+    const fetchImpl = tokenRpc(tokenInstanceXdr({ decimal: 6, symbol: 'USDC' }));
+
+    const diagnostics = await checkContracts(doc, fetchImpl);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        rule: DECIMALS_RULE,
+        severity: 'error',
+        path: 'CURRENCIES[0].display_decimals',
+        message: `CURRENCIES[0].display_decimals is 7, but contract ${CONTRACT} reports decimal 6`,
+      }),
+    ]);
+    expect(diagnostics[0]?.suggestion).toContain('Set display_decimals to 6');
+  });
+
+  it('reports soroban/symbol-mismatch when symbol disagrees with code', async () => {
+    const doc = tokenSource(['code="USDC"', 'display_decimals=7']);
+    const fetchImpl = tokenRpc(tokenInstanceXdr({ decimal: 7, symbol: 'XYZ' }));
+
+    const diagnostics = await checkContracts(doc, fetchImpl);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        rule: SYMBOL_RULE,
+        severity: 'error',
+        path: 'CURRENCIES[0].code',
+        message: `CURRENCIES[0].code is "USDC", but contract ${CONTRACT} reports symbol "XYZ"`,
+      }),
+    ]);
+  });
+
+  it('warns with soroban/name-mismatch when name disagrees', async () => {
+    const doc = tokenSource(['code="USDC"', 'name="USD Coin"']);
+    const fetchImpl = tokenRpc(tokenInstanceXdr({ name: 'Test Token', symbol: 'USDC' }));
+
+    expect(await checkContracts(doc, fetchImpl)).toEqual([
+      expect.objectContaining({ rule: NAME_RULE, severity: 'warning', path: 'CURRENCIES[0].name' }),
+    ]);
+  });
+
+  it('does not compare name for a Stellar Asset Contract, whose name is CODE:ISSUER', async () => {
+    const doc = tokenSource(['code="USDC"', 'name="USD Coin"', 'display_decimals=7']);
+    const fetchImpl = tokenRpc(
+      tokenInstanceXdr(
+        {
+          decimal: 7,
+          name: 'USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
+          symbol: 'USDC',
+        },
+        { stellarAsset: true },
+      ),
+    );
+
+    expect(await checkContracts(doc, fetchImpl)).toEqual([]);
+  });
+
+  it('skips fields the file leaves unset', async () => {
+    const doc = tokenSource(['code="USDC"']);
+    const fetchImpl = tokenRpc(tokenInstanceXdr({ decimal: 6, name: 'Other', symbol: 'USDC' }));
+
+    expect(await checkContracts(doc, fetchImpl)).toEqual([]);
+  });
+
+  it('honours severity overrides', async () => {
+    const doc = tokenSource(['code="USDC"', 'display_decimals=7', 'name="USD Coin"']);
+    const fetchImpl = tokenRpc(tokenInstanceXdr({ decimal: 6, name: 'Other', symbol: 'USDC' }));
+
+    const diagnostics = await checkContracts(doc, fetchImpl, {
+      rules: { [DECIMALS_RULE]: 'warning', [NAME_RULE]: 'off' },
+    });
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ rule: DECIMALS_RULE, severity: 'warning' }),
+    ]);
+  });
+
+  it('registers the metadata rules for --list-rules', () => {
+    const ids = allRules.map((rule) => rule.id);
+    expect(ids).toEqual(expect.arrayContaining([SYMBOL_RULE, DECIMALS_RULE, NAME_RULE]));
   });
 });

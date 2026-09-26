@@ -30,6 +30,8 @@ ORG_URL="http://example-anchor.net"
 ORG_LOGO="https://example.com/logo.svg"
 ORG_PHONE_NUMBER="(415) 555-2671"
 ORG_TWITTER="https://twitter.com/exampleanchor"
+# A URL where the bare Keybase account name belongs.
+ORG_KEYBASE="https://keybase.io/exampleanchor"
 ORG_OFFICIAL_EMAIL="ops@gmail.com"
 ORG_SUPPORT_EMAIL="not-an-email"
 ORG_PHYSICAL_ADDRESS_ATTESTATION="https://cdn.other-domain.net/address.pdf"

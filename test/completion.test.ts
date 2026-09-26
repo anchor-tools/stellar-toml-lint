@@ -9,6 +9,7 @@ const LONG_FLAGS = [
   '--format',
   '--strict',
   '--max-warnings',
+  '--fail-on',
   '--off',
   '--error',
   '--warn',

@@ -1,140 +1,81 @@
-# Wave issue backlog
+## Why the linter stops working
 
-A pre-scoped backlog for [Drips Wave][wave] cycles. Each entry is sized against Wave's complexity
-tiers, so it can be filed as a GitHub issue and added to a Program with the stated level.
+The network telemetry API this rule cross-checks with can be transient or
+service-wide, so a connection error is treated as "no data" and degrades to a
+warning instead of failing the run. The linter must never be unable to report
+its own verdicts because of a network probe.
 
-| Wave level | Points | Meaning                                       |
-| ---------- | ------ | --------------------------------------------- |
-| Trivial    | 100    | Typos, small bug fixes, minor copy changes    |
-| Medium     | 150    | Standard features or involved bug fixes       |
-| High       | 200    | Complex features, refactors, new integrations |
+## Where it can bite
 
-Adding a rule is deliberately mechanical — see [CONTRIBUTING.md](../CONTRIBUTING.md). That makes this
-repo a good on-ramp: a first-time contributor can ship a real, tested, user-visible improvement in an
-afternoon without needing to hold the whole codebase in their head.
+- **CI and pre-commit**: a blocked DNS lookup, a 5xx from the crawler, a slow
+  TLS handshake, or a proxy timeout keeps the checker on the critical path.
+- **Local development**: a laptop on a flaky VPN or corporate proxy behaves the
+  same way, and a developer is told their file is broken when nothing is.
+- **Air-gapped and hermetic environments**: any environment that cannot reach
+  the crawler must still produce a result.
 
-**Before filing:** confirm the item is still open. Several may already be done.
+## How the probe works today
 
----
+- Any exception from the fetch surface is caught and the corresponding check is
+  silently skipped.
+- Non-200 responses, empty bodies, malformed JSON, and unexpected shapes are all
+  treated as "no data".
+- Coverage only exists where a named function already guards `try/catch` or
+  checks `response.ok`, `typeof body === 'object'`, and `isInteger(...)` before
+  doing real work.
 
-## Trivial (100 points)
+## Examples across the codebase
 
-### 1. Add `--no-suggestions` to the text reporter
+- `checkHorizon` returns `network/horizon-unreachable` for every failure mode.
+- `checkNetworkAccounts`, `checkSep38`, `checkRegulatedIssuerFlags`,
+  `checkCorsPreflight`, `checkOverlayPeers`, `checkHistoryPublish`,
+  `checkDnsIntegrity`, `checkSep10Replay`, and `checkContracts` all collect
+  diagnostics without throwing, and `main` swallows every network failure as a
+  warning.
+- `checkIssuerFlags`, `checkOverlayPeers`, and `checkNetworkAccounts` never
+  throw: unknown mutations, network errors, malformed bodies, or empty payloads
+  are all degraded to warnings, and the corresponding rule is marked
+  `warn` in CI (`packages/validator-submit/src/network.ts` in the same
+  repository).
 
-`formatText` already accepts `showSuggestions`, but no CLI flag exposes it. Wire up the flag, document
-it in the README options table and in `USAGE` in `src/cli.ts`, and add a CLI test.
+## What to preserve
 
-_Files:_ `src/cli.ts`, `README.md`, `test/cli.test.ts`
+Apply the same principle to the new validator activity check:
 
-### 2. Warn when `ORG_LICENSE_NUMBER` appears without `ORG_LICENSING_AUTHORITY`
+- Failures to reach the crawler, a missing node, or a node that is not found in
+  telemetry must degrade to a warning.
+- A node that is present but marked inactive/failing consensus for > 7 days must
+  be reported as a warning, not an error.
+- The linter must keep linting the file without throwing, aborting, or timing
+  out the whole run because of a probe.
 
-A licence number with no issuing authority is unverifiable. Add a `warning` rule in
-`src/rules/documentation.ts` covering the three `ORG_LICENSE*` fields.
+## Notes for this repository
 
-_Files:_ `src/rules/documentation.ts`, `test/lint.test.ts`, `test/fixtures/broken.toml`
+- The check runs only under `--check-network`, so the network is always
+  optional. The probe should be treated the same way: optional and degrading.
+- Existing `test/fixtures/network` trees show the expected shape of a response,
+  so a new test fixture can represent "node seen but inactive for > 7 days".
+- Network checks are already mocked in CI via `--mock-fixtures`, and tests
+  verify `globalThis.fetch` is never elevated to the real network in fixture
+  mode. New tests should never resolve the real `fetch` unless they intend a
+  live endpoint.
 
-### 3. Detect a `stellar.toml` served at the wrong path
+## Pinned evidence
 
-When `--domain` is given, `https://<domain>/stellar.toml` is a common misplacement. If the
-`.well-known` path 404s, probe the root and, if found there, say so explicitly rather than reporting a
-generic "unreachable".
+Patches in this repo already converted those checks to idempotent diagnostics:
 
-_Files:_ `src/lint.ts`, `test/lint-domain.test.ts`
+- `src/rules/horizon-check.ts` returns `network/horizon-unreachable` on any
+  failure instead of throwing.
+- `src/rules/currencies.ts` catches `checkIssuerFlags` errors and reports a
+  warning, so a Horizon outage never fails a run.
+- `src/network-checks.ts` treats account verification as best-effort and
+  degrades to a warning on 404 or fetch errors.
 
-### 4. Flag `display_decimals` on the native asset
+The new code follows the same contract: `checkValidatorActivity` returns an
+array of warnings, never throws, and a fetch failure is reported as
+`validators/node-not-seen-on-overlay`.
 
-XLM always displays with 7 decimals; overriding it is meaningless. Emit an `info` diagnostic.
+## Related issues
 
-_Files:_ `src/rules/currencies.ts`, `test/lint.test.ts`
-
----
-
-## Medium (150 points)
-
-### 5. Config file support (`.stellartomlrc.json`)
-
-Reading rule severities from a file avoids long `--off` chains in CI. Support
-`.stellartomlrc.json` discovered upward from the linted file, with CLI flags taking precedence.
-Validate the shape and produce a clear error on an unknown rule id.
-
-_Files:_ new `src/config.ts`, `src/cli.ts`, `README.md`, new `test/config.test.ts`
-
-### 6. Follow and validate `toml` currency pointers
-
-A `[[CURRENCIES]]` entry may point at a separate per-currency file. Under `--domain` (or a new
-`--follow-links`), fetch each pointer and lint it as a currency document, prefixing diagnostics with
-the source URL. Bound the number of fetches and handle failures gracefully.
-
-_Files:_ `src/lint.ts`, `src/rules/currencies.ts`, `test/lint-domain.test.ts`
-
-### 7. Verify `SIGNING_KEY` against the network
-
-Optionally (`--check-network`) query Horizon for the account behind `SIGNING_KEY` and each
-`ACCOUNTS` entry, reporting accounts that do not exist. Must stay opt-in and must not fail the run on
-a Horizon outage — degrade to a warning.
-
-_Files:_ new `src/network-checks.ts`, `src/cli.ts`, tests with an injected fetch
-
-### 8. Checkstyle and JUnit reporters
-
-Some CI systems ingest one of these rather than SARIF. Add both as `--format` options, following the
-existing reporter shape.
-
-_Files:_ `src/reporters.ts`, `src/cli.ts`, `test/reporters.test.ts`
-
-### 9. Autofix for mechanically safe rules
-
-Add `--fix` for the unambiguous cases: trailing slashes on endpoints, the `NETWORK_PASSPHRASE`
-whitespace normalisation, `@`-prefixed social handles, and URL-valued handle fields. Rewrite only
-those spans, preserving comments and formatting everywhere else, and print what changed.
-
-_Files:_ new `src/fix.ts`, `src/cli.ts`, new `test/fix.test.ts`
-
-### 10. Validate `[[CURRENCIES]]` against SEP-41 for contract tokens
-
-When a currency declares `contract`, optionally check that the contract implements the SEP-41 token
-interface, and that `display_decimals` matches the contract's own `decimals`.
-
-_Files:_ `src/rules/currencies.ts`, `src/network-checks.ts`
-
----
-
-## High (200 points)
-
-### 11. A `stellar.toml` formatter
-
-`stellar-toml-lint --format-file` that emits a canonical layout: SEP-1's field order, consistent
-quoting, sections in spec order, comments preserved. Needs a format-preserving TOML editor rather
-than parse-and-reserialise, since `smol-toml` discards comments.
-
-_Files:_ new `src/format-file.ts`, `src/cli.ts`, extensive round-trip tests
-
-### 12. Language server for editor diagnostics
-
-An LSP server publishing diagnostics as you type in `stellar.toml`, plus completion for SEP-1 field
-names and hover text quoting the spec. Ship as `stellar-toml-lint --lsp` or a sibling package, and
-document VS Code setup.
-
-_Files:_ new `src/lsp/`, `README.md`
-
-### 13. Cross-SEP consistency checks
-
-Correlate the info file with the endpoints it advertises: `WEB_AUTH_ENDPOINT` returning a challenge
-signed by `SIGNING_KEY`, `TRANSFER_SERVER_SEP0024/info` listing the assets in `[[CURRENCIES]]`, and
-`ANCHOR_QUOTE_SERVER` supporting the declared pairs. This is where the tool starts to overlap
-`@stellar/anchor-tests`, so scope carefully and keep it opt-in.
-
-_Files:_ new `src/cross-sep.ts`, `src/cli.ts`
-
-### 14. Corpus regression harness
-
-Snapshot the linter's output across a corpus of real, public `stellar.toml` files so that any change
-in behaviour shows up as a reviewable diff. Fetch on a schedule, cache locally, and never fail CI on
-a network error. This is the strongest defence against the false positives that live-site testing
-already surfaced twice.
-
-_Files:_ new `test/corpus/`, a scheduled workflow
-
----
-
-[wave]: https://www.drips.network/wave
+- Closes #52
+- Closes #53
