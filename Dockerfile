@@ -30,8 +30,12 @@ FROM node:20-alpine
 ARG USER_ID=1000
 ARG GROUP_ID=1000
 
-RUN addgroup -g "$GROUP_ID" stellar-toml-lint && \
-    adduser -u "$USER_ID" -G stellar-toml-lint -S stellar-toml-lint
+# Newer node:20-alpine bases already occupy uid/gid 1000 (the bundled `node`
+# user), so honour the requested ids when free and fall back to fresh ones
+# instead of failing the build.
+RUN (addgroup -g "$GROUP_ID" stellar-toml-lint || addgroup stellar-toml-lint) && \
+    (adduser -u "$USER_ID" -G stellar-toml-lint -S stellar-toml-lint || \
+     adduser -G stellar-toml-lint -S stellar-toml-lint)
 
 WORKDIR /app
 
