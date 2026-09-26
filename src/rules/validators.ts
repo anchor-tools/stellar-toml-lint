@@ -251,3 +251,4 @@ export const validatorRules: Rule[] = [
 ];
 
 export { checkValidatorNetwork } from '../validators/check-validator.js';
+export { checkPeerPortReachability } from '../validators/net-probe.js';

@@ -28,6 +28,15 @@ export {
 export type { TextReporterOptions } from './reporters.js';
 export { probeTls } from './tls.js';
 export type { TlsProbe } from './tls.js';
+export {
+  checkPeerPortReachability,
+  probeTcpPort,
+  validatorHostsOf,
+  peerPortRule,
+  PEER_PORT_UNREACHABLE_RULE,
+  DEFAULT_PROBE_TIMEOUT_MS,
+} from './validators/net-probe.js';
+export type { TcpPortProbe } from './validators/net-probe.js';
 export { createFixtureFetch, fixtureCandidates, MissingFixtureError } from './mock-fixtures.js';
 export type { FixtureFile } from './mock-fixtures.js';
 export {
