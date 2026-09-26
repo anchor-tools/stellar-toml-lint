@@ -19,11 +19,7 @@ function levenshtein(a: string, b: string): number {
     curr[0] = i;
     for (let j = 1; j <= n; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      curr[j] = Math.min(
-        (prev[j] ?? m) + 1,
-        (curr[j - 1] ?? m) + 1,
-        (prev[j - 1] ?? m) + cost,
-      );
+      curr[j] = Math.min((prev[j] ?? m) + 1, (curr[j - 1] ?? m) + 1, (prev[j - 1] ?? m) + cost);
     }
     prev.length = 0;
     prev.push(...curr);
@@ -43,7 +39,11 @@ function nearestPassphrase(input: string): { name: string; distance: number } | 
       best = { name, distance };
     }
   }
-  if (best && best.distance <= Math.floor(Math.min(...Object.keys(KNOWN_PASSPHRASES).map((k) => k.length)) / 2)) {
+  if (
+    best &&
+    best.distance <=
+      Math.floor(Math.min(...Object.keys(KNOWN_PASSPHRASES).map((k) => k.length)) / 2)
+  ) {
     return best;
   }
   return undefined;
