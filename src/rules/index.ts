@@ -28,6 +28,7 @@ import { dnsIntegrityRules } from '../security/dns-integrity.js';
 import { certExpiryRules } from '../network/cert-expiry.js';
 import { fixedSupplyLockRules } from './fixed-supply-audit.js';
 import { docComplianceRules } from './doc-compliance.js';
+import { networkPassphraseRules } from './network-passphrase.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -63,6 +64,7 @@ export const allRules: Rule[] = [
   ...dnsIntegrityRules,
   ...certExpiryRules,
   ...docComplianceRules,
+  ...networkPassphraseRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -98,4 +100,5 @@ export {
   dnsIntegrityRules,
   certExpiryRules,
   docComplianceRules,
+  networkPassphraseRules,
 };
