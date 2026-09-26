@@ -105,6 +105,28 @@ export type {
   HistoryPublishOptions,
 } from './history/publish-validator.js';
 export {
+  checkArchiveDiff,
+  archiveDiffRules,
+  archiveDiffRuleIds,
+  ARCHIVE_LAGGING_RULE,
+  ARCHIVE_HASH_MISMATCH_RULE,
+  ARCHIVE_LAG_WARNING_LEDGERS,
+  ARCHIVE_LAG_ERROR_LEDGERS,
+} from './history/archive-diff.js';
+export type { ArchiveDiffOptions } from './history/archive-diff.js';
+export {
+  checkQuorumIntersection,
+  quorumSolverRules,
+  quorumSolverRuleIds,
+  QUORUM_INTERSECTION_FAILURE_RULE,
+  FRAGILE_QUORUM_THRESHOLD_RULE,
+  minimalQuorums,
+  minimalBlockingSets,
+  normalizeQuorumSet,
+  parseCoreCfgQuorumSet,
+} from './validators/quorum-solver.js';
+export type { QuorumSet, QuorumSolverOptions, RawQuorumSet } from './validators/quorum-solver.js';
+export {
   checkDnsIntegrity,
   checkDnsIntegrityForDomain,
   checkDnssecIntegrity,
