@@ -325,3 +325,93 @@ describe('cli -f markdown', () => {
     expect(stdout).toContain('No SEP-1 issues found');
   });
 });
+
+// ── the one-line status format ──────────────────────────────────────────────
+
+describe('cli -f summary', () => {
+  /** Windows prints paths with backslashes; the assertions read either way. */
+  const forward = (s: string): string => s.replace(/\\/g, '/');
+
+  /**
+   * The parenthesised tail of a status line. Info is named only when there is
+   * some, so it is the one optional part of the shape.
+   */
+  const COUNTS = /\(\d+ errors?, \d+ warnings?(?:, \d+ infos?)?\)$/;
+
+  it('emits exactly one PASS line for a clean file and exits 0', async () => {
+    const { code, stdout } = await cli([fixture('valid.toml'), '-f', 'summary']);
+
+    expect(code).toBe(0);
+    const lines = stdout.trimEnd().split('\n');
+    expect(lines).toHaveLength(1);
+    expect(forward(lines[0] as string)).toMatch(
+      /fixtures\/valid\.toml: PASS \(0 errors, 0 warnings\)$/,
+    );
+  });
+
+  it('emits exactly one FAIL line with counts for a broken file and exits 1', async () => {
+    const { code, stdout } = await cli([fixture('broken.toml'), '-f', 'summary']);
+
+    // The format flag never changes the verdict.
+    expect(code).toBe(1);
+    const lines = stdout.trimEnd().split('\n');
+    expect(lines).toHaveLength(1);
+    expect(forward(lines[0] as string)).toMatch(/fixtures\/broken\.toml: FAIL /);
+    expect(forward(lines[0] as string)).toMatch(COUNTS);
+  });
+
+  it('accepts the long form too', async () => {
+    const { code, stdout } = await cli([fixture('valid.toml'), '--format', 'summary']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('PASS (0 errors, 0 warnings)');
+  });
+
+  it('writes one line per file and no closing Checked line', async () => {
+    const { stdout } = await cli([fixture('tenants/*/stellar.toml'), '-f', 'summary']);
+    const out = forward(stdout);
+
+    expect(out.trimEnd().split('\n')).toHaveLength(2);
+    expect(out).toContain('tenants/acme/stellar.toml: PASS');
+    expect(out).toContain('tenants/globex/stellar.toml: PASS');
+    // Every file is already a line, so the text reporter's closing prose would
+    // only be something else for a status loop to trip over.
+    expect(out).not.toContain('Checked');
+  });
+
+  it('fails a warning-only file under --strict, as every other reporter does', async () => {
+    const lenient = await cli([fixture('warnings-only.toml'), '-f', 'summary']);
+    expect(lenient.code).toBe(0);
+    expect(lenient.stdout).toContain('PASS');
+    expect(lenient.stdout.trimEnd()).toMatch(COUNTS);
+
+    const strict = await cli([fixture('warnings-only.toml'), '-f', 'summary', '--strict']);
+    expect(strict.code).toBe(1);
+    expect(strict.stdout).toContain('FAIL');
+  });
+
+  it('prints no colour when NO_COLOR is set', async () => {
+    const plain = await cli([fixture('broken.toml'), '-f', 'summary']);
+    const painted = await cli([fixture('broken.toml'), '-f', 'summary', '--color']);
+
+    // Stripping the escape sequences has to leave the plain line untouched, so
+    // a script matching PASS or FAIL reads the same either way.
+    expect(painted.stdout.replace(/\p{Cc}\[[0-9;]*m/gu, '')).toBe(plain.stdout);
+    expect(painted.stdout).not.toBe(plain.stdout);
+  });
+
+  it('lists summary among the formats --help and --completion advertise', async () => {
+    const help = await cli(['--help']);
+    expect(help.stdout).toContain('summary');
+
+    const bash = await cli(['--completion', 'bash']);
+    expect(bash.stdout).toContain('summary');
+  });
+
+  it('still exits 2 on an unknown format', async () => {
+    const { code, stderr } = await cli([fixture('valid.toml'), '-f', 'summaries']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('Unknown format');
+    // The message has to name the new choice, or the fix is a guess.
+    expect(stderr).toContain('summary');
+  });
+});

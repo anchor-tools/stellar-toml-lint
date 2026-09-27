@@ -30,6 +30,7 @@ export function isCompletionShell(value: string): value is CompletionShell {
 /** `--format` choices, kept in step with the `Format` union in `cli.ts`. */
 const FORMATS = [
   'text',
+  'summary',
   'json',
   'ndjson',
   'sarif',

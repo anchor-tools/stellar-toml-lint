@@ -25,6 +25,7 @@ import {
   formatNdjson,
   formatJunit,
   formatPrComment,
+  formatRunSummary,
   formatSarif,
   formatSummary,
   formatText,
@@ -84,6 +85,7 @@ const DEFAULT_PATH = 'stellar.toml';
 
 type Format =
   | 'text'
+  | 'summary'
   | 'json'
   | 'ndjson'
   | 'sarif'
@@ -160,9 +162,11 @@ OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type,
                           image-asset and ORG_URL same-domain checks. Fetches
                           unless files are given.
-  -f, --format <fmt>      text (default), json, ndjson, sarif, github, junit, html,
-                          checkstyle, markdown (for GitHub step summaries), or
-                          pr-comment (for the aggregate pull-request comment)
+  -f, --format <fmt>      text (default), summary (one line per file, for hooks
+                          and monitoring), json, ndjson, sarif, github, junit,
+                          html, checkstyle, markdown (for GitHub step
+                          summaries), or pr-comment (for the aggregate
+                          pull-request comment)
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
       --fail-on <sev>     Exit 1 when any diagnostic meets or exceeds <sev>:
@@ -289,6 +293,7 @@ EXAMPLES
   stellar-toml-lint "accounts/*/stellar.toml"
   stellar-toml-lint --domain example.com --strict
   stellar-toml-lint --preset validator public/.well-known/stellar.toml
+  stellar-toml-lint -f summary "accounts/*/stellar.toml"
   stellar-toml-lint -f sarif > results.sarif
   stellar-toml-lint --graph mermaid > diagram.mmd
   stellar-toml-lint --graph dot --graph-contracts > diagram.dot
@@ -723,9 +728,10 @@ async function main(argv: string[]): Promise<number> {
       // One line closing a multi-file run, so a CI log answers "did the whole
       // set pass?" without anyone counting per-file blocks. Only the text
       // reporter gets it: appending prose to JSON, SARIF, or XML would break the
-      // parsers those formats exist for.
+      // parsers those formats exist for. `summary` needs no such line — it is
+      // already one line per file.
       if (results.length > 1 && cli.format === 'text') {
-        process.stdout.write(formatSummary(results, { color }));
+        process.stdout.write(formatRunSummary(results, { color }));
       }
     }
 
@@ -846,6 +852,8 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
         showSuggestions: !cli.noSuggestions,
         errorsOnly: cli.quiet,
       });
+    case 'summary':
+      return formatSummary(result, name, { color });
   }
 }
 
@@ -943,7 +951,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         const value = requireValue(argv, ++i, arg);
         if (!isFormat(value)) {
           throw new Error(
-            `Unknown format "${value}". Expected text, json, ndjson, sarif, github, junit, html, checkstyle, markdown, or pr-comment.`,
+            `Unknown format "${value}". Expected text, summary, json, ndjson, sarif, github, junit, html, checkstyle, markdown, or pr-comment.`,
           );
         }
         cli.format = value;
@@ -1264,6 +1272,7 @@ function requireValue(argv: string[], index: number, flag: string): string {
 function isFormat(value: string): value is Format {
   return (
     value === 'text' ||
+    value === 'summary' ||
     value === 'json' ||
     value === 'ndjson' ||
     value === 'sarif' ||

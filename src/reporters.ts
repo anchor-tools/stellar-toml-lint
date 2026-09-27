@@ -128,8 +128,12 @@ function plural(n: number, word: string): string {
  * is reflected exactly as it is in that file's report; the totals behind the
  * parentheses are summed across every file, which is what a CI log needs to
  * judge the whole set at a glance.
+ *
+ * Named for the run rather than for a summary because `formatSummary` below
+ * reports one file's status on one line, and the two are easily confused when
+ * both are in scope.
  */
-export function formatSummary(
+export function formatRunSummary(
   entries: { name: string; result: LintResult }[],
   options: { color?: boolean } = {},
 ): string {
@@ -163,6 +167,52 @@ export function formatSummary(
   // every text block already ends with.
   const text = `\n${line}\n`;
   return failed > 0 ? c.red(c.bold(text)) : totals.warning > 0 ? c.yellow(text) : c.grey(text);
+}
+
+export interface SummaryReporterOptions {
+  /** Green for a pass, yellow when only warnings were found, red for a fail. */
+  color?: boolean;
+}
+
+/**
+ * One line per file: `stellar.toml: PASS (0 errors, 0 warnings)`.
+ *
+ * The other formats answer "what is wrong, and where"; this one answers "did
+ * it pass", which is the only question a pre-push hook, a monitoring poll, or a
+ * status line has room to ask. Holding it to a single line is the whole point —
+ * `grep`, `awk`, and a line-oriented CI log can all read it without a parser,
+ * and one file's report can never spill into the next file's status.
+ *
+ * The verdict is {@link LintResult.ok} rather than a count computed here, so
+ * `PASS`/`FAIL` means exactly what it means in the text report and in the exit
+ * code: `--strict` turns a warning into a `FAIL` in all three. Nothing here can
+ * change which exit code the CLI returns.
+ *
+ * Info findings are named only when there are some, exactly as the closing line
+ * of a multi-file run does, so a file carrying nothing but info notes still
+ * says so rather than reading as untouched.
+ */
+export function formatSummary(
+  result: LintResult,
+  filename = 'stellar.toml',
+  options: SummaryReporterOptions = {},
+): string {
+  const c = makeColors(options.color ?? false);
+  const { error, warning, info } = result.counts;
+
+  const counts = [`${error} ${plural(error, 'error')}`, `${warning} ${plural(warning, 'warning')}`];
+  if (info > 0) counts.push(`${info} ${plural(info, 'info')}`);
+
+  // The one-line contract has to survive the one input the caller does not
+  // control: a path is a shell argument, and a filename holding a newline would
+  // otherwise split one file's status across two lines of a monitoring log.
+  const name = filename.replace(/[\r\n]+/g, ' ');
+  const text = `${name}: ${result.ok ? 'PASS' : 'FAIL'} (${counts.join(', ')})`;
+
+  // Driven by the verdict rather than the error count alone, so a `--strict`
+  // run that fails on a warning is red for the same reason it exits 1.
+  const painted = !result.ok ? c.red(c.bold(text)) : warning > 0 ? c.yellow(text) : c.green(text);
+  return `${painted}\n`;
 }
 
 /** Machine-readable output for scripts and dashboards. */

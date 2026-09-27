@@ -115,7 +115,7 @@ it was before.
 | Flag                 | Effect                                                                          |
 | -------------------- | ------------------------------------------------------------------------------- |
 | `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks           |
-| `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`, `junit`                            |
+| `-f, --format <fmt>` | `text` (default), `summary`, `json`, `sarif`, `github`, `junit`                 |
 | `--strict`           | Treat warnings as errors                                                        |
 | `--max-warnings <n>` | Fail if warnings exceed `n`                                                     |
 | `--check-network`    | Verify accounts, `HORIZON_URL`, `AUTH_SERVER`, and `ANCHOR_QUOTE_SERVER` online |
@@ -131,7 +131,7 @@ it was before.
 | Flag                      | Effect                                                                          |
 | ------------------------- | ------------------------------------------------------------------------------- |
 | `-d, --domain <d>`        | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks           |
-| `-f, --format <fmt>`      | `text` (default), `json`, `sarif`, `github`, `junit`                            |
+| `-f, --format <fmt>`      | `text` (default), `summary`, `json`, `sarif`, `github`, `junit`                 |
 | `--strict`                | Treat warnings as errors                                                        |
 | `--max-warnings <n>`      | Fail if warnings exceed `n`                                                     |
 | `--check-network`         | Verify accounts, `HORIZON_URL`, `AUTH_SERVER`, and `ANCHOR_QUOTE_SERVER` online |
@@ -153,7 +153,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | Flag                        | Effect                                                                                                                  |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `-d, --domain <d>`          | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks                                                   |
-| `-f, --format <fmt>`        | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`                        |
+| `-f, --format <fmt>`        | `text` (default), `summary`, `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`             |
 | `--strict`                  | Treat warnings as errors                                                                                                |
 | `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                             |
 | `--check-network`           | Verify accounts, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online                            |
@@ -194,7 +194,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | Flag                        | Effect                                                                                                                  |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `-d, --domain <d>`          | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks                                                   |
-| `-f, --format <fmt>`        | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`                        |
+| `-f, --format <fmt>`        | `text` (default), `summary`, `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`             |
 | `--strict`                  | Treat warnings as errors                                                                                                |
 | `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                             |
 | `--check-network`           | Verify accounts, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online |
@@ -235,7 +235,7 @@ failure.
 | Flag                        | Effect                                                                                                                                                                     |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-d, --domain <d>`          | Serving domain. Enables CORS, content-type, TLS, image-asset, and `ORG_URL` checks                                                                                         |
-| `-f, --format <fmt>`        | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`                                                                           |
+| `-f, --format <fmt>`        | `text` (default), `summary`, `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`                                                                |
 | `--strict`                  | Treat warnings as errors                                                                                                                                                   |
 | `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                                                                                |
 | `--fail-on <severity>`      | Exit `1` when any diagnostic meets or exceeds `error`, `warning`, or `info`; takes precedence over `--strict`                                                              |
@@ -780,6 +780,29 @@ Each linted file becomes one `<file>` element and each diagnostic an `<error>` c
 `column`, `severity`, `message`, and `source` — the rule id, so a dashboard can group, baseline, or
 suppress findings the way it would a Checkstyle check. Severity maps straight across (`error`,
 `warning`, `info`). Lint one file per report, as with the other machine-readable formats.
+
+### One-line status summaries
+
+Monitoring scripts, `pre-push` hooks, and operational dashboards rarely want the whole report — they
+want to know whether a file passed. `--format summary` answers that with exactly one line per file:
+the target, a `PASS`/`FAIL` verdict, and the error and warning counts.
+
+```console
+$ stellar-toml-lint -f summary "accounts/*/stellar.toml"
+accounts/acme/stellar.toml: PASS (0 errors, 0 warnings)
+accounts/globex/stellar.toml: FAIL (2 errors, 1 warning)
+```
+
+Because every file is one line, the output is greppable, `awk`-able, and safe to append to a CI log
+or a status line without a parser. Colour follows the verdict — green for a pass, yellow when only
+warnings were found, red for a fail — and `NO_COLOR`, `--color`, and `--no-color` all behave as they
+do for every other reporter.
+
+The verdict is the same one the exit code uses, so `--strict` turns a warning into a `FAIL` here
+exactly as it does in the text report and in the run's exit code. Selecting a format never changes
+which code the CLI returns: `0` for a pass, `1` for errors or strict warnings, `2` for bad usage.
+Unlike the `text` reporter, no closing `Checked N files` line is appended — a run of ten files is
+ten lines, and nothing else.
 
 ### GitHub step summaries
 

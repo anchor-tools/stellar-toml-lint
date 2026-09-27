@@ -9,6 +9,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--format summary` (`-f summary`), a one-line-per-file status format for `pre-push` hooks,
+  monitoring scripts, and dashboards that need a verdict rather than a report:
+  `stellar.toml: PASS (0 errors, 0 warnings)`. Each file gets exactly one line carrying the target,
+  a `PASS`/`FAIL` verdict, and the error and warning counts, coloured green, yellow, or red to match.
+  The verdict is the same `LintResult.ok` the text report and the exit code use, so `--strict` fails
+  the line, the report, and the run together. The reporter is `formatSummary`, and the multi-file
+  closing line the `text` reporter appends is now `formatRunSummary`, since the two are easily
+  confused when both are in scope (#23).
+
 - `validators/quorum-intersection-failure` (error) and `validators/fragile-quorum-threshold`
   (warning) under `--check-network --audit-quorum`: the quorum sets declared by
   `[[VALIDATORS]].QUORUM_SET` — or the `[QUORUM_SET]` stanzas fetched from each validator's
