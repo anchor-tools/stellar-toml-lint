@@ -37,6 +37,10 @@ import { checkSep38 } from './rules/sep38-endpoints.js';
 import { checkRegulatedIssuerFlags } from './rules/regulated-flags.js';
 import { checkFixedSupplyIssuerLocks } from './rules/fixed-supply-audit.js';
 import { checkContracts } from './soroban.js';
+import { auditTomlContractEnvMeta } from './soroban/env-meta.js';
+import { auditTomlContractEvents } from './soroban/events.js';
+import { auditTomlContractAdmins } from './soroban/admin-auditor.js';
+import { auditTomlContractSimulation } from './soroban/simulation.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkTokenBinding } from './security/token-binding.js';
@@ -124,6 +128,7 @@ interface Cli {
   interactive?: boolean;
   checkContracts: boolean;
   sorobanRpc?: string;
+  simulateSoroban?: boolean;
   graph?: GraphFormat;
   graphIncludeContracts?: boolean;
   graphIncludeValidators?: boolean;
@@ -200,6 +205,8 @@ OPTIONS
                           their WASM is not evicted, and that their TTL is live
       --rpc-url <url>     Soroban RPC endpoint to use with --check-contracts
                           (defaults from NETWORK_PASSPHRASE; alias --soroban-rpc)
+      --simulate-soroban  With --check-network: dry-run the SEP-41 read calls
+                          against the Soroban RPC without submitting a transaction
       --mock-fixtures <dir>
                           Serve network checks from recorded JSON responses under
                           <dir> instead of the network. A URL with no fixture
@@ -373,6 +380,24 @@ async function main(argv: string[]): Promise<number> {
             ...(cli.mockFixtures === undefined
               ? await checkPeerPortReachability(domainResult.parsed, { rules })
               : []),
+            ...(await auditTomlContractEnvMeta(domainResult.parsed, fetchImpl, {
+              rules,
+              ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+            })),
+            ...(await auditTomlContractEvents(domainResult.parsed, fetchImpl, {
+              rules,
+              ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+            })),
+            ...(await auditTomlContractAdmins(domainResult.parsed, fetchImpl, {
+              rules,
+              ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+            })),
+            ...(cli.simulateSoroban
+              ? await auditTomlContractSimulation(domainResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })
+              : []),
           ];
           if (networkDiagnostics.length > 0) {
             domainResult = finalize(
@@ -494,6 +519,24 @@ async function main(argv: string[]): Promise<number> {
                   : []),
                 ...(cli.crawlPeers && cli.mockFixtures === undefined
                   ? await checkOverlayPeers(fileResult.parsed, { rules })
+                  : []),
+                ...(await auditTomlContractEnvMeta(fileResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })),
+                ...(await auditTomlContractEvents(fileResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })),
+                ...(await auditTomlContractAdmins(fileResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })),
+                ...(cli.simulateSoroban
+                  ? await auditTomlContractSimulation(fileResult.parsed, fetchImpl, {
+                      rules,
+                      ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                    })
                   : []),
               );
             }
@@ -849,6 +892,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
+    simulateSoroban: false,
     graphIncludeContracts: false,
     graphIncludeValidators: false,
     graphColorByProtocol: false,
@@ -975,6 +1019,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--rpc-url':
       case '--soroban-rpc':
         cli.sorobanRpc = requireValue(argv, ++i, arg);
+        break;
+
+      case '--simulate-soroban':
+        cli.simulateSoroban = true;
         break;
 
       case '--mock-fixtures':

@@ -36,6 +36,10 @@ import { sep6IntegrationRules } from '../protocols/sep6.js';
 import { sep31Rules } from '../protocols/sep31.js';
 import { sep8Rules } from '../protocols/sep8.js';
 import { wasmAuditorRules } from '../soroban/wasm-auditor.js';
+import { envMetaRules } from '../soroban/env-meta.js';
+import { eventRules } from '../soroban/events.js';
+import { adminAuditorRules } from '../soroban/admin-auditor.js';
+import { simulationRules } from '../soroban/simulation.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -60,6 +64,10 @@ export const allRules: Rule[] = [
   ...imageAssetRules,
   ...sorobanRules,
   ...wasmAuditorRules,
+  ...envMetaRules,
+  ...eventRules,
+  ...adminAuditorRules,
+  ...simulationRules,
   ...sep41MetadataRules,
   ...sep12Rules,
   ...sep6Rules,
@@ -122,4 +130,8 @@ export {
   sep31Rules,
   sep8Rules,
   wasmAuditorRules,
+  envMetaRules,
+  eventRules,
+  adminAuditorRules,
+  simulationRules,
 };
