@@ -1046,6 +1046,8 @@ reserved stellar-core config keyword (`self`, `all`, `default`, `none`, `quorum`
 well-formed archive URL, with the `{0}` template parameter accepted and its braces required to
 balance.
 
+**Validator upgrade simulation** (with `--check-network`) — queries Horizon for upcoming protocol migrations and inspects validator build versions reported via crawler telemetry. Alerts the operator when a `[[VALIDATORS]]` binary is running a version that does not support the upcoming protocol (`validators/binary-outdated-for-upgrade`), or when a compatible node is missing the scheduled vote (`validators/missing-upgrade-vote-schedule`).
+
 **Validator peer-port reachability** (with `--check-network`) — the `HOST` each
 `[[VALIDATORS]]` entry publishes is the address every peer stellar-core node dials over the
 overlay to exchange SCP messages, so the linter opens one raw TCP connection to each declared
