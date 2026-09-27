@@ -265,6 +265,18 @@ export {
 export type { Sep8Options } from './protocols/sep8.js';
 
 export {
+  verifySep38,
+  sep38QuoteRules,
+  sep38QuoteRuleIds,
+  INFO_SCHEMA_INVALID_RULE as SEP38_INFO_SCHEMA_INVALID_RULE,
+  PRICES_MISSING_DECLARED_ASSET_RULE,
+  ABNORMAL_EXCHANGE_RATE_SPREAD_RULE,
+  INVALID_QUOTE_EXPIRATION_RULE,
+  MAX_QUOTE_SPREAD_PERCENT,
+} from './protocols/sep38.js';
+export type { Sep38QuoteOptions } from './protocols/sep38.js';
+
+export {
   auditContractWasm,
   auditTomlContractWasm,
   verifySep41Wasm,

@@ -40,6 +40,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   as something other than an `image/*` type, or a `Content-Length` over 500KB is reported before
   the wallet renders a blank tile. Offline `lint()` runs still never touch the network (#27).
 
+- `--check-network --verify-sep38` runs a SEP-38 anchor quotes and RFQ pricing engine simulator
+  (`src/protocols/sep38.ts`): `GET /info` must list quotable assets whose `country_codes` are ISO
+  3166 codes (`sep38/info-schema-invalid`, error); `GET /prices` must quote every pair built from
+  the assets the file declares — each `stellar:CODE:ISSUER` in `[[CURRENCIES]]` and the `iso4217`
+  side of a fiat-anchored currency (`sep38/prices-missing-declared-asset`, error); every returned
+  rate must be positive, and the reverse of each pair must agree with the forward rate inside a 15%
+  bid-ask spread (`sep38/abnormal-exchange-rate-spread`, warning); and `POST /quote`, asked for firm
+  and indicative quotes, must answer with an `expires_at` still in the future
+  (`sep38/invalid-quote-expiration`, error). Endpoint liveness and malformed bodies stay with the
+  plain `--check-network` probe, so nothing is reported twice (#66).
+
 - `--serve-mock [port]` starts a local mock anchor on `node:http` (default port `8080`): the file at
   `/.well-known/stellar.toml` with `Access-Control-Allow-Origin: *`, SEP-10 challenges at `/auth`
   for `NETWORK_PASSPHRASE`, and SEP-24 `/sep24/info` plus SEP-38 `/sep38/info` and `/sep38/prices`

@@ -162,6 +162,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--verify-sep6`             | Run end-to-end programmatic SEP-6 integration tester (requires `--check-network`)                                       |
 | `--verify-sep31`            | Audit SEP-31 cross-border payment lifecycle and schema (requires `--check-network`)                                     |
 | `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                      |
+| `--verify-sep38`            | Audit SEP-38 quote coverage, bid-ask spread, and quote expirations (requires `--check-network`)                         |
 | `--check-contracts`         | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                   |
 | `--soroban-rpc <url>`       | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                       |
 | `--simulate-soroban`        | With `--check-network`: dry-run the SEP-41 read calls against the Soroban RPC                                           |
@@ -242,6 +243,7 @@ failure.
 | `--check-network`           | Verify accounts, fixed-supply issuer locks, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, TLS certificate expiry, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online |
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                                                                          |
 | `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                                                                         |
+| `--verify-sep38`            | Audit SEP-38 quote coverage, bid-ask spread, and quote expirations (requires `--check-network`)                                                                            |
 | `--crawl-peers`             | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                                                                    |
 | `--verify-overlay`          | Complete the overlay TCP handshake with each `[[VALIDATORS]]` HOST and check its network, node ID, and protocol version (requires `--check-network`)                       |
 | `--verify-dnssec`           | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                                                                     |
@@ -1350,6 +1352,18 @@ submits the envelopes to the compliance server, and validates response schemas a
 `revised`, `pending`, `rejected`, `action_required`). Emits `sep8/approval-server-unresponsive` (error) when unreachable,
 `sep8/invalid-response-status` (error) on unrecognized status or missing `action_url`, and `sep8/invalid-revised-tx-xdr`
 (error) when returned transaction envelopes fail XDR parsing.
+
+**SEP-38 anchor quotes and RFQ pricing engine simulator** (with `--check-network --verify-sep38`) — Queries the
+`ANCHOR_QUOTE_SERVER` the file advertises and verifies the numbers it answers with, not just that the routes answer.
+`GET /info` must list quotable assets whose `country_codes` are ISO 3166 codes a registry would recognise
+(`sep38/info-schema-invalid`, error). `GET /prices` must quote every pair built from the assets the file declares —
+each `stellar:CODE:ISSUER` leg in `[[CURRENCIES]]` and the `iso4217` side of a fiat-anchored currency — or the
+unpriced declared asset is reported (`sep38/prices-missing-declared-asset`, error). Every rate must be a positive
+number, and the reverse of each pair must agree with the forward rate inside a 15% bid-ask spread, so an inverted or
+absurd quotation is caught before a wallet sizes an order from it (`sep38/abnormal-exchange-rate-spread`, warning).
+`POST /quote` is asked for a firm and an indicative quote, and each answer must carry an `expires_at` still in the
+future (`sep38/invalid-quote-expiration`, error). Endpoint liveness, 5xx, and malformed bodies stay with the plain
+`--check-network` probe above, so nothing is reported twice.
 
 **Soroban WASM bytecode disassembler and SEP-41 conformance auditor** (with `--check-network`) — Fetches compiled WebAssembly
 bytecode for Soroban smart contracts declared under `[[CURRENCIES]].contract`, `[[CONTRACTS]]`, or `WEB_AUTH_CONTRACT_ID`.
