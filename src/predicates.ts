@@ -79,6 +79,66 @@ export function isEmail(v: unknown): boolean {
   return isString(v) && /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(v);
 }
 
+/**
+ * Curated denylist of disposable / throwaway email providers.
+ *
+ * A ten-minute inbox is a strong signal of a low-quality or fraudulent issuer:
+ * wallets, exchanges, and directory maintainers reach out to the contacts in
+ * `[DOCUMENTATION]` and `[[PRINCIPALS]]` to verify an anchor, and an address
+ * that expires before the reply arrives makes that impossible — listing
+ * applications get rejected for it. Deliberately a small static set: the
+ * linter runs offline, so no runtime package or network lookup may back it.
+ */
+export const DISPOSABLE_EMAIL_DOMAINS: ReadonlySet<string> = new Set([
+  '10minutemail.com',
+  '10minutemail.net',
+  'dispostable.com',
+  'fakeinbox.com',
+  'getnada.com',
+  'guerrillamail.com',
+  'guerrillamailblock.com',
+  'guerrillamail.info',
+  'mailcatch.com',
+  'maildrop.cc',
+  'mailinator.com',
+  'mailinator.org',
+  'mailnesia.com',
+  'minuteinbox.com',
+  'mytemp.email',
+  'sharklasers.com',
+  'temp-mail.org',
+  'tempmail.com',
+  'tempmail.plus',
+  'throwawayemail.com',
+  'throwawaymail.com',
+  'trash-mail.com',
+  'trashmail.com',
+  'yopmail.com',
+  'yopmail.fr',
+]);
+
+/**
+ * True when `email` is hosted at a known disposable provider.
+ *
+ * Subdomains count, because providers hand out `user@random.mailinator.com`
+ * style aliases, and the comparison is case-insensitive so
+ * `user@MAILINATOR.COM` is caught too. Syntax is not this predicate's job —
+ * callers guard with {@link isEmail} so a malformed address is reported once,
+ * by the rule that owns validity.
+ */
+export function isDisposableEmail(email: string): boolean {
+  const at = email.lastIndexOf('@');
+  if (at < 0) return false;
+  const host = email
+    .slice(at + 1)
+    .toLowerCase()
+    .replace(/\.$/, '');
+  for (const domain of DISPOSABLE_EMAIL_DOMAINS) {
+    if (host === domain || host.endsWith(`.${domain}`)) return true;
+  }
+  return false;
+}
+
 /** E.164: a leading `+`, then 2–15 digits, no separators. */
 export function isE164(v: unknown): boolean {
   return isString(v) && /^\+[1-9]\d{1,14}$/.test(v);

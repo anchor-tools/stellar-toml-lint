@@ -569,6 +569,97 @@ describe('cross-SEP structural consistency', () => {
   });
 });
 
+describe('disposable email domains', () => {
+  /**
+   * Sets a `[DOCUMENTATION]` contact field on the otherwise valid base,
+   * dropping the base's own value first: TOML forbids duplicate keys, and a
+   * parse error would stop every semantic rule from running.
+   */
+  const withContact = (field: string, value: string): string => {
+    const base = withValidBase('')
+      .split('\n')
+      .filter((line) => !line.startsWith(`${field}=`))
+      .join('\n');
+    return `${base}\n${field}="${value}"\n`;
+  };
+
+  it('warns when ORG_SUPPORT_EMAIL uses a disposable domain', () => {
+    const result = lint(withContact('ORG_SUPPORT_EMAIL', 'help@mailinator.com'));
+    const [d] = find(result, 'documentation/disposable-email');
+    expect(d?.severity).toBe('warning');
+    expect(d?.message).toContain('mailinator.com');
+    expect(d?.path).toBe('DOCUMENTATION.ORG_SUPPORT_EMAIL');
+    expect(d?.position?.line).toBe(13);
+    expect(d?.helpUri).toBeTruthy();
+    expect(d?.suggestion).toContain('permanently maintained');
+    // Syntax is fine, so the validity rule must stay silent: one problem,
+    // one diagnostic.
+    expect(find(result, 'documentation/emails')).toEqual([]);
+  });
+
+  it('warns when ORG_OFFICIAL_EMAIL uses a disposable domain', () => {
+    // withValidBase already sets ORG_OFFICIAL_EMAIL, so swap the value rather
+    // than append a duplicate key (TOML would fail to parse).
+    const source = withContact('ORG_SUPPORT_EMAIL', 'support@example.com').replace(
+      'ORG_OFFICIAL_EMAIL="ops@example.com"',
+      'ORG_OFFICIAL_EMAIL="ceo@yopmail.com"',
+    );
+    const [d] = find(lint(source), 'documentation/disposable-email');
+    expect(d?.severity).toBe('warning');
+    expect(d?.message).toContain('yopmail.com');
+    expect(d?.path).toBe('DOCUMENTATION.ORG_OFFICIAL_EMAIL');
+  });
+
+  it('warns when a principal uses a disposable domain', () => {
+    const source = withValidBase('[[PRINCIPALS]]\nname="Jane"\nemail="jane@guerrillamail.com"');
+    const [d] = find(lint(source), 'principals/disposable-email');
+    expect(d?.severity).toBe('warning');
+    expect(d?.message).toContain('guerrillamail.com');
+    expect(d?.path).toBe('PRINCIPALS[0].email');
+    expect(d?.position?.line).toBe(5);
+    expect(d?.suggestion).toContain('permanently maintained');
+  });
+
+  it('flags a disposable domain regardless of case or subdomain alias', () => {
+    const upper = lint(withContact('ORG_SUPPORT_EMAIL', 'User@MAILINATOR.COM'));
+    expect(find(upper, 'documentation/disposable-email')).toHaveLength(1);
+
+    const alias = withValidBase('[[PRINCIPALS]]\nname="Jane"\nemail="jane@west.us.yopmail.com"');
+    expect(find(lint(alias), 'principals/disposable-email')).toHaveLength(1);
+  });
+
+  it('stays silent for ordinary company domains', () => {
+    const result = lint(withContact('ORG_SUPPORT_EMAIL', 'support@example.com'), {
+      domain: 'example.com',
+    });
+    expect(rules(result)).not.toContain('documentation/disposable-email');
+    expect(rules(result)).not.toContain('principals/disposable-email');
+
+    const clean = lint(fixture('valid.toml'), { domain: 'example.com' });
+    expect(rules(clean)).not.toContain('documentation/disposable-email');
+    expect(rules(clean)).not.toContain('principals/disposable-email');
+  });
+
+  it('leaves a malformed address to the validity rule instead of doubling up', () => {
+    const result = lint(withContact('ORG_SUPPORT_EMAIL', 'not-an-email'));
+    expect(find(result, 'documentation/emails')).toHaveLength(1);
+    expect(find(result, 'documentation/disposable-email')).toEqual([]);
+  });
+
+  it('can be switched off by rule id', () => {
+    const result = lint(withContact('ORG_SUPPORT_EMAIL', 'help@mailinator.com'), {
+      rules: { 'documentation/disposable-email': 'off' },
+    });
+    expect(find(result, 'documentation/disposable-email')).toEqual([]);
+  });
+
+  it('registers both rules so --list-rules and --off know them', () => {
+    const ids = allRules.map((r) => r.id);
+    expect(ids).toContain('documentation/disposable-email');
+    expect(ids).toContain('principals/disposable-email');
+  });
+});
+
 describe('rule configuration', () => {
   it('disables a rule with off', () => {
     const result = lint(fixture('broken.toml'), { rules: { 'general/version': 'off' } });

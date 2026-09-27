@@ -2,6 +2,7 @@ import type { Rule } from '../types.js';
 import { KNOWN_DOCUMENTATION_FIELDS, RECOMMENDED_DOCUMENTATION_FIELDS, specUrl } from '../spec.js';
 import {
   hostOf,
+  isDisposableEmail,
   isE164,
   isEmail,
   isHttpsUrl,
@@ -235,6 +236,37 @@ export const documentationRules: Rule[] = [
             suggestion: 'SEP-1 requires the official email to be hosted at your ORG_URL domain.',
           });
         }
+      }
+    },
+  },
+
+  {
+    id: 'documentation/disposable-email',
+    category: 'documentation',
+    severity: 'warning',
+    description: 'Contact emails must not use disposable or temporary providers',
+    run(ctx) {
+      const documentation = documentationOf(ctx.doc);
+      if (!documentation) return;
+
+      for (const field of ['ORG_OFFICIAL_EMAIL', 'ORG_SUPPORT_EMAIL']) {
+        const value = documentation[field];
+        // Malformed addresses belong to documentation/emails; report each
+        // address at most once, by the rule that owns its problem.
+        if (!isString(value) || !isEmail(value)) continue;
+        if (!isDisposableEmail(value)) continue;
+
+        const domain = value.split('@')[1]?.toLowerCase();
+        ctx.report({
+          rule: 'documentation/disposable-email',
+          category: 'documentation',
+          message: `DOCUMENTATION.${field} uses the disposable email provider ${domain}`,
+          path: `DOCUMENTATION.${field}`,
+          position: ctx.locate(`DOCUMENTATION.${field}`),
+          helpUri: specUrl('organization-documentation'),
+          suggestion:
+            'Publish a permanently maintained address on your own domain; throwaway contacts get listing applications rejected.',
+        });
       }
     },
   },
