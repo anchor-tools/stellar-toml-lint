@@ -243,9 +243,10 @@ failure.
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                                                                          |
 | `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                                                                         |
 | `--crawl-peers`             | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                                                                    |
+| `--verify-overlay`          | Complete the overlay TCP handshake with each `[[VALIDATORS]]` HOST and check its network, node ID, and protocol version (requires `--check-network`)                       |
 | `--verify-dnssec`           | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                                                                     |
 | `--follow-links`            | Fetch and lint the `toml` pointers in `CURRENCIES` (implied by `--domain`)                                                                                                 |
-| `--check-contracts`         | Verify Soroban contracts exist on chain, their WASM is not evicted, their TTL, and the SEP-45 auth interface                                                               |
+| `--check-contracts`         | Verify Soroban contracts exist on chain, their WASM is not evicted, their TTL, the SEP-45 auth interface, their dependency contracts, and their custom error codes         |
 | `--rpc-url <url>`           | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`; `--soroban-rpc` is an alias)                                                             |
 | `--simulate-soroban`        | With `--check-network`: dry-run the SEP-41 read calls against the Soroban RPC without submitting a transaction                                                             |
 | `--soroban-rent-audit`      | With `--check-network`: audit contract instance storage footprint, TTL expiration, and projected ledger rent costs                                                         |
@@ -269,6 +270,7 @@ failure.
 | `--lsp`                     | Run as a Language Server on stdio (diagnostics, quick-fixes, hover)                                                                                                        |
 | `--graph <fmt>`             | Generate architecture diagram: `mermaid` or `dot`                                                                                                                          |
 | `--graph-contracts`         | Include Soroban contracts in diagram                                                                                                                                       |
+| `--contract-graph <fmt>`    | Print which declared contract calls which, as `json` or `mermaid`; needs a declared contract and a known RPC                                                               |
 | `--graph-validators`        | Include validators in diagram                                                                                                                                              |
 | `--graph-color`             | Color nodes by protocol type                                                                                                                                               |
 | `--policy <file>`           | Evaluate enterprise policy file (JSON or YAML)                                                                                                                             |
@@ -1163,6 +1165,27 @@ node with no peers emits `overlay/isolated-node-zero-peers` (error); a node with
 peers emits `overlay/low-peer-count` (warning). The raw TCP transport is skipped in
 `--mock-fixtures` mode, which remains a no-network mode.
 
+**Overlay handshake** (with `--check-network --verify-overlay`) — a port that accepts a TCP
+connection (see _Validator peer-port reachability_) only proves something is listening. This check
+completes the exchange a stellar-core peer performs instead: every message goes out as one frame —
+a big-endian 4-byte length carrying XDR's continuation flag, then an `AuthenticatedMessage` with a
+sequence number, the `StellarMessage`, and a 32-byte `HmacSha256Mac`. `HELLO` is the one message sent
+before either side holds a key, so it travels with sequence 0 and an all-zero MAC; the linter opens
+with its own `HELLO`, whose `AuthCert` announces a fresh ephemeral Curve25519 key signed by an Ed25519
+key that is thrown away with the socket. The node's `HELLO` is read back and its cert verified against
+the network _that node_ names, which keeps the identity question separate from the network question.
+The two peers then derive session MAC keys (CAP-21: HMAC-SHA256 over the X25519 shared secret and both
+announced Curve25519 keys, expanded with both `HELLO` nonces) and trade one `AUTH` under them, asking
+for the flow-control bytes a current stellar-core requires. That answers who is behind the published
+`HOST`: a peer that never completes the
+exchange emits `overlay/handshake-timeout` (error), one naming a different network or listening on a
+port other than the advertised one emits `overlay/network-mismatch` (error), one that cannot sign for
+the `VALIDATORS[i].PUBLIC_KEY` it is published under emits `overlay/public-key-mismatch` (error), and
+one whose overlay version is behind the linter's emits `overlay/protocol-version-outdated` (warning).
+An `AUTH` echo that does not authenticate is reported as negotiation that did not happen, not as a
+finding: what a node sends after its `HELLO` is its own business. Like the peer crawler, this opens its
+own sockets and is skipped under `--mock-fixtures`.
+
 **Overlay cryptography** (used by the peer and session audits) — the auditor validates RFC 5869
 HKDF derivation, big-endian 4-byte message length framing, monotonic sequence numbers, and
 HMAC authentication tags. A malformed frame or replayed sequence emits
@@ -1248,6 +1271,50 @@ contract and not from the file:
 Each finding names the on-chain value and the file's value, and suggests the exact edit. A field the
 file leaves unset, or metadata that cannot be read, is not compared. A Stellar Asset Contract's
 on-chain name is always `CODE:ISSUER`, so its `name` is never compared.
+
+**Custom error codes** (with `--check-contracts`) — a failed contract call reaches a wallet as a bare
+integer, so the `#[contracterror]` enums inside each contract's `contractspecv0` are flattened into
+one catalogue per contract and checked for the two ways a catalogue stops working:
+
+| Rule                                  | Severity | Fires when                                                       |
+| ------------------------------------- | -------- | ---------------------------------------------------------------- |
+| `soroban/duplicate-error-code`        | error    | Two cases in the contract declare the same integer code          |
+| `soroban/system-error-code-collision` | error    | A code falls in the range the host reserves for its own 9 errors |
+
+Under `--format text --show-help-urls` the catalogues themselves are printed after the findings, one
+matrix per contract, so the codes an integrator decodes against are in the same CI log as the report:
+
+```bash
+stellar-toml-lint stellar.toml --check-contracts --show-help-urls
+```
+
+**Deployments across networks** (with `--check-network`) — a contract address is only meaningful on
+the network that has it, so every declared contract is probed on Mainnet, Testnet, and Futurenet and
+compared against `NETWORK_PASSPHRASE`:
+
+| Rule                               | Severity | Fires when                                                                                                                                 |
+| ---------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `soroban/contract-only-on-testnet` | error    | A Mainnet file names a contract that exists only on Testnet                                                                                |
+| `soroban/network-mismatch`         | error    | The contract is absent from the declared network but live elsewhere, or `HORIZON_URL` serves a different network than `NETWORK_PASSPHRASE` |
+
+A network whose RPC did not answer is not treated as "absent", so an outage produces no finding.
+
+**Contract dependencies** (with `--check-contracts`) — a declared contract is rarely the whole
+system, and the edges it depends on are invisible in the file. Each contract's deployed WASM import
+table is read, and every import module name that decodes as a contract address becomes an edge, which
+is then traced breadth-first (bounded at 32 contracts) and checked like a declared one:
+
+| Rule                                     | Severity | Fires when                                                          |
+| ---------------------------------------- | -------- | ------------------------------------------------------------------- |
+| `soroban/unresolved-contract-dependency` | error    | A contract another contract imports has no live instance here       |
+| `soroban/circular-contract-dependency`   | warning  | Imports close a cycle, so the contracts deploy and upgrade together |
+
+`--contract-graph json` and `--contract-graph mermaid` print the same traversal as a dependency list
+or a diagram, marking which nodes the file declared and which were discovered:
+
+```bash
+stellar-toml-lint stellar.toml --contract-graph mermaid > contracts.md
+```
 
 **SEP-12 customer schemas** (with `--check-network`) — queries `KYC_SERVER/customer` and checks the
 customer type schemas the anchor declares (`sep31-sender`, `sep31-receiver`, `sep6-deposit`, …).

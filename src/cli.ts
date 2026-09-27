@@ -44,6 +44,17 @@ import { auditTomlContractAdmins } from './soroban/admin-auditor.js';
 import { auditTomlContractSimulation } from './soroban/simulation.js';
 import { auditTomlStorageFootprint } from './soroban/storage-footprint.js';
 import { auditTomlContractAuth } from './soroban/auth-auditor.js';
+import { checkNetworkConsistency } from './soroban/multi-network.js';
+import {
+  checkContractDependencies,
+  graphForDocument,
+  renderDependencyGraph,
+} from './soroban/dependency-graph.js';
+import {
+  checkContractErrorCatalogues,
+  formatContractErrorCatalogues,
+  type ContractErrorCatalogue,
+} from './soroban/errors.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkTokenBinding } from './security/token-binding.js';
@@ -56,6 +67,7 @@ import { checkArchiveDiff } from './history/archive-diff.js';
 import { checkQuorumIntersection } from './validators/quorum-solver.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
+import { checkOverlayHandshake } from './overlay/handshake.js';
 import { allRules } from './rules/index.js';
 import { PRESETS, resolvePreset, type PresetName } from './presets.js';
 import { generateBadgeSvg, generateShieldsEndpoint } from './generators/badge.js';
@@ -123,6 +135,7 @@ interface Cli {
   verifySep8?: boolean;
   crawlPeers: boolean;
   verifyDnssec: boolean;
+  verifyOverlay: boolean;
   badgeSvg?: string;
   badgeJson?: string;
   exportApConfig?: boolean;
@@ -135,6 +148,7 @@ interface Cli {
   simulateSoroban?: boolean;
   sorobanRentAudit?: boolean;
   graph?: GraphFormat;
+  contractGraph?: 'json' | 'mermaid';
   graphIncludeContracts?: boolean;
   graphIncludeValidators?: boolean;
   graphColorByProtocol?: boolean;
@@ -188,7 +202,8 @@ OPTIONS
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL,
-                          AUTH_SERVER, and ANCHOR_QUOTE_SERVER against the network
+                          AUTH_SERVER, and ANCHOR_QUOTE_SERVER against the network,
+                          and each declared contract against the other networks
       --health-check      Ping declared endpoint URLs to ensure they are live
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, SEP-8
                           regulated issuer flags, TLS certificate expiry,
@@ -205,6 +220,9 @@ OPTIONS
       --verify-sep31      Audit SEP-31 cross-border payment lifecycle and schema
       --verify-sep8       Simulate SEP-8 regulated asset compliance approval server interaction
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
+      --verify-overlay    With --check-network: complete the overlay TCP handshake
+                          with each [[VALIDATORS]] HOST and check its network,
+                          node ID, and protocol version
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
                           (implied by --domain)
@@ -233,6 +251,10 @@ OPTIONS
                           Generate an OpenAPI 3.1 spec (json or yaml extension)
       --graph <fmt>       Generate architecture diagram: mermaid or dot
       --graph-contracts   Include Soroban contracts in diagram
+      --contract-graph <fmt>
+                          Print the graph of which declared contract calls which:
+                          json or mermaid. Needs the Soroban RPC (--rpc-url or
+                          NETWORK_PASSPHRASE)
       --graph-validators  Include validators in diagram
       --graph-color       Color nodes by protocol type
       --policy <file>     Evaluate enterprise policy file (JSON or YAML)
@@ -332,6 +354,8 @@ async function main(argv: string[]): Promise<number> {
     }
 
     const results: { name: string; result: LintResult }[] = [];
+    // Each linted file's contract error catalogues, kept for the text report.
+    const catalogues: ContractErrorCatalogue[] = [];
     // Project defaults from .stellartomlrc.json, overridden by any CLI flag.
     let strict = cli.strict;
     let maxWarnings = cli.maxWarnings;
@@ -381,6 +405,11 @@ async function main(argv: string[]): Promise<number> {
             ...(cli.verifySep8 ? await verifySep8(domainResult.parsed, fetchImpl, { rules }) : []),
             ...(cli.crawlPeers && cli.mockFixtures === undefined
               ? await checkOverlayPeers(domainResult.parsed, { rules })
+              : []),
+            ...(await checkNetworkConsistency(domainResult.parsed, fetchImpl, { rules })),
+            // The handshake dials each peer directly, so a hermetic run skips it.
+            ...(cli.verifyOverlay && cli.mockFixtures === undefined
+              ? await checkOverlayHandshake(domainResult.parsed, { rules })
               : []),
             // A certificate probe opens its own socket rather than going
             // through the fixture transport, so hermetic runs skip it.
@@ -569,6 +598,11 @@ async function main(argv: string[]): Promise<number> {
                       ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                     })
                   : []),
+                ...(await checkNetworkConsistency(fileResult.parsed, fetchImpl, { rules })),
+                // Dials each peer directly, outside the fixture transport.
+                ...(cli.verifyOverlay && cli.mockFixtures === undefined
+                  ? await checkOverlayHandshake(fileResult.parsed, { rules })
+                  : []),
               );
             }
 
@@ -592,8 +626,19 @@ async function main(argv: string[]): Promise<number> {
             }
 
             if (cli.checkContracts) {
+              const audit = await checkContractErrorCatalogues(fileResult.parsed, fetchImpl, {
+                rules,
+                ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+              });
+              catalogues.push(...audit.catalogues);
+
               networkDiagnostics.push(
                 ...(await checkContracts(fileResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })),
+                ...audit.diagnostics,
+                ...(await checkContractDependencies(fileResult.parsed, fetchImpl, {
                   rules,
                   ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                 })),
@@ -691,6 +736,19 @@ async function main(argv: string[]): Promise<number> {
       process.stdout.write(diagram + '\n');
     }
 
+    if (cli.contractGraph !== undefined && firstResult?.parsed) {
+      const graph = await graphForDocument(firstResult.parsed, fetchImpl, {
+        ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+      });
+      if (graph === undefined) {
+        process.stderr.write(
+          '--contract-graph needs a declared Soroban contract and a network with a known RPC URL.\n',
+        );
+      } else {
+        process.stdout.write(renderDependencyGraph(graph, cli.contractGraph));
+      }
+    }
+
     // Evaluate enterprise policy
     if (cli.policy && firstResult?.parsed) {
       const policy = await loadPolicy(cli.policy);
@@ -758,6 +816,13 @@ async function main(argv: string[]): Promise<number> {
       // already one line per file.
       if (results.length > 1 && cli.format === 'text') {
         process.stdout.write(formatRunSummary(results, { color }));
+      }
+
+      // The contracts' own error catalogues, printed beside the findings that
+      // mention them. Only the text reporter: a matrix is for a human reading
+      // CI output, and appending prose to JSON or SARIF breaks those formats.
+      if (cli.format === 'text' && cli.showHelp && catalogues.length > 0) {
+        process.stdout.write(formatContractErrorCatalogues(catalogues, { helpUrls: true }));
       }
     }
 
@@ -925,6 +990,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     verifySep10: false,
     crawlPeers: false,
     verifyDnssec: false,
+    verifyOverlay: false,
     checkContracts: false,
     simulateSoroban: false,
     sorobanRentAudit: false,
@@ -1039,6 +1105,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.crawlPeers = true;
         break;
 
+      case '--verify-overlay':
+        cli.verifyOverlay = true;
+        break;
+
       case '--verify-dnssec':
         cli.verifyDnssec = true;
         break;
@@ -1101,6 +1171,15 @@ function parseArgs(argv: string[]): Cli | 'handled' {
           throw new Error(`Unknown graph format "${value}". Expected mermaid or dot.`);
         }
         cli.graph = value;
+        break;
+      }
+
+      case '--contract-graph': {
+        const value = requireValue(argv, ++i, arg);
+        if (value !== 'json' && value !== 'mermaid') {
+          throw new Error(`Unknown contract graph format "${value}". Expected json or mermaid.`);
+        }
+        cli.contractGraph = value;
         break;
       }
 

@@ -86,6 +86,36 @@ describe('cli', () => {
     expect(stdout).toMatch(/^\d+ rules/);
   });
 
+  it('lists the Soroban contract and overlay handshake rules', async () => {
+    const { stdout } = await cli(['--list-rules']);
+    expect(stdout).toContain('soroban/duplicate-error-code');
+    expect(stdout).toContain('soroban/system-error-code-collision');
+    expect(stdout).toContain('soroban/contract-only-on-testnet');
+    expect(stdout).toContain('soroban/network-mismatch');
+    expect(stdout).toContain('soroban/unresolved-contract-dependency');
+    expect(stdout).toContain('soroban/circular-contract-dependency');
+    expect(stdout).toContain('overlay/handshake-timeout');
+    expect(stdout).toContain('overlay/network-mismatch');
+    expect(stdout).toContain('overlay/public-key-mismatch');
+    expect(stdout).toContain('overlay/protocol-version-outdated');
+  });
+
+  it('documents --verify-overlay and --contract-graph', async () => {
+    const { stdout } = await cli(['--help']);
+    expect(stdout).toContain('--verify-overlay');
+    expect(stdout).toContain('--contract-graph');
+  });
+
+  it('rejects --contract-graph without a value or with an unknown format', async () => {
+    const missing = await cli(['--contract-graph']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('expects a value');
+
+    const unknown = await cli(['--contract-graph', 'svg']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown contract graph format');
+  });
+
   it('accepts severity overrides on the network-bound rules', async () => {
     const accepted = await cli([
       fixture('valid.toml'),

@@ -16,6 +16,8 @@ const LONG_FLAGS = [
   '--preset',
   '--check-network',
   '--check-contracts',
+  '--verify-overlay',
+  '--contract-graph',
   '--mock-fixtures',
   '--completion',
 ];

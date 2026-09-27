@@ -45,6 +45,9 @@ const FORMATS = [
 /** `--graph` choices. */
 const GRAPH_FORMATS = ['mermaid', 'dot'] as const;
 
+/** `--contract-graph` choices. */
+const CONTRACT_GRAPH_FORMATS = ['json', 'mermaid'] as const;
+
 interface FlagSpec {
   /** Long form, e.g. `--format`. */
   long: string;
@@ -88,6 +91,7 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--verify-sep6', description: 'Run SEP-6 programmatic integration tester' },
   { long: '--verify-sep31', description: 'Audit SEP-31 cross-border payment lifecycle' },
   { long: '--crawl-peers', description: 'Discover and audit overlay peers' },
+  { long: '--verify-overlay', description: 'Handshake with each validator over the overlay' },
   { long: '--verify-dnssec', description: 'Compare DNSSEC-validating DNS resolvers' },
   { long: '--check-contracts', description: 'Verify Soroban contracts on chain' },
   { long: '--rpc-url', description: 'Soroban RPC endpoint', takesValue: true },
@@ -107,6 +111,11 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--generate-openapi', description: 'Write an OpenAPI 3.1 spec', takesValue: true },
   { long: '--graph', description: 'Generate an architecture diagram', values: GRAPH_FORMATS },
   { long: '--graph-contracts', description: 'Include Soroban contracts in the diagram' },
+  {
+    long: '--contract-graph',
+    description: 'Print which declared contract calls which',
+    values: CONTRACT_GRAPH_FORMATS,
+  },
   { long: '--graph-validators', description: 'Include validators in the diagram' },
   { long: '--graph-color', description: 'Color diagram nodes by protocol type' },
   { long: '--policy', description: 'Evaluate an enterprise policy file', takesValue: true },

@@ -16,10 +16,14 @@ import { sep38Rules } from './sep38-endpoints.js';
 import { orgUrlRules } from './org-url-check.js';
 import { imageAssetRules } from './image-assets.js';
 import { sorobanRules } from '../soroban.js';
+import { sorobanErrorRules } from '../soroban/errors.js';
+import { multiNetworkRules } from '../soroban/multi-network.js';
+import { dependencyGraphRules } from '../soroban/dependency-graph.js';
 import { sep12Rules } from './sep12-schema.js';
 import { sep6Rules } from '../cross-sep/sep6.js';
 import { corsPreflightRules } from '../network/cors-preflight.js';
 import { overlayCrawlerRules } from '../overlay/crawler-rules.js';
+import { overlayHandshakeRules } from '../overlay/handshake.js';
 import { cryptoAuditorRules } from '../overlay/crypto-auditor.js';
 import { historyPublishRules } from '../history/publish-validator.js';
 import { archiveDiffRules } from '../history/archive-diff.js';
@@ -72,6 +76,9 @@ export const allRules: Rule[] = [
   ...simulationRules,
   ...storageFootprintRules,
   ...authAuditorRules,
+  ...sorobanErrorRules,
+  ...multiNetworkRules,
+  ...dependencyGraphRules,
   ...sep41MetadataRules,
   ...sep12Rules,
   ...sep6Rules,
@@ -81,6 +88,7 @@ export const allRules: Rule[] = [
   ...sep7Rules,
   ...corsPreflightRules,
   ...overlayCrawlerRules,
+  ...overlayHandshakeRules,
   ...cryptoAuditorRules,
   ...historyPublishRules,
   ...archiveDiffRules,
@@ -114,11 +122,15 @@ export {
   sep38Rules,
   imageAssetRules,
   sorobanRules,
+  sorobanErrorRules,
+  multiNetworkRules,
+  dependencyGraphRules,
   sep41MetadataRules,
   sep12Rules,
   sep6Rules,
   corsPreflightRules,
   overlayCrawlerRules,
+  overlayHandshakeRules,
   cryptoAuditorRules,
   historyPublishRules,
   archiveDiffRules,

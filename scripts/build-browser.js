@@ -11,17 +11,67 @@ const outDir = join(rootDir, 'dist', 'browser');
 mkdirSync(outDir, { recursive: true });
 
 /**
+ * Node built-ins the browser and worker bundles must never load. Each module is
+ * replaced by a stub that throws on use, so a bundle that reaches for a socket
+ * says why instead of failing to build. The overlay crawler, the overlay
+ * handshake, and the validator port probe all dial TCP behind a lazy `import()`,
+ * and the first two import their names statically, so those names must exist.
+ */
+const NODE_BUILTINS = [
+  {
+    module: /^node:tls$/,
+    message: 'TLS audit is not supported in browser environments.',
+    exports: ['connect'],
+  },
+  {
+    module: /^node:net$/,
+    message: 'Overlay TCP connections are not supported in browser environments.',
+    exports: ['connect', 'createConnection', 'Socket'],
+  },
+  {
+    module: /^node:crypto$/,
+    message: 'Node crypto is not supported in browser environments.',
+    exports: [
+      'createCipheriv',
+      'createDecipheriv',
+      'createHmac',
+      'hkdfSync',
+      'randomBytes',
+      'timingSafeEqual',
+    ],
+  },
+  {
+    module: /^node:buffer$/,
+    message: 'Node Buffer is not supported in browser environments.',
+    exports: ['Buffer'],
+  },
+];
+
+function shimFor(message, names) {
+  const failure = `throw new Error(${JSON.stringify(message)});`;
+  return `
+    const unavailable = new Proxy(function unavailable() { ${failure} }, {
+      get() { ${failure} },
+    });
+    ${names.map((name) => `export const ${name} = unavailable;`).join('\n')}
+    export default unavailable;
+  `;
+}
+
+/**
  * Plugin to shim Node built-ins like `node:tls` so that the browser bundle
  * remains fully hermetic without pulling in Node runtime APIs.
  */
 const nodeShimPlugin = {
   name: 'node-builtins-shim',
   setup(build) {
-    build.onResolve({ filter: /^node:(tls|net|zlib|fs|path|process)$/ }, (args) => ({
+    build.onResolve({ filter: /^node:(tls|net|crypto|buffer|zlib|fs|path|process)$/ }, (args) => ({
       path: args.path,
       namespace: 'node-shim',
     }));
     build.onLoad({ filter: /.*/, namespace: 'node-shim' }, (args) => {
+      // Archive reads need a working inflate, so this one is a real passthrough
+      // rather than a stub: a browser bundle gets the bytes it was given.
       if (args.path === 'node:zlib') {
         return {
           contents: `
@@ -33,13 +83,12 @@ const nodeShimPlugin = {
           loader: 'js',
         };
       }
+      const spec = NODE_BUILTINS.find((entry) => entry.module.test(args.path));
       return {
-        contents: `
-          export function connect() {
-            throw new Error('Node API is not supported in browser environments.');
-          }
-          export default { connect };
-        `,
+        contents: shimFor(
+          spec?.message ?? 'Node API is not supported in browser environments.',
+          spec?.exports ?? ['connect'],
+        ),
         loader: 'js',
       };
     });

@@ -42,7 +42,7 @@ const AUTH_CONTRACT_INTERFACE_RULE = 'soroban/invalid-auth-contract-interface';
 const SEP45_AUTH_FUNCTION = 'web_auth_verify';
 
 /** The WASM custom section Soroban stores a contract's spec entries in. */
-const CONTRACT_SPEC_SECTION = 'contractspecv0';
+export const CONTRACT_SPEC_SECTION = 'contractspecv0';
 
 /**
  * How long one RPC request may take. A hung endpoint must not stall the lint
@@ -81,7 +81,7 @@ function severityFor(
  * single key in the `ContractData` table with the special
  * `ledgerKeyContractInstance` scval as its key.
  */
-function contractDataInstanceKey(contractId: string): string {
+export function contractDataInstanceKey(contractId: string): string {
   const key = xdr.LedgerKey.contractData(
     new xdr.LedgerKeyContractData({
       contract: new Address(contractId).toScAddress(),
@@ -137,7 +137,10 @@ function wasmBytesOf(entryXdr: unknown): Buffer | undefined {
  * sizes, and name lengths. `undefined` means the bytes ran out or the value
  * was not a well-formed 32-bit integer.
  */
-function readLeb128(wasm: Buffer, offset: number): { value: number; next: number } | undefined {
+export function readLeb128(
+  wasm: Buffer,
+  offset: number,
+): { value: number; next: number } | undefined {
   let value = 0;
   let shift = 0;
   let pos = offset;
@@ -216,7 +219,7 @@ export function specFunctionNames(wasm: Buffer): string[] | undefined {
   }
 }
 
-interface LedgerEntryResult {
+export interface LedgerEntryResult {
   /** The network's current ledger when the RPC answered. */
   latestLedger: number;
   /** `liveUntilLedgerSeq` of the looked-up entry, or `undefined` when absent. */
@@ -231,7 +234,7 @@ interface LedgerEntryResult {
  * result is a valid answer that simply has no entry, and surfaces as
  * `liveUntil === undefined`.
  */
-async function queryLedgerEntry(
+export async function queryLedgerEntry(
   rpcUrl: string,
   key: string,
   fetchImpl: typeof fetch,
@@ -493,6 +496,22 @@ export async function fetchSep41Metadata(
 ): Promise<Sep41Metadata | undefined> {
   const instance = await queryLedgerEntry(rpcUrl, contractDataInstanceKey(contractId), fetchImpl);
   return sep41MetadataOf(instance?.entryXdr);
+}
+
+/**
+ * Reads the WASM bytes a contract runs, or `undefined` when they cannot be
+ * obtained: an RPC outage, a missing or archived entry, or a native-asset
+ * contract (the Stellar Asset Contract has no WASM of its own) all answer the
+ * same way. Callers must treat that as "nothing to analyse", never as a finding.
+ */
+export async function fetchContractWasm(
+  contractId: string,
+  rpcUrl: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Buffer | undefined> {
+  const lookup = await lookupContract(contractId, rpcUrl, fetchImpl);
+  if (lookup.kind !== 'live' || lookup.code === undefined) return undefined;
+  return wasmBytesOf(lookup.code.entryXdr);
 }
 
 /**
