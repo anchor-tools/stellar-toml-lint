@@ -54,10 +54,10 @@ export async function checkUpgradeSimulator(
   if (!isRecord(horizonBody)) return [];
   const coreSupported = horizonBody.core_supported_protocol_version;
   const current = horizonBody.current_protocol_version;
-  
+
   if (!isInteger(coreSupported) || !isInteger(current)) return [];
   if (coreSupported <= current) return [];
-  
+
   const upcomingProtocol = coreSupported;
 
   const crawlerUrl = process.env.STELLARCRAWLER_URL ?? 'https://api.stellarbeat.io/v1/nodes';
@@ -69,7 +69,7 @@ export async function checkUpgradeSimulator(
       if (isRecord(crawlerBody) && Array.isArray(crawlerBody.nodes)) {
         telemetryNodes = crawlerBody.nodes.filter(
           (node): node is NodeTelemetry =>
-            isRecord(node) && isString(node.id) && typeof node.active === 'boolean'
+            isRecord(node) && isString(node.id) && typeof node.active === 'boolean',
         );
       }
     }
@@ -126,7 +126,8 @@ export async function checkUpgradeSimulator(
           category: 'validators',
           message: `Validator ${publicKey} has not scheduled a vote for the upcoming protocol ${upcomingProtocol} upgrade`,
           path,
-          suggestion: 'Configure the upgradetime in the validator configuration to support the migration.',
+          suggestion:
+            'Configure the upgradetime in the validator configuration to support the migration.',
         });
       }
     }

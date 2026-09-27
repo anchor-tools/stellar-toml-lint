@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { checkUpgradeSimulator } from '../src/validators/upgrade-simulator.js';
 
 function documentedValidators(validators: unknown[] = []): Record<string, unknown> {
-  return { 
+  return {
     HORIZON_URL: 'https://horizon.example.com',
-    VALIDATORS: validators 
+    VALIDATORS: validators,
   };
 }
 
@@ -43,7 +43,7 @@ describe('checkUpgradeSimulator', () => {
           id: VALIDATOR.PUBLIC_KEY,
           active: true,
           versionStr: 'stellar-core 21.0.0 (4eb83337380a29ad0907f4e32196ce97b8dc7649)',
-          upgradeSchedule: '2024-01-30T15:00:00Z'
+          upgradeSchedule: '2024-01-30T15:00:00Z',
         },
       ],
     };

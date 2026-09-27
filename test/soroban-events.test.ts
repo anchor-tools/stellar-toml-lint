@@ -26,10 +26,6 @@ function i128(value: string): xdr.ScVal {
   );
 }
 
-function addressTopic(account: string): string {
-  return new Address(account).toScVal().toXDR('base64');
-}
-
 function liveEvent(topics: xdr.ScVal[], data: xdr.ScVal): { topics: string[]; value: string } {
   return {
     topics: topics.map((topic) => topic.toXDR('base64')),
