@@ -80,6 +80,9 @@ stellar-toml-lint public/.well-known/stellar.toml --domain example.com
 
 # Read from stdin
 cat stellar.toml | stellar-toml-lint -
+
+# Print version as JSON for toolchains and scripts
+stellar-toml-lint --version --format json
 ```
 
 Rule policy discovered from a config file needs no flags at all:
