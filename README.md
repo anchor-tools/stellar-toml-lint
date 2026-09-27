@@ -248,6 +248,7 @@ failure.
 | `--check-contracts`         | Verify Soroban contracts exist on chain, their WASM is not evicted, their TTL, and the SEP-45 auth interface                                                               |
 | `--rpc-url <url>`           | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`; `--soroban-rpc` is an alias)                                                             |
 | `--simulate-soroban`        | With `--check-network`: dry-run the SEP-41 read calls against the Soroban RPC without submitting a transaction                                                             |
+| `--soroban-rent-audit`      | With `--check-network`: audit contract instance storage footprint, TTL expiration, and projected ledger rent costs                                                         |
 | `--serve-mock [port]`       | Serve the file and mock SEP-10/24/38 endpoints on localhost (default port `8080`); see [mock server](#local-mock-server-for-wallet-and-frontend-development)               |
 | `--mock-fixtures <dir>`     | Serve network checks from recorded JSON fixtures under `<dir>`, never the network                                                                                          |
 | `--webhook-slack <url>`     | POST a Slack Block Kit card with the run summary                                                                                                                           |
@@ -279,33 +280,41 @@ failure.
 
 ### Soroban contract audits
 
-For every contract a file declares under `[[CURRENCIES]]`, four on-chain audits run under
-`--check-network`, and the simulation sandbox runs under `--check-network --simulate-soroban`:
+For every contract a file declares under `[[CURRENCIES]]`, on-chain audits run under
+`--check-network`, the rent audit runs under `--check-network --soroban-rent-audit`, and the simulation sandbox runs under `--check-network --simulate-soroban`:
 
-| Rule                                     | Severity | Fires when                                                                |
-| ---------------------------------------- | -------- | ------------------------------------------------------------------------- |
-| `soroban/missing-env-meta`               | warning  | The WASM embeds no `contractenvmetav0` environment metadata               |
-| `soroban/deprecated-protocol-version`    | error    | The contract was compiled against an older protocol than the network runs |
-| `soroban/event-topic-mismatch`           | warning  | A SEP-41 event uses non-standard topics                                   |
-| `soroban/event-data-type-invalid`        | error    | A SEP-41 event's amount is not an `i128`                                  |
-| `soroban/single-signer-contract-admin`   | warning  | The contract's stored `admin`/`owner` is a single-signer account          |
-| `soroban/locked-admin-key`               | warning  | An upgradeable contract's administrator is permanently locked             |
-| `soroban/simulation-failed`              | error    | A simulated SEP-41 call reverted on the Soroban RPC                       |
-| `soroban/excessive-resource-consumption` | warning  | A simulated call uses more CPU or memory than the budget                  |
+| Rule                                     | Severity | Fires when                                                                  |
+| ---------------------------------------- | -------- | --------------------------------------------------------------------------- |
+| `soroban/missing-env-meta`               | warning  | The WASM embeds no `contractenvmetav0` environment metadata                 |
+| `soroban/deprecated-protocol-version`    | error    | The contract was compiled against an older protocol than the network runs   |
+| `soroban/event-topic-mismatch`           | warning  | A SEP-41 event uses non-standard topics                                     |
+| `soroban/event-data-type-invalid`        | error    | A SEP-41 event's amount is not an `i128`                                    |
+| `soroban/single-signer-contract-admin`   | warning  | The contract's stored `admin`/`owner` is a single-signer account            |
+| `soroban/locked-admin-key`               | warning  | An upgradeable contract's administrator is permanently locked               |
+| `soroban/simulation-failed`              | error    | A simulated SEP-41 call reverted on the Soroban RPC                         |
+| `soroban/excessive-resource-consumption` | warning  | A simulated call uses more CPU or memory than the budget                    |
+| `soroban/ttl-expiring-soon`              | error    | A contract instance or code entry TTL expires within 30 days                |
+| `soroban/high-storage-footprint`         | warning  | A contract's total storage footprint exceeds recommended limits             |
+| `soroban/missing-auth-parameter`         | error    | A state-mutating contract function lacks an Address authorization parameter |
+| `soroban/unsafe-unauthorized-mint`       | error    | An unparameterized or unauthorized mint function is exposed (SEP-42)        |
 
 The environment-metadata audit reads the `contractenvmetav0` custom section and compares the declared
 interface (`protocol`) version against the network's. The event audit reads the `contractspecv0`
 event declarations and queries `getEvents` for recent emissions, so a renamed topic or a string amount
 is caught before wallets and indexers miss the balance change. The admin audit reads the
 `admin`/`owner` instance-storage key, classifies the administrator as an account or another contract,
-and inspects the account's signing weights via Horizon. The simulation sandbox builds
+and inspects the account's signing weights via Horizon. The authorization security auditor verifies
+that state-mutating methods (`set_admin`, `mint`, `burn`, `transfer`) require explicit `Address`
+authorization parameters adhering to SEP-42 cross-contract authorization standards. The storage footprint
+analyzer measures instance and code entry byte sizes, projects ledger rent costs per 100,000 ledgers,
+and flags entries expiring within 30 days. The simulation sandbox builds
 `InvokeHostFunctionOp` envelopes for `decimals()`, `name()`, `symbol()`, and a zero-value
 `balance(...)` and dry-runs them with `simulateTransaction` — nothing is submitted and no fees are
 spent. Every audit degrades to silence on an RPC or Horizon outage rather than failing the run, and
 `--off`/`--warn`/`--error` apply to each rule as usual.
 
 ```bash
-stellar-toml-lint stellar.toml --check-network --simulate-soroban --rpc-url https://my-rpc.example.com
+stellar-toml-lint stellar.toml --check-network --soroban-rent-audit --simulate-soroban --rpc-url https://my-rpc.example.com
 ```
 
 Every flag above takes precedence over the [configuration file](#configuration-file), and

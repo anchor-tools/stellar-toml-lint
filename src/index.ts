@@ -227,6 +227,40 @@ export {
 } from './soroban/wasm-auditor.js';
 export type { WasmAuditorOptions } from './soroban/wasm-auditor.js';
 
+export {
+  auditContractStorageFootprint,
+  auditTomlStorageFootprint,
+  getContractStorageFootprint,
+  calculateStorageFootprint,
+  calculateProjectedRent,
+  estimateTtlExpiration,
+  storageFootprintRules,
+  storageFootprintRuleIds,
+  TTL_EXPIRING_SOON_RULE,
+  HIGH_STORAGE_FOOTPRINT_RULE,
+  DEFAULT_MAX_STORAGE_BYTES,
+  DEFAULT_RENT_FEE_PER_BYTE_PER_100K,
+  TTL_EXPIRING_THRESHOLD_LEDGERS,
+} from './soroban/storage-footprint.js';
+export type {
+  ContractStorageFootprint,
+  StorageFootprintOptions,
+} from './soroban/storage-footprint.js';
+
+export {
+  auditContractAuth,
+  auditTomlContractAuth,
+  verifyContractAuth,
+  extractFunctionSpecs,
+  authAuditorRules,
+  authAuditorRuleIds,
+  MISSING_AUTH_PARAMETER_RULE,
+  UNSAFE_UNAUTHORIZED_MINT_RULE,
+  STATE_MUTATING_AUTH_FUNCTIONS,
+  SEP42_SPEC_URL,
+} from './soroban/auth-auditor.js';
+export type { AuthAuditorOptions, ContractFunctionSpec } from './soroban/auth-auditor.js';
+
 export type {
   Diagnostic,
   Fix,

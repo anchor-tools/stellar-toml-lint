@@ -42,6 +42,8 @@ import { auditTomlContractEnvMeta } from './soroban/env-meta.js';
 import { auditTomlContractEvents } from './soroban/events.js';
 import { auditTomlContractAdmins } from './soroban/admin-auditor.js';
 import { auditTomlContractSimulation } from './soroban/simulation.js';
+import { auditTomlStorageFootprint } from './soroban/storage-footprint.js';
+import { auditTomlContractAuth } from './soroban/auth-auditor.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkTokenBinding } from './security/token-binding.js';
@@ -131,6 +133,7 @@ interface Cli {
   checkContracts: boolean;
   sorobanRpc?: string;
   simulateSoroban?: boolean;
+  sorobanRentAudit?: boolean;
   graph?: GraphFormat;
   graphIncludeContracts?: boolean;
   graphIncludeValidators?: boolean;
@@ -211,6 +214,9 @@ OPTIONS
                           (defaults from NETWORK_PASSPHRASE; alias --soroban-rpc)
       --simulate-soroban  With --check-network: dry-run the SEP-41 read calls
                           against the Soroban RPC without submitting a transaction
+      --soroban-rent-audit
+                          With --check-network: audit contract instance storage footprint,
+                          TTL expiration, and projected ledger rent costs
       --mock-fixtures <dir>
                           Serve network checks from recorded JSON responses under
                           <dir> instead of the network. A URL with no fixture
@@ -397,8 +403,18 @@ async function main(argv: string[]): Promise<number> {
               rules,
               ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
             })),
+            ...(await auditTomlContractAuth(domainResult.parsed, fetchImpl, {
+              rules,
+              ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+            })),
             ...(cli.simulateSoroban
               ? await auditTomlContractSimulation(domainResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })
+              : []),
+            ...(cli.sorobanRentAudit
+              ? await auditTomlStorageFootprint(domainResult.parsed, fetchImpl, {
                   rules,
                   ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                 })
@@ -537,8 +553,18 @@ async function main(argv: string[]): Promise<number> {
                   rules,
                   ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                 })),
+                ...(await auditTomlContractAuth(fileResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })),
                 ...(cli.simulateSoroban
                   ? await auditTomlContractSimulation(fileResult.parsed, fetchImpl, {
+                      rules,
+                      ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                    })
+                  : []),
+                ...(cli.sorobanRentAudit
+                  ? await auditTomlStorageFootprint(fileResult.parsed, fetchImpl, {
                       rules,
                       ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                     })
@@ -901,6 +927,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     verifyDnssec: false,
     checkContracts: false,
     simulateSoroban: false,
+    sorobanRentAudit: false,
     graphIncludeContracts: false,
     graphIncludeValidators: false,
     graphColorByProtocol: false,
@@ -1031,6 +1058,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--simulate-soroban':
         cli.simulateSoroban = true;
+        break;
+
+      case '--soroban-rent-audit':
+        cli.sorobanRentAudit = true;
         break;
 
       case '--mock-fixtures':

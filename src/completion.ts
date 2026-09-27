@@ -92,6 +92,11 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--check-contracts', description: 'Verify Soroban contracts on chain' },
   { long: '--rpc-url', description: 'Soroban RPC endpoint', takesValue: true },
   { long: '--soroban-rpc', description: 'Soroban RPC endpoint (alias)', takesValue: true },
+  { long: '--simulate-soroban', description: 'Dry-run SEP-41 calls against Soroban RPC' },
+  {
+    long: '--soroban-rent-audit',
+    description: 'Audit Soroban contract storage footprint and rent',
+  },
   { long: '--mock-fixtures', description: 'Serve network checks from fixtures', takesValue: true },
   { long: '--serve-mock', description: 'Run a local mock anchor server' },
   { long: '--webhook-slack', description: 'Slack webhook URL', takesValue: true },

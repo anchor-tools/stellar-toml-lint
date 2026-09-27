@@ -40,6 +40,8 @@ import { envMetaRules } from '../soroban/env-meta.js';
 import { eventRules } from '../soroban/events.js';
 import { adminAuditorRules } from '../soroban/admin-auditor.js';
 import { simulationRules } from '../soroban/simulation.js';
+import { storageFootprintRules } from '../soroban/storage-footprint.js';
+import { authAuditorRules } from '../soroban/auth-auditor.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -68,6 +70,8 @@ export const allRules: Rule[] = [
   ...eventRules,
   ...adminAuditorRules,
   ...simulationRules,
+  ...storageFootprintRules,
+  ...authAuditorRules,
   ...sep41MetadataRules,
   ...sep12Rules,
   ...sep6Rules,
@@ -134,4 +138,6 @@ export {
   eventRules,
   adminAuditorRules,
   simulationRules,
+  storageFootprintRules,
+  authAuditorRules,
 };
