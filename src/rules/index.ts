@@ -1,5 +1,6 @@
 import type { Rule } from '../types.js';
 import { generalRules } from './general.js';
+import { whitespaceRules } from './whitespace.js';
 import { documentationRules } from './documentation.js';
 import { principalRules } from './principals.js';
 import { currencyRules, sep41MetadataRules, collateralSigFormatRules } from './currencies.js';
@@ -106,6 +107,7 @@ export const ruleIds: string[] = allRules.map((r) => r.id).sort();
 
 export {
   generalRules,
+  whitespaceRules,
   deprecationRules,
   documentationRules,
   principalRules,
