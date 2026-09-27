@@ -3,6 +3,7 @@ import { displayDecimalsRules } from './display-decimals-audit.js';
 import { anchoredAssetRules } from './anchored-asset-rules.js';
 import { assetCodeFormatRules } from './asset-code-format.js';
 import { collateralSigFormatRules } from './collateral-sig-format.js';
+import { duplicateCurrencyRules } from './duplicate-currency.js';
 import { verifyCollateralSignature } from '../crypto/collateral.js';
 import {
   ANCHOR_ASSET_TYPES,
@@ -275,6 +276,7 @@ export const currencyRules: Rule[] = [
   ...anchoredAssetRules,
   ...assetCodeFormatRules,
   ...collateralSigFormatRules,
+  ...duplicateCurrencyRules,
 
   {
     id: 'currencies/entries-are-tables',
@@ -963,38 +965,6 @@ export const currencyRules: Rule[] = [
   },
 
   {
-    id: 'currencies/duplicate-asset',
-    category: 'currencies',
-    severity: 'error',
-    description: 'The same code and issuer pair must not appear twice',
-    run(ctx) {
-      const seen = new Map<string, number>();
-
-      eachCurrency(ctx, (entry, path, index) => {
-        const code = entry.code;
-        const identity = entry.issuer ?? entry.contract;
-        if (!isString(code) || !isString(identity)) return;
-
-        const key = `${code}:${identity}`;
-        const first = seen.get(key);
-        if (first !== undefined) {
-          ctx.report({
-            rule: 'currencies/duplicate-asset',
-            category: 'currencies',
-            message: `${path} duplicates the asset already declared in CURRENCIES[${first}]`,
-            path,
-            position: ctx.locate(path),
-            helpUri: specUrl('currency-documentation'),
-            suggestion: 'Merge the two entries, or correct whichever code or issuer is wrong.',
-          });
-        } else {
-          seen.set(key, index);
-        }
-      });
-    },
-  },
-
-  {
     id: 'currencies/unknown-field',
     category: 'currencies',
     severity: 'info',
@@ -1018,4 +988,4 @@ export const currencyRules: Rule[] = [
   },
 ];
 
-export { collateralSigFormatRules };
+export { collateralSigFormatRules, duplicateCurrencyRules };

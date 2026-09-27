@@ -1071,7 +1071,7 @@ requiring a valid `anchor_asset_type` and warning when `anchor_asset` is absent;
 requiring a declared transfer server; SEP-8 regulated assets carrying an approval server, with
 `regulated = true` rejected on the native asset and on Soroban contract tokens; collateral address,
 message, and signature lists of equal length; `toml` pointer entries carrying nothing else;
-duplicate assets.
+duplicate currency declarations (`currencies/duplicate-currency-declaration`).
 
 Collateral signatures are verified cryptographically, offline, not just counted. For each position
 `i`, `collateral_address_signatures[i]` must be the signature of `collateral_address_messages[i]` by
