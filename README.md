@@ -338,6 +338,29 @@ Colour output follows the [NO_COLOR standard](https://no-color.org): setting `NO
 non-empty value disables it, an empty value counts as unset, and stdout not being a terminal
 disables it too. An explicit `--color` is the only thing that overrides `NO_COLOR`.
 
+### Anchor signing-key security (multi-sig governance)
+
+The `SIGNING_KEY` in `stellar.toml` is the root of cryptographic authority for SEP-10 web
+authentication, challenge transactions, and custodial assertions. An account controlled by a
+single master key (weight 1, threshold 1) is a single point of failure: one exfiltrated or
+unrecoverably lost key compromises every challenge the anchor signs.
+
+Security best practice is multi-signature governance: master key weight 0, several independent
+signing keys, and a medium/high threshold no single key can meet alone. Under `--check-network`,
+the linter queries Horizon (`/accounts/{SIGNING_KEY}`) and reports:
+
+| Rule                                    | Severity | Fires when                                                       |
+| --------------------------------------- | -------- | ---------------------------------------------------------------- |
+| `security/signing-key-single-signature` | warning  | Master key weight > 0 and there are no additional signers        |
+| `security/signing-key-unusable`         | error    | Total signer weight cannot meet `med_threshold` (locked account) |
+
+Both rules degrade to silence when Horizon is unreachable or times out, and honour
+`--off`/`--warn`/`--error` as usual.
+
+```bash
+stellar-toml-lint stellar.toml --check-network
+```
+
 ### Rule presets
 
 Nobody is all of the ecosystem at once. A validator operator publishes `[[VALIDATORS]]` and little

@@ -412,3 +412,18 @@ export type {
   KeyRevocationAnalysisInput,
   KeyRevocationOptions,
 } from './security/key-revocation.js';
+
+export {
+  analyzeAccountThresholds,
+  auditAccountThresholds,
+  checkSigningKeyMultisig,
+  multisigRules,
+  multisigRuleIds,
+  SECURITY_SIGNING_KEY_SINGLE_SIGNATURE,
+  SECURITY_SIGNING_KEY_UNUSABLE,
+} from './security/multisig.js';
+export type {
+  HorizonSigner as MultisigHorizonSigner,
+  MultisigAnalysisInput,
+  MultisigAuditOptions,
+} from './security/multisig.js';
