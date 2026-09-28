@@ -378,3 +378,37 @@ export {
   NETWORK_UNSTANDARDIZED_RATE_LIMIT_RESPONSE,
 } from './network/rate-limit-tester.js';
 export type { RateLimitProbe, RateLimitTesterOptions } from './network/rate-limit-tester.js';
+
+export {
+  analyzeValidatorGeoDiversity,
+  checkGeoDiversity,
+  computeDistribution,
+  loadGeoLookupFromEnv,
+  validatorHostsFromDocument,
+  geoDiversityRules,
+  geoDiversityRuleIds,
+  VALIDATORS_HIGH_ASN_CONCENTRATION,
+  VALIDATORS_HIGH_GEOGRAPHIC_CONCENTRATION,
+  DEFAULT_CONCENTRATION_THRESHOLD_PERCENT,
+} from './validators/geo-diversity.js';
+export type {
+  GeoDiversityEntry,
+  GeoDiversityOptions,
+  GeoRecord,
+  GeoLookup,
+  GeoDistributionBucket,
+} from './validators/geo-diversity.js';
+
+export {
+  analyzeSigningKeyRevocation,
+  checkSigningKeyRevocation,
+  keyRevocationRules,
+  keyRevocationRuleIds,
+  SECURITY_REVOKED_SIGNING_KEY,
+  SECURITY_UNRECORDED_KEY_ROTATION,
+} from './security/key-revocation.js';
+export type {
+  HorizonSigner,
+  KeyRevocationAnalysisInput,
+  KeyRevocationOptions,
+} from './security/key-revocation.js';

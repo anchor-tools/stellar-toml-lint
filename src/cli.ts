@@ -72,6 +72,8 @@ import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkArchiveDiff } from './history/archive-diff.js';
 import { checkQuorumIntersection } from './validators/quorum-solver.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
+import { checkSigningKeyRevocation } from './security/key-revocation.js';
+import { checkValidatorDiversityFromDocument } from './validators/geo-diversity.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { checkOverlayHandshake } from './overlay/handshake.js';
 import { allRules } from './rules/index.js';
@@ -136,6 +138,7 @@ interface Cli {
   failOn?: Severity;
   checkNetwork: boolean;
   auditQuorum: boolean;
+  auditDiversity?: boolean;
   followLinks: boolean;
   verifySep10: boolean;
   auditSecurity?: boolean;
@@ -225,6 +228,9 @@ OPTIONS
                           ([[VALIDATORS]].QUORUM_SET or CONFIG_URL-linked
                           stellar-core.cfg) for split-brain risk and fragile
                           thresholds
+      --audit-diversity   With --check-network: resolve validator hosts and flag
+                          ASN or geographic concentration (>33% in one bucket).
+                          Enrichment uses the JSON table in ANCHOR_GEO_LOOKUP
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --audit-security    Audit cross-server token binding (SEP-10 JWT against
                           TRANSFER_SERVER_SEP0024, KYC_SERVER, DIRECT_PAYMENT_SERVER)
@@ -410,6 +416,10 @@ async function main(argv: string[]): Promise<number> {
                   domain: cli.domain,
                 })
               : []),
+            ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
+            ...(cli.auditDiversity && cli.mockFixtures === undefined
+              ? await checkValidatorDiversityFromDocument(domainResult.parsed, { rules })
+              : []),
             // Offline signer/threshold analysis (only fires for documents that
             // declare a SIGNERS/THRESHOLDS block).
             ...checkSignatureStateMachineFromDocument(domainResult.parsed, { rules }),
@@ -571,6 +581,10 @@ async function main(argv: string[]): Promise<number> {
                   rules,
                   ...(cli.domain === undefined ? {} : { domain: cli.domain }),
                 })),
+                ...(await checkSigningKeyRevocation(fileResult.parsed, { rules, fetchImpl })),
+                ...(cli.auditDiversity && cli.mockFixtures === undefined
+                  ? await checkValidatorDiversityFromDocument(fileResult.parsed, { rules })
+                  : []),
               );
             }
 
@@ -1068,6 +1082,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     rules: {},
     checkNetwork: false,
     auditQuorum: false,
+    auditDiversity: false,
     followLinks: false,
     verifySep10: false,
     verifySep38: false,
@@ -1162,6 +1177,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-quorum':
         cli.auditQuorum = true;
+        break;
+
+      case '--audit-diversity':
+        cli.auditDiversity = true;
         break;
 
       case '--verify-sep10':

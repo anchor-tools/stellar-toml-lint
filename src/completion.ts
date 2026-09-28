@@ -87,6 +87,7 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--no-suggestions', description: 'Hide diagnostic suggestions' },
   { long: '--check-network', description: 'Verify accounts and endpoints online' },
   { long: '--audit-quorum', description: 'Solve declared quorum sets for split-brain risk' },
+  { long: '--audit-diversity', description: 'Flag ASN/geographic validator concentration' },
   { long: '--verify-sep10', description: 'Verify SEP-10 nonce replay resistance' },
   { long: '--audit-security', description: 'Audit cross-server token binding' },
   { long: '--verify-sep6', description: 'Run SEP-6 programmatic integration tester' },

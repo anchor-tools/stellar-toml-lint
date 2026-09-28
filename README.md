@@ -1742,3 +1742,18 @@ Two additional auditors run automatically as part of `--check-network`:
   `X-RateLimit-Limit`/`X-RateLimit-Remaining`/`X-RateLimit-Reset` headers and
   verifies that HTTP 429 responses are returned as RFC 7807 problem details.
   Unreachable endpoints degrade to silence so offline runs never fail hard.
+
+### Validator diversity & signing-key revocation
+
+- **Geo-distribution / ASN diversity** (`src/validators/geo-diversity.ts`, rules
+  `validators/high-asn-concentration` and
+  `validators/high-geographic-concentration`) resolves every `[[VALIDATORS]].HOST`
+  to an IP and flags quorum sets where more than a third of nodes share a single
+  ASN or country. Enable with `--check-network --audit-diversity`; ASN/country
+  enrichment reads the IP → `{ asn, country }` JSON table named by the
+  `ANCHOR_GEO_LOOKUP` environment variable (e.g. an offline MaxMind export).
+- **Signing-key revocation/rotation detector** (`src/security/key-revocation.ts`,
+  rules `security/revoked-signing-key` and `security/unrecorded-key-rotation`)
+  fetches the anchor account from Horizon under `--check-network` and flags a
+  declared `SIGNING_KEY` that has been removed or given weight 0, as well as a key
+  that has been superseded by another on-chain signer.
