@@ -114,7 +114,8 @@ export async function checkSigningKeyRevocation(
   const signingKey = doc.SIGNING_KEY;
   if (typeof signingKey !== 'string' || signingKey.trim() === '') return [];
 
-  const passphrase = typeof doc.NETWORK_PASSPHRASE === 'string' ? doc.NETWORK_PASSPHRASE : undefined;
+  const passphrase =
+    typeof doc.NETWORK_PASSPHRASE === 'string' ? doc.NETWORK_PASSPHRASE : undefined;
   const horizonUrl = options.horizonUrl ?? horizonUrlFor(passphrase);
   const fetchImpl = options.fetchImpl ?? fetch;
 

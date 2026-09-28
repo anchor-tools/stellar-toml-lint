@@ -16,8 +16,7 @@ import { readFile } from 'node:fs/promises';
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 
 export const VALIDATORS_HIGH_ASN_CONCENTRATION = 'validators/high-asn-concentration';
-export const VALIDATORS_HIGH_GEOGRAPHIC_CONCENTRATION =
-  'validators/high-geographic-concentration';
+export const VALIDATORS_HIGH_GEOGRAPHIC_CONCENTRATION = 'validators/high-geographic-concentration';
 
 export const HIGH_ASN_CONCENTRATION_RULE = VALIDATORS_HIGH_ASN_CONCENTRATION;
 export const HIGH_GEOGRAPHIC_CONCENTRATION_RULE = VALIDATORS_HIGH_GEOGRAPHIC_CONCENTRATION;
@@ -157,8 +156,7 @@ export function checkGeoDiversity(
         severity: countrySeverity,
         category: 'validators',
         message: `${top.percent.toFixed(1)}% of validators are hosted in ${top.value}, which risks a regional outage`,
-        suggestion:
-          'Spread quorum nodes across multiple countries and regulatory jurisdictions.',
+        suggestion: 'Spread quorum nodes across multiple countries and regulatory jurisdictions.',
       });
     }
   }

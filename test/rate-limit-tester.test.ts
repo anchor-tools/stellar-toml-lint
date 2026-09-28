@@ -47,23 +47,27 @@ describe('rate limit tester', () => {
 
   it('errors when a 429 lacks RFC 7807 problem details', async () => {
     const fetchImpl = (async () =>
-      jsonResponse({ error: 'slow down' }, { status: 429, headers: STANDARD_HEADERS })) as typeof fetch;
+      jsonResponse(
+        { error: 'slow down' },
+        { status: 429, headers: STANDARD_HEADERS },
+      )) as typeof fetch;
 
     const diagnostics = await checkRateLimitResilience({
       horizonUrl: 'https://horizon.example',
       fetchImpl,
     });
 
-    expect(diagnostics.map((d) => d.rule)).toContain(
-      NETWORK_UNSTANDARDIZED_RATE_LIMIT_RESPONSE,
-    );
+    expect(diagnostics.map((d) => d.rule)).toContain(NETWORK_UNSTANDARDIZED_RATE_LIMIT_RESPONSE);
   });
 
   it('accepts a 429 that returns problem details', async () => {
     const fetchImpl = (async () =>
       jsonResponse(
         { type: 'about:blank', title: 'Too Many Requests', status: 429 },
-        { status: 429, headers: { ...STANDARD_HEADERS, 'content-type': 'application/problem+json' } },
+        {
+          status: 429,
+          headers: { ...STANDARD_HEADERS, 'content-type': 'application/problem+json' },
+        },
       )) as typeof fetch;
 
     const diagnostics = await checkRateLimitResilience({

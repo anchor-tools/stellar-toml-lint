@@ -112,8 +112,7 @@ export async function probeHorizonRateLimit(
     headers,
     missingHeaders: [...missingHeaders],
     rateLimited,
-    problemDetails:
-      !rateLimited || isProblemDetails(headers['content-type'] ?? '', body),
+    problemDetails: !rateLimited || isProblemDetails(headers['content-type'] ?? '', body),
   };
 }
 

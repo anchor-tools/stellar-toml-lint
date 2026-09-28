@@ -62,7 +62,8 @@ describe('validator geo-diversity', () => {
       [{ host: 'a.example' }, { host: 'b.example' }],
       {
         resolveHost: async (host) => (host === 'a.example' ? '192.0.2.1' : '192.0.2.2'),
-        lookup: (ip) => (ip === '192.0.2.1' ? { asn: 1, country: 'US' } : { asn: 2, country: 'DE' }),
+        lookup: (ip) =>
+          ip === '192.0.2.1' ? { asn: 1, country: 'US' } : { asn: 2, country: 'DE' },
       },
     );
 

@@ -145,9 +145,7 @@ describe('lintDomain', () => {
     }) as unknown as typeof fetch;
 
     const result = await lintDomain('example.com', {}, impl);
-    expect(calls).toContain(
-      'https://history.example.com/archive/.well-known/stellar-history.json',
-    );
+    expect(calls).toContain('https://history.example.com/archive/.well-known/stellar-history.json');
     expect(ruleIds(result)).not.toContain('validators/history-archive-unreachable');
     expect(ruleIds(result)).not.toContain('validators/history-archive-malformed');
   });

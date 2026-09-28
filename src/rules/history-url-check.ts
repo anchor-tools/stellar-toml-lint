@@ -139,7 +139,8 @@ export const historyUrlRules: Rule[] = [
     id: MALFORMED_RULE,
     category: 'validators',
     severity: 'error',
-    description: 'History Archive State JSON must include a valid version, server, and currentLedger',
+    description:
+      'History Archive State JSON must include a valid version, server, and currentLedger',
     run() {},
   },
 ];

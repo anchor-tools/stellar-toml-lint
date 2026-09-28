@@ -24,9 +24,7 @@ describe('verifyHistoryArchive', () => {
   });
 
   it('reports an S3 access-denied response as unreachable', async () => {
-    const fetchImpl = vi.fn(async () =>
-      response('Access Denied', 403),
-    ) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => response('Access Denied', 403)) as unknown as typeof fetch;
     expect(await verifyHistoryArchive(HISTORY, fetchImpl)).toEqual({
       status: 'unreachable',
       message: 'the HAS file returned HTTP 403',
@@ -56,9 +54,7 @@ describe('verifyHistoryArchive', () => {
     [{ ...HAS, currentLedger: 1.2 }, 'currentLedger'],
     [{ version: 1 }, 'server'],
   ])('rejects invalid HAS fields', async (body, field) => {
-    const fetchImpl = vi.fn(async () =>
-      Response.json(body),
-    ) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => Response.json(body)) as unknown as typeof fetch;
     const result = await verifyHistoryArchive(HISTORY, fetchImpl);
     expect(result.status).toBe('malformed');
     if (result.status === 'malformed') expect(result.message).toContain(field);

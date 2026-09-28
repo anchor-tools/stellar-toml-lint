@@ -53,7 +53,10 @@ export async function verifyHistoryArchive(
   }
   const state = body as Record<string, unknown>;
   if (!Number.isInteger(state.version) || (state.version as number) < 1) {
-    return { status: 'malformed', message: 'version must be an integer greater than or equal to 1' };
+    return {
+      status: 'malformed',
+      message: 'version must be an integer greater than or equal to 1',
+    };
   }
   if (typeof state.server !== 'string' || state.server.trim() === '') {
     return { status: 'malformed', message: 'server must be a non-empty string' };

@@ -22,7 +22,8 @@ export const SECURITY_UNBALANCED_SIGNER_WEIGHTS = 'security/unbalanced-signer-we
 export const INSUFFICIENT_THRESHOLD_PROTECTION_RULE = SECURITY_INSUFFICIENT_THRESHOLD_PROTECTION;
 export const UNBALANCED_SIGNER_WEIGHTS_RULE = SECURITY_UNBALANCED_SIGNER_WEIGHTS;
 
-const SECURITY_SPEC = 'https://developers.stellar.org/docs/learn/encyclopedia/security/signatures-multisig';
+const SECURITY_SPEC =
+  'https://developers.stellar.org/docs/learn/encyclopedia/security/signatures-multisig';
 
 export interface Signer {
   /** Stellar account id (or pre-auth-tx hash) of the signer. */
@@ -83,9 +84,7 @@ export function signerCombinations(signers: readonly Signer[]): Signer[][] {
  * Enumerate the non-empty combinations of a scheme with their cumulative
  * weights and whether each satisfies the medium/high thresholds.
  */
-export function analyzeSignatureCombinations(
-  scheme: SignatureScheme,
-): SignatureCombination[] {
+export function analyzeSignatureCombinations(scheme: SignatureScheme): SignatureCombination[] {
   return signerCombinations(scheme.signers)
     .filter((combination) => combination.length > 0)
     .map((combination) => {
@@ -205,7 +204,8 @@ export function signatureSchemeFromDocument(
   if (signers.length === 0) return undefined;
 
   const thresholds = rawThresholds as Record<string, unknown>;
-  const read = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+  const read = (value: unknown): number =>
+    typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
   return {
     signers,
