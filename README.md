@@ -1780,6 +1780,12 @@ Two additional auditors run automatically as part of `--check-network`:
   fetches the anchor account from Horizon under `--check-network` and flags a
   declared `SIGNING_KEY` that has been removed or given weight 0, as well as a key
   that has been superseded by another on-chain signer.
+- **Certificate Transparency / public-key pin auditor**
+  (`src/security/ct-auditor.ts`, rules `security/missing-sct-timestamps` and
+  `security/unrecognized-ca-in-ct-logs`) queries the crt.sh CT log aggregator
+  under `--check-network` for certificates issued for the anchor domain and
+  flags domains with no CT evidence (missing SCTs) as well as certificates
+  issued by unrecognized CAs.
 
 ## New Auditors
 
