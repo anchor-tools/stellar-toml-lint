@@ -1722,3 +1722,23 @@ stellar-toml-lint --json-schema > stellar-toml.schema.json
   },
 }
 ```
+
+### Extended security & network checks
+
+Two additional auditors run automatically as part of `--check-network`:
+
+- **Signature state-machine validator** (`src/security/signature-state-machine.ts`,
+  rules `security/insufficient-threshold-protection` and
+  `security/unbalanced-signer-weights`) enumerates every combination of a
+  multisig signer set, computes each combination's cumulative weight, and flags
+  schemes where a single compromised key reaches the medium threshold on its
+  own, where one signer outweighs the rest combined, or where the high
+  threshold is unreachable (a deadlock). The analysis itself is offline; it
+  fires when a document (or tooling fixture) declares a `SIGNERS`/`THRESHOLDS`
+  block and is also exposed as a library API for on-chain account records.
+- **Horizon rate-limit resilience tester** (`src/network/rate-limit-tester.ts`,
+  rules `network/missing-rate-limit-headers` and
+  `network/unstandardized-rate-limit-response`) probes `HORIZON_URL` for the
+  `X-RateLimit-Limit`/`X-RateLimit-Remaining`/`X-RateLimit-Reset` headers and
+  verifies that HTTP 429 responses are returned as RFC 7807 problem details.
+  Unreachable endpoints degrade to silence so offline runs never fail hard.

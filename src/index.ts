@@ -346,3 +346,35 @@ export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
 export { codeActionsFor } from './lsp/code-actions.js';
 export type { LspCodeAction, LspRange, LspTextEdit, LspWorkspaceEdit } from './lsp/code-actions.js';
+
+export {
+  checkSignatureStateMachine,
+  checkSignatureStateMachineFromDocument,
+  signatureSchemeFromDocument,
+  analyzeSignatureCombinations,
+  signerCombinations,
+  singleSignerThresholdBreakers,
+  signatureStateMachineRules,
+  signatureStateMachineRuleIds,
+  SECURITY_INSUFFICIENT_THRESHOLD_PROTECTION,
+  SECURITY_UNBALANCED_SIGNER_WEIGHTS,
+} from './security/signature-state-machine.js';
+export type {
+  Signer,
+  SignerThresholds,
+  SignatureCombination,
+  SignatureScheme,
+  SignatureStateMachineOptions,
+} from './security/signature-state-machine.js';
+
+export {
+  checkRateLimitResilience,
+  probeHorizonRateLimit,
+  computeBackoffDelayMs,
+  rateLimitTesterRules,
+  rateLimitTesterRuleIds,
+  RATE_LIMIT_HEADERS,
+  NETWORK_MISSING_RATE_LIMIT_HEADERS,
+  NETWORK_UNSTANDARDIZED_RATE_LIMIT_RESPONSE,
+} from './network/rate-limit-tester.js';
+export type { RateLimitProbe, RateLimitTesterOptions } from './network/rate-limit-tester.js';

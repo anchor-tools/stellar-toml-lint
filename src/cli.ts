@@ -15,6 +15,9 @@ import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import { checkCertExpiry } from './network/cert-expiry.js';
+import { checkRateLimitResilience } from './network/rate-limit-tester.js';
+import { horizonUrlFor } from './network-checks.js';
+import { checkSignatureStateMachineFromDocument } from './security/signature-state-machine.js';
 import { checkPeerPortReachability } from './validators/net-probe.js';
 import {
   formatCheckstyle,
@@ -407,6 +410,20 @@ async function main(argv: string[]): Promise<number> {
                   domain: cli.domain,
                 })
               : []),
+            // Offline signer/threshold analysis (only fires for documents that
+            // declare a SIGNERS/THRESHOLDS block).
+            ...checkSignatureStateMachineFromDocument(domainResult.parsed, { rules }),
+            ...(cli.mockFixtures === undefined
+              ? await checkRateLimitResilience({
+                  rules,
+                  horizonUrl: horizonUrlFor(
+                    typeof domainResult.parsed.NETWORK_PASSPHRASE === 'string'
+                      ? domainResult.parsed.NETWORK_PASSPHRASE
+                      : undefined,
+                  ),
+                  fetchImpl,
+                })
+              : []),
             ...(cli.verifySep6
               ? await verifySep6Integration(domainResult.parsed, fetchImpl, { rules })
               : []),
@@ -612,6 +629,19 @@ async function main(argv: string[]): Promise<number> {
                   ? await checkDnsIntegrity(fileResult.parsed, fetchImpl, {
                       rules,
                       ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                    })
+                  : []),
+                // Offline signer/threshold analysis (see the domain path above).
+                ...checkSignatureStateMachineFromDocument(fileResult.parsed, { rules }),
+                ...(cli.mockFixtures === undefined
+                  ? await checkRateLimitResilience({
+                      rules,
+                      horizonUrl: horizonUrlFor(
+                        typeof fileResult.parsed.NETWORK_PASSPHRASE === 'string'
+                          ? fileResult.parsed.NETWORK_PASSPHRASE
+                          : undefined,
+                      ),
+                      fetchImpl,
                     })
                   : []),
                 ...(cli.crawlPeers && cli.mockFixtures === undefined
