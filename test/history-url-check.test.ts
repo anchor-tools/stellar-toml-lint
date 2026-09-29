@@ -4,7 +4,8 @@ import { lint } from '../src/lint.js';
 import { checkHistoryArchive } from '../src/rules/history-url-check.js';
 
 const INVALID = 'validators/invalid-history-url';
-const UNREACHABLE = 'validators/stellar-history-json-unreachable';
+const UNREACHABLE = 'validators/history-archive-unreachable';
+const MALFORMED = 'validators/history-archive-malformed';
 const METADATA = '/.well-known/stellar-history.json';
 
 const servers: Server[] = [];
@@ -98,12 +99,18 @@ describe('validators/invalid-history-url', () => {
   });
 });
 
-describe('validators/stellar-history-json-unreachable', () => {
-  it('passes when the archive serves version 1', async () => {
+describe('validators/history-archive verification', () => {
+  it('passes when the archive serves a valid HAS document', async () => {
     // Real archives publish the metadata inside the archive directory, so the
     // request path is the archive root plus `.well-known/...`.
     const archive = '/prd/core-live/core_live_001';
-    const origin = await startArchive({ [`${archive}${METADATA}`]: { version: 1 } });
+    const origin = await startArchive({
+      [`${archive}${METADATA}`]: {
+        version: 1,
+        server: 'https://history.example.com',
+        currentLedger: 52_000_000,
+      },
+    });
     const diagnostics = await checkHistoryArchive(docWith(`${origin}${archive}/`));
     expect(diagnostics).toEqual([]);
   });
@@ -115,18 +122,37 @@ describe('validators/stellar-history-json-unreachable', () => {
     expect(diagnostic?.severity).toBe('error');
     expect(diagnostic?.path).toBe('VALIDATORS[0].HISTORY');
     expect(diagnostic?.message).toBe(
-      `VALIDATORS[0].HISTORY does not serve .well-known/stellar-history.json: it returned HTTP 404`,
+      `VALIDATORS[0].HISTORY does not publish a valid History Archive State file: the HAS file returned HTTP 404`,
     );
   });
 
-  it('flags metadata that does not declare version 1', async () => {
-    const origin = await startArchive({ [METADATA]: { version: 2 } });
+  it('accepts a higher supported integer version', async () => {
+    const origin = await startArchive({
+      [METADATA]: {
+        version: 2,
+        server: 'https://history.example.com',
+        currentLedger: 52_000_000,
+      },
+    });
+    expect(await checkHistoryArchive(docWith(`${origin}/`))).toEqual([]);
+  });
+
+  it('reports invalid HAS fields as malformed', async () => {
+    const origin = await startArchive({ [METADATA]: { version: 1 } });
     const [diagnostic] = await checkHistoryArchive(docWith(`${origin}/`));
-    expect(diagnostic?.message).toContain('does not declare "version": 1');
+    expect(diagnostic?.rule).toBe(MALFORMED);
+    expect(diagnostic?.severity).toBe('error');
+    expect(diagnostic?.message).toContain('server');
   });
 
   it('resolves the {0} template against the server root', async () => {
-    const origin = await startArchive({ [METADATA]: { version: 1 } });
+    const origin = await startArchive({
+      [METADATA]: {
+        version: 1,
+        server: 'https://history.example.com',
+        currentLedger: 52_000_000,
+      },
+    });
     expect(await checkHistoryArchive(docWith(`${origin}/{0}`))).toEqual([]);
   });
 

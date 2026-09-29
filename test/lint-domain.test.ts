@@ -119,6 +119,37 @@ describe('lintDomain', () => {
     expect(calls[0]?.url).toBe('https://example.com/.well-known/stellar.toml');
   });
 
+  it('verifies declared validator history archives in domain mode', async () => {
+    const calls: string[] = [];
+    const source = `${GOOD_TOML}\n[[VALIDATORS]]\nALIAS="core-1"\nHISTORY="https://history.example.com/archive/"`;
+    const impl = (async (input: string | URL) => {
+      const url = new URL(String(input));
+      calls.push(url.toString());
+      if (url.pathname.endsWith('/.well-known/stellar.toml')) {
+        return new Response(source, {
+          status: 200,
+          headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+        });
+      }
+      if (url.pathname.endsWith('/.well-known/stellar-history.json')) {
+        return Response.json({
+          version: 1,
+          server: 'https://history.example.com/archive',
+          currentLedger: 52_000_000,
+        });
+      }
+      return new Response(GOOD_TOML, {
+        status: 200,
+        headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+      });
+    }) as unknown as typeof fetch;
+
+    const result = await lintDomain('example.com', {}, impl);
+    expect(calls).toContain('https://history.example.com/archive/.well-known/stellar-history.json');
+    expect(ruleIds(result)).not.toContain('validators/history-archive-unreachable');
+    expect(ruleIds(result)).not.toContain('validators/history-archive-malformed');
+  });
+
   it('normalises a domain given with a scheme or path', async () => {
     const { impl, calls } = stubFetch();
     await lintDomain('https://example.com/some/path', {}, impl);

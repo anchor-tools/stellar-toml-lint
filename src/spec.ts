@@ -16,6 +16,44 @@ export function specUrl(anchor?: string): string {
   return anchor ? `${SPEC_URL}#${anchor}` : SPEC_URL;
 }
 
+/**
+ * The Public (Mainnet) network passphrase.
+ *
+ * Transcribed as data rather than imported from `@stellar/stellar-base` so this
+ * module stays a plain table, and so every rule that gates on "is this document
+ * for production?" compares against one spelling instead of re-typing it.
+ */
+export const PUBLIC_NETWORK_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
+
+/**
+ * Contract IDs that exist only on Stellar Testnet, each with a human label.
+ *
+ * Anchor operators routinely copy their staging `stellar.toml` as a baseline
+ * and update only `NETWORK_PASSPHRASE`, leaving the Soroban addresses behind. A
+ * Testnet contract ID in a Mainnet file resolves to nothing on chain, so a
+ * wallet that trusts the file renders a broken token.
+ *
+ * The entries are the reference contracts an operator copies by hand, matched
+ * as exact strings so an unrelated Mainnet contract is never mislabelled:
+ *
+ *   - Testnet native XLM SAC — `stellar contract id asset --network testnet
+ *     --asset native`
+ *     (https://developers.stellar.org/docs/build/guides/tokens/stellar-asset-contract)
+ *   - Testnet USDC SAC — the Circle Testnet USDC asset (code `USDC`, issuer
+ *     `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`) hashed for
+ *     the Testnet network.
+ */
+export const KNOWN_TESTNET_CONTRACTS: ReadonlyMap<string, string> = new Map([
+  [
+    'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+    'the Testnet native asset (XLM) Stellar Asset Contract',
+  ],
+  [
+    'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+    'the Testnet USDC Stellar Asset Contract',
+  ],
+]);
+
 /** Global endpoint fields that SEP-1 requires to use `https://`. */
 export const HTTPS_ENDPOINT_FIELDS = [
   'FEDERATION_SERVER',
