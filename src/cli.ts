@@ -1143,7 +1143,21 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '-v':
       case '--version':
-        process.stdout.write(`${VERSION}\n`);
+        if (hasJsonFormatFlag(argv)) {
+          process.stdout.write(
+            `${JSON.stringify(
+              {
+                name: 'stellar-toml-lint',
+                version: VERSION,
+                node: process.version,
+              },
+              null,
+              2,
+            )}\n`,
+          );
+        } else {
+          process.stdout.write(`${VERSION}\n`);
+        }
         return 'handled';
 
       case '--list-rules':
@@ -1551,6 +1565,19 @@ function isFormat(value: string): value is Format {
     value === 'markdown' ||
     value === 'pr-comment'
   );
+}
+
+function hasJsonFormatFlag(argv: string[]): boolean {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    if ((arg === '-f' || arg === '--format') && argv[i + 1] === 'json') {
+      return true;
+    }
+    if (arg === '--format=json' || arg === '-f=json') {
+      return true;
+    }
+  }
+  return false;
 }
 
 function listRules(): string {

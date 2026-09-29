@@ -93,6 +93,9 @@ stellar-toml-lint public/.well-known/stellar.toml --domain example.com
 
 # Read from stdin
 cat stellar.toml | stellar-toml-lint -
+
+# Print version as JSON for toolchains and scripts
+stellar-toml-lint --version --format json
 ```
 
 Rule policy discovered from a config file needs no flags at all:
@@ -1076,7 +1079,7 @@ Run `stellar-toml-lint --list-rules` for the authoritative list. In summary:
 **File and general fields** — 100KB size limit, TOML syntax with line and column, UTF-8 BOM
 detection, `https://` on every endpoint field, insecure `http://` URL detection (`general/insecure-http-url`, error) across all configuration fields (with exceptions for local mock environments), and trailing-slash detection on service endpoints;
 checksum-valid `SIGNING_KEY`, `URI_REQUEST_SIGNING_KEY`, `WEB_AUTH_CONTRACT_ID`, and `ACCOUNTS`;
-uppercase-only Stellar public keys; unknown fields; and empty string values in documentation fields.
+uppercase-only Stellar public keys; untrimmed leading or trailing whitespace (`general/untrimmed-string-value`); unknown fields; and empty string values in documentation fields.
 Deprecated configuration emits actionable `general/deprecated-field` warnings for `AUTH_SERVER`,
 legacy `DEPOSIT_SERVER`, unencrypted `FEDERATION_SERVER`, and documentation keys placed at the
 top level instead of under `[DOCUMENTATION]`. Under `--check-network`, validates that the domain

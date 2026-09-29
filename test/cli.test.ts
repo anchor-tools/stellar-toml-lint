@@ -85,10 +85,28 @@ describe('cli', () => {
     expect(stdout).toContain('checkstyle');
   });
 
-  it('prints the version', async () => {
+  it('prints the version as plain text by default', async () => {
     const { code, stdout } = await cli(['--version']);
     expect(code).toBe(0);
     expect(stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it('prints the version as JSON when combined with --format json', async () => {
+    const { code, stdout } = await cli(['--version', '--format', 'json']);
+    expect(code).toBe(0);
+    const data = JSON.parse(stdout) as { name: string; version: string; node: string };
+    expect(data.name).toBe('stellar-toml-lint');
+    expect(data.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(data.node).toBe(process.version);
+  });
+
+  it('prints the version as JSON when --format json comes before -v', async () => {
+    const { code, stdout } = await cli(['-f', 'json', '-v']);
+    expect(code).toBe(0);
+    const data = JSON.parse(stdout) as { name: string; version: string; node: string };
+    expect(data.name).toBe('stellar-toml-lint');
+    expect(data.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(data.node).toBe(process.version);
   });
 
   it('lists every rule', async () => {
