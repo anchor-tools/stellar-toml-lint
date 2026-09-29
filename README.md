@@ -61,8 +61,21 @@ npx stellar-toml-lint                      # or just run it
 brew install anchor-tools/tap/stellar-toml-lint
 ```
 
-Requires Node.js 20 or newer. Runtime dependencies: `smol-toml`, `@stellar/stellar-base`, and the
-pure-JS `@noble/curves` and `@noble/hashes` that `@stellar/stellar-base` already installs.
+Homebrew installs a self-contained binary; Node.js is not required at runtime.
+
+### Standalone binaries
+
+Download the asset for your platform from the [GitHub Releases](https://github.com/anchor-tools/stellar-toml-lint/releases) page, verify it against `SHA256SUMS.txt`, and place it on your `PATH`:
+
+```bash
+curl -fLO https://github.com/anchor-tools/stellar-toml-lint/releases/latest/download/stellar-toml-lint-linux-x64
+curl -fLO https://github.com/anchor-tools/stellar-toml-lint/releases/latest/download/SHA256SUMS.txt
+sha256sum --check --ignore-missing SHA256SUMS.txt
+chmod +x stellar-toml-lint-linux-x64
+sudo install -m 0755 stellar-toml-lint-linux-x64 /usr/local/bin/stellar-toml-lint
+```
+
+Assets are published for Linux x64 (glibc and musl), Linux ARM64, macOS Intel, macOS Apple Silicon, and Windows x64. These binaries have no Node.js runtime dependency. The npm package remains available for Node.js 20+ users. Runtime dependencies for the npm package are `smol-toml`, `@stellar/stellar-base`, and the pure-JS `@noble/curves` and `@noble/hashes` that `@stellar/stellar-base` already installs.
 Commit a `.stellartomlrc.json` next to your `stellar.toml` to record the project's rule policy once
 instead of repeating `--off`/`--warn` flags in every workflow (see [Usage](#usage)).
 
@@ -165,6 +178,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--audit-security`          | Audit cross-server token binding (SEP-10 JWT vs downstream endpoints) (requires `--check-network`)                      |
 | `--verify-sep6`             | Run end-to-end programmatic SEP-6 integration tester (requires `--check-network`)                                       |
 | `--verify-sep31`            | Audit SEP-31 cross-border payment lifecycle and schema (requires `--check-network`)                                     |
+| `--verify-sep30`            | Validate RECOVERY_SERVER /accounts endpoint and signer public keys (requires `--check-network`)                                     |
 | `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                      |
 | `--verify-sep38`            | Audit SEP-38 quote coverage, bid-ask spread, and quote expirations (requires `--check-network`)                         |
 | `--check-contracts`         | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                   |
@@ -251,6 +265,7 @@ failure.
 | `--check-network`           | Verify accounts, fixed-supply issuer locks, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, TLS certificate expiry, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online |
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                                                                          |
 | `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                                                                         |
+| `--verify-sep30`            | Validate RECOVERY_SERVER /accounts endpoint and signer public keys (requires `--check-network`)                                     |
 | `--verify-sep38`            | Audit SEP-38 quote coverage, bid-ask spread, and quote expirations (requires `--check-network`)                                                                            |
 | `--crawl-peers`             | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                                                                    |
 | `--verify-overlay`          | Complete the overlay TCP handshake with each `[[VALIDATORS]]` HOST and check its network, node ID, and protocol version (requires `--check-network`)                       |
@@ -342,29 +357,6 @@ an unmatched glob, or I/O failure.
 Colour output follows the [NO_COLOR standard](https://no-color.org): setting `NO_COLOR` to any
 non-empty value disables it, an empty value counts as unset, and stdout not being a terminal
 disables it too. An explicit `--color` is the only thing that overrides `NO_COLOR`.
-
-### Anchor signing-key security (multi-sig governance)
-
-The `SIGNING_KEY` in `stellar.toml` is the root of cryptographic authority for SEP-10 web
-authentication, challenge transactions, and custodial assertions. An account controlled by a
-single master key (weight 1, threshold 1) is a single point of failure: one exfiltrated or
-unrecoverably lost key compromises every challenge the anchor signs.
-
-Security best practice is multi-signature governance: master key weight 0, several independent
-signing keys, and a medium/high threshold no single key can meet alone. Under `--check-network`,
-the linter queries Horizon (`/accounts/{SIGNING_KEY}`) and reports:
-
-| Rule                                    | Severity | Fires when                                                       |
-| --------------------------------------- | -------- | ---------------------------------------------------------------- |
-| `security/signing-key-single-signature` | warning  | Master key weight > 0 and there are no additional signers        |
-| `security/signing-key-unusable`         | error    | Total signer weight cannot meet `med_threshold` (locked account) |
-
-Both rules degrade to silence when Horizon is unreachable or times out, and honour
-`--off`/`--warn`/`--error` as usual.
-
-```bash
-stellar-toml-lint stellar.toml --check-network
-```
 
 ### Rule presets
 

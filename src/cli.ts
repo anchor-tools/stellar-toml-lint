@@ -67,13 +67,13 @@ import { verifySep6Integration } from './protocols/sep6.js';
 import { verifySep31 } from './protocols/sep31.js';
 import { verifySep8 } from './protocols/sep8.js';
 import { verifySep38 } from './protocols/sep38.js';
+import { verifySep30 } from './protocols/sep30.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkArchiveDiff } from './history/archive-diff.js';
 import { checkQuorumIntersection } from './validators/quorum-solver.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkSigningKeyRevocation } from './security/key-revocation.js';
-import { checkSigningKeyMultisig } from './security/multisig.js';
 import { checkCertificateTransparencyFromDocument } from './security/ct-auditor.js';
 import { checkValidatorDiversityFromDocument } from './validators/geo-diversity.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
@@ -149,6 +149,7 @@ interface Cli {
   verifySep31?: boolean;
   verifySep8?: boolean;
   verifySep38?: boolean;
+  verifySep30: boolean;
   crawlPeers: boolean;
   verifyDnssec: boolean;
   verifyOverlay: boolean;
@@ -423,7 +424,6 @@ async function main(argv: string[]): Promise<number> {
                 })
               : []),
             ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
-            ...(await checkSigningKeyMultisig(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkCertificateTransparencyFromDocument(domainResult.parsed, {
               rules,
               fetchImpl,
@@ -450,6 +450,9 @@ async function main(argv: string[]): Promise<number> {
               : []),
             ...(cli.verifySep31
               ? await verifySep31(domainResult.parsed, fetchImpl, { rules })
+              : []),
+            ...(cli.verifySep30 && domainResult.parsed?.RECOVERY_SERVER !== undefined
+              ? await verifySep30(domainResult.parsed, fetchImpl, { rules })
               : []),
             ...(cli.verifySep8 ? await verifySep8(domainResult.parsed, fetchImpl, { rules }) : []),
             ...(cli.verifySep38
@@ -593,7 +596,6 @@ async function main(argv: string[]): Promise<number> {
                   ...(cli.domain === undefined ? {} : { domain: cli.domain }),
                 })),
                 ...(await checkSigningKeyRevocation(fileResult.parsed, { rules, fetchImpl })),
-                ...(await checkSigningKeyMultisig(fileResult.parsed, { rules, fetchImpl })),
                 ...(await checkCertificateTransparencyFromDocument(fileResult.parsed, {
                   rules,
                   fetchImpl,
@@ -613,6 +615,12 @@ async function main(argv: string[]): Promise<number> {
             if (cli.verifySep31 && cli.checkNetwork) {
               networkDiagnostics.push(
                 ...(await verifySep31(fileResult.parsed, fetchImpl, { rules })),
+              );
+            }
+
+            if (cli.verifySep30 && cli.checkNetwork && fileResult.parsed?.RECOVERY_SERVER !== undefined) {
+              networkDiagnostics.push(
+                ...(await verifySep30(fileResult.parsed, fetchImpl, { rules })),
               );
             }
 
@@ -1236,6 +1244,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-sep38':
         cli.verifySep38 = true;
+        break;
+
+      case '--verify-sep30':
+        cli.verifySep30 = true;
         break;
 
       case '--crawl-peers':
