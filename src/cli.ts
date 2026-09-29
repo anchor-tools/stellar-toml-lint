@@ -74,6 +74,7 @@ import { checkArchiveDiff } from './history/archive-diff.js';
 import { checkQuorumIntersection } from './validators/quorum-solver.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkSigningKeyRevocation } from './security/key-revocation.js';
+import { checkSigningKeyMultisig } from './security/multisig.js';
 import { checkCertificateTransparencyFromDocument } from './security/ct-auditor.js';
 import { checkValidatorDiversityFromDocument } from './validators/geo-diversity.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
@@ -424,6 +425,7 @@ async function main(argv: string[]): Promise<number> {
                 })
               : []),
             ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
+            ...(await checkSigningKeyMultisig(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkCertificateTransparencyFromDocument(domainResult.parsed, {
               rules,
               fetchImpl,
@@ -596,10 +598,7 @@ async function main(argv: string[]): Promise<number> {
                   ...(cli.domain === undefined ? {} : { domain: cli.domain }),
                 })),
                 ...(await checkSigningKeyRevocation(fileResult.parsed, { rules, fetchImpl })),
-                ...(await checkCertificateTransparencyFromDocument(fileResult.parsed, {
-                  rules,
-                  fetchImpl,
-                })),
+                ...(await checkSigningKeyMultisig(fileResult.parsed, { rules, fetchImpl })),
                 ...(cli.auditDiversity && cli.mockFixtures === undefined
                   ? await checkValidatorDiversityFromDocument(fileResult.parsed, { rules })
                   : []),

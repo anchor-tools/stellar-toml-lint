@@ -465,8 +465,11 @@ export {
   checkSigningKeyMultisig,
   multisigRules,
   multisigRuleIds,
+  SECURITY_SIGNING_KEY_INSUFFICIENT_WEIGHT,
   SECURITY_SIGNING_KEY_SINGLE_SIGNATURE,
   SECURITY_SIGNING_KEY_UNUSABLE,
+  SECURITY_SINGLE_SIGNER_HIGH_THRESHOLD,
+  SECURITY_UNREACHABLE_THRESHOLD,
 } from './security/multisig.js';
 export type {
   HorizonSigner as MultisigHorizonSigner,
