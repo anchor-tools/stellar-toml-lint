@@ -1,5 +1,7 @@
 node_modules/
 dist/
+editors/vscode/out/
+*.vsix
 coverage/
 *.tsbuildinfo
 
