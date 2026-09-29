@@ -182,7 +182,11 @@ export async function checkCertificateTransparencyFromDocument(
   let domain = direct;
   if (domain === undefined) {
     const documentation = doc.DOCUMENTATION;
-    if (typeof documentation === 'object' && documentation !== null && !Array.isArray(documentation)) {
+    if (
+      typeof documentation === 'object' &&
+      documentation !== null &&
+      !Array.isArray(documentation)
+    ) {
       domain = normalizeDomain((documentation as Record<string, unknown>).ORG_URL);
     }
   }

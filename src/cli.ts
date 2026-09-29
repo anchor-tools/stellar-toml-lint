@@ -424,7 +424,10 @@ async function main(argv: string[]): Promise<number> {
               : []),
             ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkSigningKeyMultisig(domainResult.parsed, { rules, fetchImpl })),
-            ...(await checkCertificateTransparencyFromDocument(domainResult.parsed, { rules, fetchImpl })),
+            ...(await checkCertificateTransparencyFromDocument(domainResult.parsed, {
+              rules,
+              fetchImpl,
+            })),
             ...(cli.auditDiversity && cli.mockFixtures === undefined
               ? await checkValidatorDiversityFromDocument(domainResult.parsed, { rules })
               : []),
@@ -591,7 +594,10 @@ async function main(argv: string[]): Promise<number> {
                 })),
                 ...(await checkSigningKeyRevocation(fileResult.parsed, { rules, fetchImpl })),
                 ...(await checkSigningKeyMultisig(fileResult.parsed, { rules, fetchImpl })),
-                ...(await checkCertificateTransparencyFromDocument(fileResult.parsed, { rules, fetchImpl })),
+                ...(await checkCertificateTransparencyFromDocument(fileResult.parsed, {
+                  rules,
+                  fetchImpl,
+                })),
                 ...(cli.auditDiversity && cli.mockFixtures === undefined
                   ? await checkValidatorDiversityFromDocument(fileResult.parsed, { rules })
                   : []),

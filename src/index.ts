@@ -483,7 +483,4 @@ export {
   SECURITY_MISSING_SCT_TIMESTAMPS,
   SECURITY_UNRECOGNIZED_CA_IN_CT_LOGS,
 } from './security/ct-auditor.js';
-export type {
-  CtCertificate,
-  CtAuditOptions,
-} from './security/ct-auditor.js';
+export type { CtCertificate, CtAuditOptions } from './security/ct-auditor.js';
