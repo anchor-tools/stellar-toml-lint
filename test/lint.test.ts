@@ -707,3 +707,147 @@ describe('rule registry', () => {
     expect(find(result, 'internal/rule-error')).toEqual([]);
   });
 });
+
+describe('CST-backed parsing (#29)', () => {
+  it('produces identical diagnostics with and without comments', () => {
+    const plain = [
+      'VERSION="2.7.0"',
+      'NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"',
+      'TRANSFER_SERVER="http://api.example.com/sep6"',
+    ].join('\n');
+    const commented = [
+      '# The spec version this file targets.',
+      'VERSION="2.7.0"   # keep in step with the app',
+      '',
+      '# The network this anchor serves.',
+      'NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"',
+      'TRANSFER_SERVER="http://api.example.com/sep6" # not https',
+    ].join('\n');
+
+    const plainResult = lint(plain);
+    const commentedResult = lint(commented);
+    expect(commentedResult.diagnostics.map((d) => d.rule)).toEqual(
+      plainResult.diagnostics.map((d) => d.rule),
+    );
+    expect(commentedResult.parsed).toEqual(plainResult.parsed);
+  });
+
+  it('reports the same positioned syntax error as the previous parser', () => {
+    const result = lint('VERSION="1.0.0"\nthis is not toml\n');
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.rule).toBe('file/parse');
+    expect(result.diagnostics[0]?.position?.line).toBe(2);
+    expect(result.parsed).toBeUndefined();
+  });
+
+  it('keeps the parsed document shape for every TOML construct', () => {
+    const account = 'GC7T6T56DX23PT7Q6WGCTIJT5O6TP6SJ47RP73JCA3ISLVCCVMGHNSDI';
+    const source = [
+      'VERSION = "2.7.0"',
+      "HORIZON_URL = 'https://horizon.example.com'",
+      `SIGNING_KEY = "${ACCOUNT_A}"`,
+      'CHECKPOINT = 1979-05-27T07:32:00Z',
+      'RATIO = 1.5',
+      'ENABLED = true',
+      `ACCOUNTS = ["${account}"]`,
+      'EXTRA = { nested = "inline" }',
+      'dotted.key = "value"',
+    ].join('\n');
+
+    const result = lint(source);
+    expect(find(result, 'file/parse')).toEqual([]);
+    expect(result.parsed?.VERSION).toBe('2.7.0');
+    expect(result.parsed?.HORIZON_URL).toBe('https://horizon.example.com');
+    expect(result.parsed?.ENABLED).toBe(true);
+    expect(result.parsed?.EXTRA).toEqual({ nested: 'inline' });
+    expect(result.parsed?.dotted).toEqual({ key: 'value' });
+  });
+
+  it('rejects a duplicate key the way TOML requires', () => {
+    const result = lint('VERSION="1.0.0"\nVERSION="2.0.0"\n');
+    expect(result.diagnostics[0]?.rule).toBe('file/parse');
+    expect(result.diagnostics[0]?.position?.line).toBe(2);
+  });
+});
+
+describe('testnet contract IDs on Mainnet (#45)', () => {
+  const RULE = 'soroban/testnet-contract-on-mainnet';
+  const TESTNET_NATIVE_SAC = 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
+  const TESTNET_USDC_SAC = 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA';
+  const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
+
+  /** The valid base, but pointing at a different network. */
+  const onTestnet = (body: string): string =>
+    withValidBase(body).replace(
+      '"Public Global Stellar Network ; September 2015"',
+      `"${TESTNET_PASSPHRASE}"`,
+    );
+
+  const nativeCurrency = withValidBase(
+    `[[CURRENCIES]]\ncode="XLMX"\ncontract="${TESTNET_NATIVE_SAC}"\nis_unlimited=true`,
+  );
+
+  it('flags the Testnet native SAC in a Mainnet [[CURRENCIES]] entry', () => {
+    const [d] = find(lint(nativeCurrency), RULE);
+    expect(d?.severity).toBe('error');
+    expect(d?.path).toBe('CURRENCIES[0].contract');
+    expect(d?.position?.line).toBe(5);
+    expect(d?.message).toContain('Stellar Testnet');
+    expect(d?.message).toContain(TESTNET_NATIVE_SAC);
+    expect(d?.helpUri).toBeTruthy();
+    expect(d?.suggestion).toContain('Mainnet');
+  });
+
+  it('flags the Testnet USDC SAC too', () => {
+    const source = withValidBase(
+      `[[CURRENCIES]]\ncode="USDC"\ncontract="${TESTNET_USDC_SAC}"\nis_unlimited=true`,
+    );
+    expect(find(lint(source), RULE)).toHaveLength(1);
+  });
+
+  it('flags a Testnet contract in WEB_AUTH_CONTRACT_ID', () => {
+    const source = withValidBase(`WEB_AUTH_CONTRACT_ID="${TESTNET_NATIVE_SAC}"`);
+    const [d] = find(lint(source), RULE);
+    expect(d?.severity).toBe('error');
+    expect(d?.path).toBe('WEB_AUTH_CONTRACT_ID');
+    expect(d?.position?.line).toBe(3);
+  });
+
+  it('reports every Testnet contract in the file, not just the first', () => {
+    const source = withValidBase(
+      `WEB_AUTH_CONTRACT_ID="${TESTNET_NATIVE_SAC}"\n[[CURRENCIES]]\ncode="USDC"\ncontract="${TESTNET_USDC_SAC}"\nis_unlimited=true`,
+    );
+    expect(find(lint(source), RULE)).toHaveLength(2);
+  });
+
+  it('stays silent on a Testnet file naming a Testnet contract', () => {
+    const result = lint(
+      onTestnet(`[[CURRENCIES]]\ncode="XLMX"\ncontract="${TESTNET_NATIVE_SAC}"\nis_unlimited=true`),
+    );
+    expect(find(result, RULE)).toEqual([]);
+  });
+
+  it('stays silent on a Mainnet contract', () => {
+    const source = withValidBase(
+      `[[CURRENCIES]]\ncode="AAA"\ncontract="${CONTRACT_A}"\nis_unlimited=true`,
+    );
+    expect(find(lint(source), RULE)).toEqual([]);
+  });
+
+  it('only gates on the Public passphrase, not on any non-Testnet one', () => {
+    const source = onTestnet(nativeCurrency).replace(
+      `"${TESTNET_PASSPHRASE}"`,
+      '"My Private Chain ; 2026"',
+    );
+    expect(find(lint(source), RULE)).toEqual([]);
+  });
+
+  it('is switched off by rule id', () => {
+    const result = lint(nativeCurrency, { rules: { [RULE]: 'off' } });
+    expect(find(result, RULE)).toEqual([]);
+  });
+
+  it('registers the rule so --list-rules and --off know it', () => {
+    expect(allRules.map((r) => r.id)).toContain(RULE);
+  });
+});

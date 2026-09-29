@@ -83,6 +83,8 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--lsp', description: 'Run as a Language Server on stdio' },
   { long: '--quiet', short: '-q', description: 'Report errors only' },
   { long: '--count', description: 'Print only problem count totals' },
+  { long: '--silent-success', description: 'Print nothing when a run has no diagnostics' },
+  { long: '--quiet-success', description: 'Alias for --silent-success' },
   { long: '--show-help-urls', description: 'Print the spec link for each finding' },
   { long: '--no-suggestions', description: 'Hide diagnostic suggestions' },
   { long: '--check-network', description: 'Verify accounts and endpoints online' },

@@ -133,6 +133,7 @@ interface Cli {
   color?: boolean;
   quiet: boolean;
   count: boolean;
+  silentSuccess?: boolean;
   showHelp: boolean;
   rules: RuleOverrides;
   preset?: PresetName;
@@ -216,6 +217,9 @@ OPTIONS
                           quick-fix code actions, and SEP-1 hover docs)
   -q, --quiet             Report errors only
       --count             Print only problem count totals
+      --silent-success    Print nothing on stdout when a run has no diagnostics,
+                          so a clean build stays silent; errors and warnings
+                          still print as usual. --quiet-success is an alias
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL,
@@ -898,13 +902,28 @@ async function main(argv: string[]): Promise<number> {
         { color, ...(cli.quiet ? { filter: 'error' as const } : {}) },
       );
     } else if (!cli.exportApConfig) {
-      if (cli.count) {
+      // `--silent-success` follows the Unix "silence is golden" contract: a run
+      // with no diagnostics writes nothing at all, so a hook or a script only
+      // has to look at the exit code. The moment there is a diagnostic the
+      // normal report comes back, so nothing a reader needs is ever hidden.
+      const totalDiagnostics = results.reduce(
+        (sum, { result }) => sum + result.diagnostics.length,
+        0,
+      );
+      const silent = cli.silentSuccess === true && totalDiagnostics === 0;
+
+      if (!silent && cli.count) {
         process.stdout.write(formatCount(results, { color }));
-      } else {
+      } else if (!silent) {
         for (const { name, result } of results) {
           const filtered = cli.quiet
             ? { ...result, diagnostics: result.diagnostics.filter((d) => d.severity === 'error') }
             : result;
+
+          // Under --quiet a file whose only findings are warnings has nothing
+          // left to print. --silent-success skips those files too, while the
+          // files that do have something to read still report as usual.
+          if (cli.silentSuccess && filtered.diagnostics.length === 0) continue;
 
           process.stdout.write(render(filtered, name, cli, color));
         }
@@ -1355,6 +1374,11 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--count':
         cli.count = true;
+        break;
+
+      case '--silent-success':
+      case '--quiet-success':
+        cli.silentSuccess = true;
         break;
 
       case '--show-help-urls':

@@ -6,6 +6,8 @@
  * produces diagnostics or a reporter that formats them.
  */
 
+import type { CstDocument } from './cst/parser.js';
+
 /** How much a violation matters. Only `error` affects the default exit code. */
 export type Severity = 'error' | 'warning' | 'info';
 
@@ -219,6 +221,15 @@ export interface StellarToml {
 export interface RuleContext {
   /** The parsed TOML document. */
   doc: Record<string, unknown>;
+  /**
+   * The lossless Concrete Syntax Tree the document was parsed into.
+   *
+   * Optional so a hand-built context in a test keeps compiling, but every run
+   * through {@link lint} supplies one. Rules that need comments, whitespace, or
+   * exact token spans rather than decoded values can walk it with `walk` from
+   * `cst/visitor.js`.
+   */
+  cst?: CstDocument;
   /** Raw source, for rules that care about bytes or formatting. */
   source: string;
   options: LintOptions;

@@ -1,5 +1,4 @@
-export const CURRENCIES_UNDISCLOSED_CLAWBACK_ENABLED =
-  'currencies/undisclosed-clawback-enabled';
+export const CURRENCIES_UNDISCLOSED_CLAWBACK_ENABLED = 'currencies/undisclosed-clawback-enabled';
 export const CURRENCIES_MISMATCHED_AUTH_REVOCABLE_FLAG =
   'currencies/mismatched-auth-revocable-flag';
 

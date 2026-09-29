@@ -5,10 +5,10 @@ import {
   SEP8_APPROVAL_SERVER_UNRESPONSIVE,
 } from '../src/protocols/sep8-resilience.js';
 
-const slowFetch = (delayMs: number): typeof fetch => () =>
-  new Promise((resolve) =>
-    setTimeout(() => resolve({ ok: true } as Response), delayMs),
-  );
+const slowFetch =
+  (delayMs: number): typeof fetch =>
+  () =>
+    new Promise((resolve) => setTimeout(() => resolve({ ok: true } as Response), delayMs));
 
 afterEach(() => {
   vi.useRealTimers();

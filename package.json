@@ -54,6 +54,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && npm run build:browser",
     "build:browser": "node scripts/build-browser.js",
+    "build:vscode": "tsc -p editors/vscode/tsconfig.json",
+    "package:vscode": "npm run build:vscode && npx --prefix editors/vscode vsce package --out ../../stellar-toml-lint.vsix",
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",

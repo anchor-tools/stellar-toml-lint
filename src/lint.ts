@@ -1,4 +1,3 @@
-import { parse, TomlError } from 'smol-toml';
 import type {
   Diagnostic,
   LintOptions,
@@ -19,6 +18,9 @@ import {
   imageAssetRules,
 } from './rules/image-assets.js';
 import { SourceIndex } from './source-index.js';
+import { parseCst, firstError } from './cst/parser.js';
+import type { CstError } from './cst/parser.js';
+import { evaluateDocument } from './cst/visitor.js';
 import { MAX_FILE_BYTES, isString, isUrl } from './predicates.js';
 import { specUrl } from './spec.js';
 import { probeTls, type TlsProbe } from './tls.js';
@@ -85,16 +87,28 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
     source = source.slice(1);
   }
 
-  let parsed: Record<string, unknown> | undefined;
-  try {
-    const result = parse(source);
-    parsed = result as Record<string, unknown>;
-  } catch (error) {
-    diagnostics.push(parseDiagnostic(error, source));
+  // Parse into a lossless CST. A syntax error short-circuits the run exactly
+  // as a thrown parser error used to: with no document there is nothing for
+  // the semantic rules to inspect.
+  const document = parseCst(source);
+  const syntaxError = firstError(document);
+  if (syntaxError !== undefined) {
+    diagnostics.push(parseDiagnostic(syntaxError));
     return finalize(diagnostics, options, undefined);
   }
 
-  const index = new SourceIndex(source);
+  // Building the value tree can itself surface problems TOML treats as fatal —
+  // a duplicate key, or a table declared twice. Report the first one and stop,
+  // so a half-built document never reaches a rule.
+  const evaluation = evaluateDocument(document);
+  const valueError = evaluation.errors[0];
+  if (valueError !== undefined) {
+    diagnostics.push(parseDiagnostic(valueError));
+    return finalize(diagnostics, options, undefined);
+  }
+
+  const parsed: Record<string, unknown> = evaluation.value;
+  const index = new SourceIndex(source, document);
   const overrides = options.rules ?? {};
 
   for (const rule of allRules) {
@@ -102,6 +116,7 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
 
     const ctx: RuleContext = {
       doc: parsed,
+      cst: document,
       source,
       options,
       locate: (path: string): Position | undefined => index.get(path),
@@ -576,47 +591,17 @@ async function observeTls(
   }
 }
 
-/** Converts a `smol-toml` parse failure into a positioned diagnostic. */
-function parseDiagnostic(error: unknown, source: string): Diagnostic {
-  const position =
-    error instanceof TomlError
-      ? { line: error.line, column: error.column }
-      : positionFromMessage(error, source);
-
+/** Converts a CST syntax or semantic error into a positioned diagnostic. */
+function parseDiagnostic(error: CstError): Diagnostic {
   return {
     rule: 'file/parse',
     severity: 'error',
     category: 'file',
-    message: `Invalid TOML: ${cleanParseMessage(error)}`,
-    position,
+    message: `Invalid TOML: ${error.message}`,
+    position: { line: error.line, column: error.column },
     helpUri: 'https://toml.io/en/v1.0.0',
     suggestion: 'Fix the syntax error — no other checks can run until the file parses.',
   };
-}
-
-/**
- * `smol-toml` throws a plain `Error` in some builds, but still attaches `line`
- * and `column`. Read them defensively rather than losing the position.
- */
-function positionFromMessage(error: unknown, source: string): Position | undefined {
-  if (typeof error === 'object' && error !== null) {
-    const candidate = error as { line?: unknown; column?: unknown };
-    if (typeof candidate.line === 'number' && typeof candidate.column === 'number') {
-      return { line: candidate.line, column: candidate.column };
-    }
-  }
-  return source.length > 0 ? { line: 1, column: 1 } : undefined;
-}
-
-/** Strips the code frame that `smol-toml` appends to its message. */
-function cleanParseMessage(error: unknown): string {
-  const message = errorMessage(error);
-  return (
-    message
-      .split('\n')[0]
-      ?.replace(/^Invalid TOML document:\s*/i, '')
-      .trim() || 'could not parse the file'
-  );
 }
 
 function errorMessage(error: unknown): string {

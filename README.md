@@ -124,6 +124,7 @@ it was before.
 | `--warn <rule>`      | Lower a rule to warning (repeatable)                                            |
 | `-q, --quiet`        | Show errors only                                                                |
 | `--count`            | Print only problem count totals                                                 |
+| `--silent-success`   | Print nothing on stdout when a run has no diagnostics                           |
 | `--show-help-urls`   | Print the spec link for each finding                                            |
 | `--list-rules`       | Print every rule and exit                                                       |
 | `--no-suggestions`   | Hide diagnostic suggestions in the output                                       |
@@ -143,6 +144,7 @@ it was before.
 | `--warn <rule>`           | Lower a rule to warning (repeatable)                                            |
 | `-q, --quiet`             | Show errors only                                                                |
 | `--count`                 | Print only problem count totals                                                 |
+| `--silent-success`        | Print nothing on stdout when a run has no diagnostics                           |
 | `--show-help-urls`        | Print the spec link for each finding                                            |
 | `--list-rules`            | Print every rule and exit                                                       |
 | `--no-suggestions`        | Hide diagnostic suggestions in the output                                       |
@@ -176,6 +178,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--warn <rule>`             | Lower a rule to warning (repeatable)                                                                                    |
 | `-q, --quiet`               | Show errors only                                                                                                        |
 | `--count`                   | Print only problem count totals                                                                                         |
+| `--silent-success`          | Print nothing on stdout when a run has no diagnostics                                                                   |
 | `--show-help-urls`          | Print the spec link for each finding                                                                                    |
 | `--list-rules`              | Print every rule and exit                                                                                               |
 | `--completion <shell>`      | Print a `bash`, `zsh`, or `fish` completion script and exit                                                             |
@@ -214,6 +217,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--warn <rule>`             | Lower a rule to warning (repeatable)                                                                                    |
 | `-q, --quiet`               | Show errors only                                                                                                        |
 | `--count`                   | Print only problem count totals                                                                                         |
+| `--silent-success`          | Print nothing on stdout when a run has no diagnostics                                                                   |
 | `--show-help-urls`          | Print the spec link for each finding                                                                                    |
 | `--list-rules`              | Print every rule and exit                                                                                               |
 | `--completion <shell>`      | Print a `bash`, `zsh`, or `fish` completion script and exit                                                             |
@@ -266,6 +270,7 @@ failure.
 | `--preset <name>`           | Start from a role's rule bundle: `validator`, `anchor-sep24`, or `issuer`                                                                                                  |
 | `-q, --quiet`               | Show errors only                                                                                                                                                           |
 | `--count`                   | Print only problem count totals                                                                                                                                            |
+| `--silent-success`          | Print nothing on stdout when a run has no diagnostics                                                                                                                      |
 | `--show-help-urls`          | Print the spec link for each finding                                                                                                                                       |
 | `--list-rules`              | Print every rule and exit                                                                                                                                                  |
 | `--completion <shell>`      | Print a `bash`, `zsh`, or `fish` completion script and exit                                                                                                                |
@@ -486,6 +491,16 @@ qualified name (`[[CURRENCIES]].display_decimals`), its type (`integer (0-7)`), 
 own description, the permitted values where SEP-1 enumerates them (`live`, `dead`, `test`,
 `private`), and a link to the section of SEP-1 that defines the field. Hovering whitespace, a
 comment, or a key SEP-1 does not define shows nothing at all.
+
+#### VS Code extension
+
+The official client lives in [`editors/vscode/`](./editors/vscode/) and is built on
+`vscode-languageclient/node`. It activates for any file named `stellar.toml` or any
+file inside `.well-known/`, launches `stellar-toml-lint --lsp` over stdio, and
+contributes the `stellar-toml.lint`, `stellar-toml.format`, and
+`stellar-toml.readiness` commands plus the `stellarToml.strict`,
+`stellarToml.domain`, and `stellarToml.rules` settings and a `$(check)`/`$(error)`
+status bar item. Package it with `npm run package:vscode` (wraps `vsce package`).
 
 ### Alerting a Slack or Discord channel
 
@@ -864,6 +879,24 @@ The output summarizes errors and warnings across all linted files. Return codes 
 PROBLEMS=$(stellar-toml-lint --count public/.well-known/stellar.toml)
 echo "Linter status: $PROBLEMS"
 ```
+
+### Silent success output with `--silent-success`
+
+Pre-commit hooks, quiet build jobs, and dense CI matrices are expected to follow the Unix rule that
+silence is golden on success: a run that finds nothing should write nothing. `--silent-success` (also
+accepted as `--quiet-success`) makes the linter emit no stdout at all when the whole run has zero
+diagnostics, whatever reporter is selected:
+
+```console
+$ stellar-toml-lint stellar.toml --silent-success   # clean: no output, exit 0
+$ stellar-toml-lint stellar.toml --silent-success
+12:1  error  currencies/issuance-exclusive  …       # broken: the normal report, exit 1
+```
+
+The exit code is unchanged, so a hook only has to look at `$?`. The moment a single diagnostic exists
+the normal report comes back — errors and warnings are never hidden — and in a multi-file run only the
+files with findings are printed. `--silent-success` is a no-op for output written by the generator flags
+(`--graph`, `--generate-openapi`, `--export-ap-config`), which are explicit requests for stdout.
 
 ### GitHub step summaries
 
@@ -1356,6 +1389,16 @@ compared against `NETWORK_PASSPHRASE`:
 
 A network whose RPC did not answer is not treated as "absent", so an outage produces no finding.
 
+**Testnet contracts in a Mainnet file** (offline) — the same copy-paste mistake is caught without the
+network. Copying a staging file and updating only `NETWORK_PASSPHRASE` leaves the Soroban addresses
+behind, and a Testnet contract ID in a Mainnet file resolves to nothing on chain. When
+`NETWORK_PASSPHRASE` is exactly the Public passphrase, every `WEB_AUTH_CONTRACT_ID` and
+`[[CURRENCIES]].contract` is matched against a small denylist of known Testnet reference contracts
+(the Testnet native XLM SAC and the Circle Testnet USDC SAC), and a match emits
+`soroban/testnet-contract-on-mainnet` (error) naming the contract and the edit that fixes it. A file
+on Testnet — or on any custom network — is never flagged, so the check stays silent for the team that
+is legitimately deploying there.
+
 **Contract dependencies** (with `--check-contracts`) — a declared contract is rarely the whole
 system, and the edges it depends on are invisible in the file. Each contract's deployed WASM import
 table is read, and every import module name that decodes as a contract address becomes an edge, which
@@ -1661,6 +1704,23 @@ matter of appending one object to a list and one fixture to a test.
 
 ## Integrations
 
+### VS Code extension
+
+Official VS Code client for `stellar.toml` files with live SEP-1 diagnostics,
+quick-fix code actions, hover documentation, SEP-1 syntax highlighting, a
+`$(check)`/`$(error)` status bar item, and the `stellar-toml.lint`,
+`stellar-toml.format`, and `stellar-toml.readiness` commands. Activates for
+`stellar.toml` and `.well-known/` files and spawns `stellar-toml-lint --lsp`
+over stdio. Configured via `stellarToml.strict`, `stellarToml.domain`, and
+`stellarToml.rules`.
+
+```bash
+npm run build:vscode
+npm run package:vscode
+```
+
+See [editors/vscode/README.md](./editors/vscode/README.md) for details.
+
 ### JetBrains IDE Plugin
 
 Official plugin for IntelliJ IDEA and WebStorm with real-time SEP-1 linting.
@@ -1790,11 +1850,15 @@ Two additional auditors run automatically as part of `--check-network`:
 ## New Auditors
 
 ### Clawback Audit (`src/rules/clawback-audit.ts`)
+
 Queries Horizon for account flags and compares with stellar.toml asset metadata to report:
+
 - `currencies/undisclosed-clawback-enabled` - clawback is enabled on chain but not disclosed in stellar.toml
 - `currencies/mismatched-auth-revocable-flag` - auth_revocable flag differs between Horizon and stellar.toml
 
 ### SEP-8 Resilience Audit (`src/protocols/sep8-resilience.ts`)
+
 Measures response latency of a SEP-8 approval server over 5 sample requests and reports:
+
 - `sep8/approval-server-unresponsive` - more than 2 of 5 requests fail
 - `sep8/approval-server-high-latency` - average latency exceeds 3000ms SLA

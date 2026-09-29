@@ -11,6 +11,52 @@
  */
 export { lint, lintDomain } from './lint.js';
 export { lspMain } from './lsp.js';
+export {
+  parseCst,
+  parseOrThrow,
+  printCst,
+  serialize,
+  firstError,
+  CstParseError,
+} from './cst/parser.js';
+export type {
+  CstArrayValue,
+  CstBooleanValue,
+  CstComment,
+  CstDateTimeValue,
+  CstDocument,
+  CstEntry,
+  CstError,
+  CstInlineTableValue,
+  CstKey,
+  CstKeySegment,
+  CstKeyValueEntry,
+  CstNumberValue,
+  CstStringValue,
+  CstTableEntry,
+  CstTokenSpan,
+  CstTrivia,
+  CstValue,
+} from './cst/parser.js';
+export {
+  evaluateDocument,
+  toValue,
+  walk,
+  collectComments,
+  keyValueEntries,
+  tableEntries,
+  nodeAtOffset,
+} from './cst/visitor.js';
+export type { CstNode, CstVisitor, EvaluationResult } from './cst/visitor.js';
+export { Lexer, tokenize, SourcePositions, isTrivia } from './cst/lexer.js';
+export type {
+  LexContext,
+  SourcePosition,
+  StringStyle,
+  Token,
+  TokenKind,
+  TriviaKind,
+} from './cst/lexer.js';
 export { allRules, ruleIds } from './rules/index.js';
 export { PRESETS, PRESET_NAMES, resolvePreset } from './presets.js';
 export type { Preset, PresetName } from './presets.js';

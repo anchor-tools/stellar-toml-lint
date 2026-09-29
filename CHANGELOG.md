@@ -9,6 +9,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A lossless, comment-preserving Concrete Syntax Tree parser (`src/cst/`) now backs parsing in
+  `lint`, replacing the `smol-toml` call. Every token, trivia span, comment, quoting style, and
+  whitespace run is retained, and serializing an unmodified tree reproduces the source
+  byte-for-byte, so the canonical formatter (#11), in-source rule suppression (#25), and
+  AST-guided autofixes (#9) can build on typed nodes instead of string slicing. Positions now
+  come from the tree rather than a second line scan, the tree is available to rules as
+  `RuleContext.cst`, and a 100KB document parses in under 15ms with no native dependency (#29).
+
 - `--format summary` (`-f summary`), a one-line-per-file status format for `pre-push` hooks,
   monitoring scripts, and dashboards that need a verdict rather than a report:
   `stellar.toml: PASS (0 errors, 0 warnings)`. Each file gets exactly one line carrying the target,
