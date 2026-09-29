@@ -9,6 +9,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A lossless, comment-preserving Concrete Syntax Tree parser (`src/cst/`) now backs parsing in
+  `lint`, replacing the `smol-toml` call. Every token, trivia span, comment, quoting style, and
+  whitespace run is retained, and serializing an unmodified tree reproduces the source
+  byte-for-byte, so the canonical formatter (#11), in-source rule suppression (#25), and
+  AST-guided autofixes (#9) can build on typed nodes instead of string slicing. Positions now
+  come from the tree rather than a second line scan, the tree is available to rules as
+  `RuleContext.cst`, and a 100KB document parses in under 15ms with no native dependency (#29).
+
 - `--format summary` (`-f summary`), a one-line-per-file status format for `pre-push` hooks,
   monitoring scripts, and dashboards that need a verdict rather than a report:
   `stellar.toml: PASS (0 errors, 0 warnings)`. Each file gets exactly one line carrying the target,
@@ -39,6 +47,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   CDN that withholds `Access-Control-Allow-Origin: *` from browser wallets, an `image` URL served
   as something other than an `image/*` type, or a `Content-Length` over 500KB is reported before
   the wallet renders a blank tile. Offline `lint()` runs still never touch the network (#27).
+
+- `--check-network --verify-sep38` runs a SEP-38 anchor quotes and RFQ pricing engine simulator
+  (`src/protocols/sep38.ts`): `GET /info` must list quotable assets whose `country_codes` are ISO
+  3166 codes (`sep38/info-schema-invalid`, error); `GET /prices` must quote every pair built from
+  the assets the file declares — each `stellar:CODE:ISSUER` in `[[CURRENCIES]]` and the `iso4217`
+  side of a fiat-anchored currency (`sep38/prices-missing-declared-asset`, error); every returned
+  rate must be positive, and the reverse of each pair must agree with the forward rate inside a 15%
+  bid-ask spread (`sep38/abnormal-exchange-rate-spread`, warning); and `POST /quote`, asked for firm
+  and indicative quotes, must answer with an `expires_at` still in the future
+  (`sep38/invalid-quote-expiration`, error). Endpoint liveness and malformed bodies stay with the
+  plain `--check-network` probe, so nothing is reported twice (#66).
 
 - `--serve-mock [port]` starts a local mock anchor on `node:http` (default port `8080`): the file at
   `/.well-known/stellar.toml` with `Access-Control-Allow-Origin: *`, SEP-10 challenges at `/auth`

@@ -1,5 +1,6 @@
 import type { Rule } from '../types.js';
 import { generalRules } from './general.js';
+import { telegramHandleRules } from './telegram-handle.js';
 import { documentationRules } from './documentation.js';
 import { principalRules } from './principals.js';
 import {
@@ -40,10 +41,12 @@ import { fixedSupplyLockRules } from './fixed-supply-audit.js';
 import { circularPointerRules } from './circular-pointers.js';
 import { docComplianceRules } from './doc-compliance.js';
 import { networkPassphraseRules } from './network-passphrase.js';
+import { testnetContractRules } from './testnet-contracts.js';
 import { sep7Rules } from '../protocols/sep7.js';
 import { sep6IntegrationRules } from '../protocols/sep6.js';
 import { sep31Rules } from '../protocols/sep31.js';
 import { sep8Rules } from '../protocols/sep8.js';
+import { sep38QuoteRules } from '../protocols/sep38.js';
 import { wasmAuditorRules } from '../soroban/wasm-auditor.js';
 import { envMetaRules } from '../soroban/env-meta.js';
 import { eventRules } from '../soroban/events.js';
@@ -51,10 +54,13 @@ import { adminAuditorRules } from '../soroban/admin-auditor.js';
 import { simulationRules } from '../soroban/simulation.js';
 import { storageFootprintRules } from '../soroban/storage-footprint.js';
 import { authAuditorRules } from '../soroban/auth-auditor.js';
+import { insecureHttpRule } from './insecure-http.js';
+import { multisigRules } from '../security/multisig.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
   ...generalRules,
+  insecureHttpRule,
   ...deprecationRules,
   ...documentationRules,
   ...principalRules,
@@ -65,6 +71,7 @@ export const allRules: Rule[] = [
   ...validatorRules,
   ...validatorDedupRules,
   ...securityRules,
+  ...multisigRules,
 
   emailMxRule,
 
@@ -90,6 +97,7 @@ export const allRules: Rule[] = [
   ...sep6IntegrationRules,
   ...sep31Rules,
   ...sep8Rules,
+  ...sep38QuoteRules,
   ...sep7Rules,
   ...corsPreflightRules,
   ...overlayCrawlerRules,
@@ -104,6 +112,7 @@ export const allRules: Rule[] = [
   ...circularPointerRules,
   ...docComplianceRules,
   ...networkPassphraseRules,
+  ...testnetContractRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -111,6 +120,7 @@ export const ruleIds: string[] = allRules.map((r) => r.id).sort();
 
 export {
   generalRules,
+  telegramHandleRules,
   deprecationRules,
   documentationRules,
   principalRules,
@@ -123,6 +133,7 @@ export {
   validatorRules,
   validatorDedupRules,
   securityRules,
+  multisigRules,
   horizonRules,
   sep3Rules,
   sep38Rules,
@@ -147,10 +158,12 @@ export {
   circularPointerRules,
   docComplianceRules,
   networkPassphraseRules,
+  testnetContractRules,
   sep7Rules,
   sep6IntegrationRules,
   sep31Rules,
   sep8Rules,
+  sep38QuoteRules,
   wasmAuditorRules,
   envMetaRules,
   eventRules,
@@ -158,4 +171,5 @@ export {
   simulationRules,
   storageFootprintRules,
   authAuditorRules,
+  insecureHttpRule,
 };

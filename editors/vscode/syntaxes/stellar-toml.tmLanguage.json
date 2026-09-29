@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Stellar TOML",
+  "scopeName": "stellar.toml.injection",
+  "injectionSelector": "L:source.toml",
+  "patterns": [
+    {
+      "match": "^(\\[\\[?)\\s*(DOCUMENTATION|PRINCIPALS|CURRENCIES|VALIDATORS)\\s*(\\]?\\])$",
+      "captures": {
+        "2": {
+          "name": "entity.name.section.stellar"
+        }
+      }
+    },
+    {
+      "match": "^(WEB_AUTH_ENDPOINT|TRANSFER_SERVER|TRANSFER_SERVER_SEP0024|KYC_SERVER|ANCHOR_QUOTE_SERVER|DIRECT_PAYMENT_SERVER)\\b",
+      "name": "constant.language.network.endpoint.stellar"
+    },
+    {
+      "match": "^[A-Z0-9_]+\\b",
+      "name": "keyword.other.global.stellar"
+    },
+    {
+      "match": "\\b[GC][A-Z2-7]{55}\\b",
+      "name": "constant.other.crypto.key.stellar"
+    }
+  ]
+}

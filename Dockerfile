@@ -15,7 +15,7 @@
 
 # `dist/` is generated rather than shipped in the build context (it is git- and
 # docker-ignored), so the image builds it in a throwaway stage.
-FROM node:20-alpine AS build
+FROM --platform=$BUILDPLATFORM node:20-alpine AS build
 
 WORKDIR /app
 
@@ -23,18 +23,15 @@ COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
 COPY src ./src
 COPY scripts ./scripts
 
-RUN npm ci && npm run build
+RUN npm ci && npm run build && npm prune --omit=dev
 
 FROM node:20-alpine
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-
-RUN npm ci --omit=dev && npm cache clean --force
-
-COPY --chown=node:node dist ./dist
-COPY --from=build --chown=stellar-toml-lint:stellar-toml-lint /app/dist ./dist
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
 
 USER node
 
