@@ -323,11 +323,11 @@ describe('currencies/toml-pointer', () => {
   });
 });
 
-describe('currencies/duplicate-asset', () => {
+describe('currencies/duplicate-currency-declaration', () => {
   it('flags the same code and issuer twice', () => {
     const entry = `[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_A}"\nis_unlimited=true`;
     const result = lint(withValidBase(`${entry}\n\n${entry}`));
-    expect(find(result, 'currencies/duplicate-asset')).toHaveLength(1);
+    expect(find(result, 'currencies/duplicate-currency-declaration')).toHaveLength(1);
   });
 
   it('allows the same code from different issuers', () => {
@@ -337,7 +337,7 @@ describe('currencies/duplicate-asset', () => {
           `[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_B}"\nis_unlimited=true`,
       ),
     );
-    expect(find(result, 'currencies/duplicate-asset')).toEqual([]);
+    expect(find(result, 'currencies/duplicate-currency-declaration')).toEqual([]);
   });
 });
 

@@ -119,6 +119,7 @@ export const KNOWN_DOCUMENTATION_FIELDS = new Set<string>([
   'ORG_KEYBASE',
   'ORG_TWITTER',
   'ORG_GITHUB',
+  'ORG_TELEGRAM',
   'ORG_OFFICIAL_EMAIL',
   'ORG_SUPPORT_EMAIL',
   'ORG_LICENSING_AUTHORITY',
@@ -543,6 +544,13 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
     name: 'ORG_GITHUB',
     type: 'string',
     description: "Your organization's Github account.",
+    anchor: 'organization-documentation',
+  },
+  {
+    section: 'DOCUMENTATION',
+    name: 'ORG_TELEGRAM',
+    type: 'string',
+    description: "Your organization's Telegram community handle or link.",
     anchor: 'organization-documentation',
   },
   {

@@ -27,7 +27,7 @@ describe('SEP-30 recovery signer multi-party identity and transaction signing va
     identity: {
       signers: [
         'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H',
-        'GDUJPDYHPU5UV7F6HB3XS655TNMVUSXZXF7RPDJPPTGIEO6FECWPK7PJ',
+        'GC7T6T56DX23PT7Q6WGCTIJT5O6TP6SJ47RP73JCA3ISLVCCVMGHNSDI',
       ],
     },
   };
