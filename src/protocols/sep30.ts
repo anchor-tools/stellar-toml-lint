@@ -117,8 +117,7 @@ export async function verifySep30(
         message: 'RECOVERY_SERVER /accounts identity schema is missing or invalid',
         path: 'RECOVERY_SERVER',
         helpUri: SEP30_SPEC,
-        suggestion:
-          'Ensure /accounts returns an identity object with proper schema per SEP-30.',
+        suggestion: 'Ensure /accounts returns an identity object with proper schema per SEP-30.',
       });
     }
     // Cannot validate signers if there's no identity schema
@@ -186,8 +185,7 @@ export const sep30Rules: Rule[] = [
     id: SERVER_UNREACHABLE_RULE,
     category: 'network',
     severity: 'error',
-    description:
-      'RECOVERY_SERVER /accounts endpoint must be reachable and return HTTP 200',
+    description: 'RECOVERY_SERVER /accounts endpoint must be reachable and return HTTP 200',
     run() {},
   },
   {
@@ -201,8 +199,7 @@ export const sep30Rules: Rule[] = [
     id: IDENTITY_SCHEMA_MISMATCH_RULE,
     category: 'network',
     severity: 'warning',
-    description:
-      'RECOVERY_SERVER /accounts identity schema must be present and valid',
+    description: 'RECOVERY_SERVER /accounts identity schema must be present and valid',
     run() {},
   },
 ];

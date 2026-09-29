@@ -5,7 +5,9 @@ import { telegramHandleProblem } from '../src/rules/telegram-handle.js';
 const RULE = 'general/invalid-telegram-handle';
 
 function docSource(handle: string): string {
-  return ['[DOCUMENTATION]', 'ORG_NAME="Example Anchor"', `ORG_TELEGRAM="${handle}"`, ''].join('\n');
+  return ['[DOCUMENTATION]', 'ORG_NAME="Example Anchor"', `ORG_TELEGRAM="${handle}"`, ''].join(
+    '\n',
+  );
 }
 
 function handleDiagnostics(handle: string) {
@@ -38,12 +40,12 @@ describe('general/invalid-telegram-handle', () => {
     expect(handleDiagnostics(handle)[0]?.message).toContain(reason);
   });
 
-  it.each([
-    'https://example.com/example_anchor',
-    'http://invalid-site.org/example_anchor',
-  ])('flags the non-profile URL %s', (url) => {
-    expect(handleDiagnostics(url)).toHaveLength(1);
-  });
+  it.each(['https://example.com/example_anchor', 'http://invalid-site.org/example_anchor'])(
+    'flags the non-profile URL %s',
+    (url) => {
+      expect(handleDiagnostics(url)).toHaveLength(1);
+    },
+  );
 
   it('flags an empty value', () => {
     const [diagnostic] = handleDiagnostics('');
