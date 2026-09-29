@@ -618,7 +618,11 @@ async function main(argv: string[]): Promise<number> {
               );
             }
 
-            if (cli.verifySep30 && cli.checkNetwork && fileResult.parsed?.RECOVERY_SERVER !== undefined) {
+            if (
+              cli.verifySep30 &&
+              cli.checkNetwork &&
+              fileResult.parsed?.RECOVERY_SERVER !== undefined
+            ) {
               networkDiagnostics.push(
                 ...(await verifySep30(fileResult.parsed, fetchImpl, { rules })),
               );
@@ -1125,6 +1129,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     followLinks: false,
     verifySep10: false,
     verifySep38: false,
+    verifySep30: false,
     crawlPeers: false,
     verifyDnssec: false,
     verifyOverlay: false,

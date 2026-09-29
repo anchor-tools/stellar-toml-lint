@@ -54,13 +54,15 @@ describe('cli --silent-success', () => {
     expect(stderr).toBe('');
   });
 
+  // Spawns the built CLI once per reporter (6 processes); CI runners and
+  // loaded machines regularly exceed the 5s default.
   it('is silent on a clean run in every reporter, not just text', async () => {
     for (const format of ['text', 'summary', 'json', 'sarif', 'junit', 'markdown']) {
       const { code, stdout } = await cli([fixture('valid.toml'), '--silent-success', '-f', format]);
       expect(code, format).toBe(0);
       expect(stdout, format).toBe('');
     }
-  });
+  }, 30_000);
 
   it('still prints errors and exits 1 on a broken file', async () => {
     const { code, stdout } = await cli([fixture('broken.toml'), '--silent-success']);
