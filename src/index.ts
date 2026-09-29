@@ -11,6 +11,52 @@
  */
 export { lint, lintDomain } from './lint.js';
 export { lspMain } from './lsp.js';
+export {
+  parseCst,
+  parseOrThrow,
+  printCst,
+  serialize,
+  firstError,
+  CstParseError,
+} from './cst/parser.js';
+export type {
+  CstArrayValue,
+  CstBooleanValue,
+  CstComment,
+  CstDateTimeValue,
+  CstDocument,
+  CstEntry,
+  CstError,
+  CstInlineTableValue,
+  CstKey,
+  CstKeySegment,
+  CstKeyValueEntry,
+  CstNumberValue,
+  CstStringValue,
+  CstTableEntry,
+  CstTokenSpan,
+  CstTrivia,
+  CstValue,
+} from './cst/parser.js';
+export {
+  evaluateDocument,
+  toValue,
+  walk,
+  collectComments,
+  keyValueEntries,
+  tableEntries,
+  nodeAtOffset,
+} from './cst/visitor.js';
+export type { CstNode, CstVisitor, EvaluationResult } from './cst/visitor.js';
+export { Lexer, tokenize, SourcePositions, isTrivia } from './cst/lexer.js';
+export type {
+  LexContext,
+  SourcePosition,
+  StringStyle,
+  Token,
+  TokenKind,
+  TriviaKind,
+} from './cst/lexer.js';
 export { allRules, ruleIds } from './rules/index.js';
 export { PRESETS, PRESET_NAMES, resolvePreset } from './presets.js';
 export type { Preset, PresetName } from './presets.js';
@@ -266,6 +312,18 @@ export {
 export type { Sep8Options } from './protocols/sep8.js';
 
 export {
+  verifySep38,
+  sep38QuoteRules,
+  sep38QuoteRuleIds,
+  INFO_SCHEMA_INVALID_RULE as SEP38_INFO_SCHEMA_INVALID_RULE,
+  PRICES_MISSING_DECLARED_ASSET_RULE,
+  ABNORMAL_EXCHANGE_RATE_SPREAD_RULE,
+  INVALID_QUOTE_EXPIRATION_RULE,
+  MAX_QUOTE_SPREAD_PERCENT,
+} from './protocols/sep38.js';
+export type { Sep38QuoteOptions } from './protocols/sep38.js';
+
+export {
   auditContractWasm,
   auditTomlContractWasm,
   verifySep41Wasm,
@@ -334,3 +392,84 @@ export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
 export { codeActionsFor } from './lsp/code-actions.js';
 export type { LspCodeAction, LspRange, LspTextEdit, LspWorkspaceEdit } from './lsp/code-actions.js';
+
+export {
+  checkSignatureStateMachine,
+  checkSignatureStateMachineFromDocument,
+  signatureSchemeFromDocument,
+  analyzeSignatureCombinations,
+  signerCombinations,
+  singleSignerThresholdBreakers,
+  signatureStateMachineRules,
+  signatureStateMachineRuleIds,
+  SECURITY_INSUFFICIENT_THRESHOLD_PROTECTION,
+  SECURITY_UNBALANCED_SIGNER_WEIGHTS,
+} from './security/signature-state-machine.js';
+export type {
+  Signer,
+  SignerThresholds,
+  SignatureCombination,
+  SignatureScheme,
+  SignatureStateMachineOptions,
+} from './security/signature-state-machine.js';
+
+export {
+  checkRateLimitResilience,
+  probeHorizonRateLimit,
+  computeBackoffDelayMs,
+  rateLimitTesterRules,
+  rateLimitTesterRuleIds,
+  RATE_LIMIT_HEADERS,
+  NETWORK_MISSING_RATE_LIMIT_HEADERS,
+  NETWORK_UNSTANDARDIZED_RATE_LIMIT_RESPONSE,
+} from './network/rate-limit-tester.js';
+export type { RateLimitProbe, RateLimitTesterOptions } from './network/rate-limit-tester.js';
+
+export {
+  analyzeValidatorGeoDiversity,
+  checkGeoDiversity,
+  computeDistribution,
+  loadGeoLookupFromEnv,
+  validatorHostsFromDocument,
+  geoDiversityRules,
+  geoDiversityRuleIds,
+  VALIDATORS_HIGH_ASN_CONCENTRATION,
+  VALIDATORS_HIGH_GEOGRAPHIC_CONCENTRATION,
+  DEFAULT_CONCENTRATION_THRESHOLD_PERCENT,
+} from './validators/geo-diversity.js';
+export type {
+  GeoDiversityEntry,
+  GeoDiversityOptions,
+  GeoRecord,
+  GeoLookup,
+  GeoDistributionBucket,
+} from './validators/geo-diversity.js';
+
+export {
+  analyzeSigningKeyRevocation,
+  checkSigningKeyRevocation,
+  keyRevocationRules,
+  keyRevocationRuleIds,
+  SECURITY_REVOKED_SIGNING_KEY,
+  SECURITY_UNRECORDED_KEY_ROTATION,
+} from './security/key-revocation.js';
+export type {
+  HorizonSigner,
+  KeyRevocationAnalysisInput,
+  KeyRevocationOptions,
+} from './security/key-revocation.js';
+
+export {
+  analyzeAccountThresholds,
+  auditAccountThresholds,
+  checkSigningKeyMultisig,
+  multisigRules,
+  multisigRuleIds,
+  SECURITY_SIGNING_KEY_SINGLE_SIGNATURE,
+  SECURITY_SIGNING_KEY_UNUSABLE,
+} from './security/multisig.js';
+export type {
+  HorizonSigner as MultisigHorizonSigner,
+  MultisigAnalysisInput,
+  MultisigAuditOptions,
+} from './security/multisig.js';

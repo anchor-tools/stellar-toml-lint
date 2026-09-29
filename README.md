@@ -61,8 +61,21 @@ npx stellar-toml-lint                      # or just run it
 brew install anchor-tools/tap/stellar-toml-lint
 ```
 
-Requires Node.js 20 or newer. Runtime dependencies: `smol-toml`, `@stellar/stellar-base`, and the
-pure-JS `@noble/curves` and `@noble/hashes` that `@stellar/stellar-base` already installs.
+Homebrew installs a self-contained binary; Node.js is not required at runtime.
+
+### Standalone binaries
+
+Download the asset for your platform from the [GitHub Releases](https://github.com/anchor-tools/stellar-toml-lint/releases) page, verify it against `SHA256SUMS.txt`, and place it on your `PATH`:
+
+```bash
+curl -fLO https://github.com/anchor-tools/stellar-toml-lint/releases/latest/download/stellar-toml-lint-linux-x64
+curl -fLO https://github.com/anchor-tools/stellar-toml-lint/releases/latest/download/SHA256SUMS.txt
+sha256sum --check --ignore-missing SHA256SUMS.txt
+chmod +x stellar-toml-lint-linux-x64
+sudo install -m 0755 stellar-toml-lint-linux-x64 /usr/local/bin/stellar-toml-lint
+```
+
+Assets are published for Linux x64 (glibc and musl), Linux ARM64, macOS Intel, macOS Apple Silicon, and Windows x64. These binaries have no Node.js runtime dependency. The npm package remains available for Node.js 20+ users. Runtime dependencies for the npm package are `smol-toml`, `@stellar/stellar-base`, and the pure-JS `@noble/curves` and `@noble/hashes` that `@stellar/stellar-base` already installs.
 Commit a `.stellartomlrc.json` next to your `stellar.toml` to record the project's rule policy once
 instead of repeating `--off`/`--warn` flags in every workflow (see [Usage](#usage)).
 
@@ -127,6 +140,7 @@ it was before.
 | `--warn <rule>`      | Lower a rule to warning (repeatable)                                            |
 | `-q, --quiet`        | Show errors only                                                                |
 | `--count`            | Print only problem count totals                                                 |
+| `--silent-success`   | Print nothing on stdout when a run has no diagnostics                           |
 | `--show-help-urls`   | Print the spec link for each finding                                            |
 | `--list-rules`       | Print every rule and exit                                                       |
 | `--no-suggestions`   | Hide diagnostic suggestions in the output                                       |
@@ -146,6 +160,7 @@ it was before.
 | `--warn <rule>`           | Lower a rule to warning (repeatable)                                            |
 | `-q, --quiet`             | Show errors only                                                                |
 | `--count`                 | Print only problem count totals                                                 |
+| `--silent-success`        | Print nothing on stdout when a run has no diagnostics                           |
 | `--show-help-urls`        | Print the spec link for each finding                                            |
 | `--list-rules`            | Print every rule and exit                                                       |
 | `--no-suggestions`        | Hide diagnostic suggestions in the output                                       |
@@ -166,7 +181,9 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--audit-security`          | Audit cross-server token binding (SEP-10 JWT vs downstream endpoints) (requires `--check-network`)                      |
 | `--verify-sep6`             | Run end-to-end programmatic SEP-6 integration tester (requires `--check-network`)                                       |
 | `--verify-sep31`            | Audit SEP-31 cross-border payment lifecycle and schema (requires `--check-network`)                                     |
+| `--verify-sep30`            | Validate RECOVERY_SERVER /accounts endpoint and signer public keys (requires `--check-network`)                                     |
 | `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                      |
+| `--verify-sep38`            | Audit SEP-38 quote coverage, bid-ask spread, and quote expirations (requires `--check-network`)                         |
 | `--check-contracts`         | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                   |
 | `--soroban-rpc <url>`       | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                       |
 | `--simulate-soroban`        | With `--check-network`: dry-run the SEP-41 read calls against the Soroban RPC                                           |
@@ -178,6 +195,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--warn <rule>`             | Lower a rule to warning (repeatable)                                                                                    |
 | `-q, --quiet`               | Show errors only                                                                                                        |
 | `--count`                   | Print only problem count totals                                                                                         |
+| `--silent-success`          | Print nothing on stdout when a run has no diagnostics                                                                   |
 | `--show-help-urls`          | Print the spec link for each finding                                                                                    |
 | `--list-rules`              | Print every rule and exit                                                                                               |
 | `--completion <shell>`      | Print a `bash`, `zsh`, or `fish` completion script and exit                                                             |
@@ -216,6 +234,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--warn <rule>`             | Lower a rule to warning (repeatable)                                                                                    |
 | `-q, --quiet`               | Show errors only                                                                                                        |
 | `--count`                   | Print only problem count totals                                                                                         |
+| `--silent-success`          | Print nothing on stdout when a run has no diagnostics                                                                   |
 | `--show-help-urls`          | Print the spec link for each finding                                                                                    |
 | `--list-rules`              | Print every rule and exit                                                                                               |
 | `--completion <shell>`      | Print a `bash`, `zsh`, or `fish` completion script and exit                                                             |
@@ -249,6 +268,8 @@ failure.
 | `--check-network`           | Verify accounts, fixed-supply issuer locks, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, TLS certificate expiry, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online |
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                                                                          |
 | `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                                                                         |
+| `--verify-sep30`            | Validate RECOVERY_SERVER /accounts endpoint and signer public keys (requires `--check-network`)                                     |
+| `--verify-sep38`            | Audit SEP-38 quote coverage, bid-ask spread, and quote expirations (requires `--check-network`)                                                                            |
 | `--crawl-peers`             | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                                                                    |
 | `--verify-overlay`          | Complete the overlay TCP handshake with each `[[VALIDATORS]]` HOST and check its network, node ID, and protocol version (requires `--check-network`)                       |
 | `--verify-dnssec`           | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                                                                     |
@@ -267,6 +288,7 @@ failure.
 | `--preset <name>`           | Start from a role's rule bundle: `validator`, `anchor-sep24`, or `issuer`                                                                                                  |
 | `-q, --quiet`               | Show errors only                                                                                                                                                           |
 | `--count`                   | Print only problem count totals                                                                                                                                            |
+| `--silent-success`          | Print nothing on stdout when a run has no diagnostics                                                                                                                      |
 | `--show-help-urls`          | Print the spec link for each finding                                                                                                                                       |
 | `--list-rules`              | Print every rule and exit                                                                                                                                                  |
 | `--completion <shell>`      | Print a `bash`, `zsh`, or `fish` completion script and exit                                                                                                                |
@@ -464,6 +486,16 @@ qualified name (`[[CURRENCIES]].display_decimals`), its type (`integer (0-7)`), 
 own description, the permitted values where SEP-1 enumerates them (`live`, `dead`, `test`,
 `private`), and a link to the section of SEP-1 that defines the field. Hovering whitespace, a
 comment, or a key SEP-1 does not define shows nothing at all.
+
+#### VS Code extension
+
+The official client lives in [`editors/vscode/`](./editors/vscode/) and is built on
+`vscode-languageclient/node`. It activates for any file named `stellar.toml` or any
+file inside `.well-known/`, launches `stellar-toml-lint --lsp` over stdio, and
+contributes the `stellar-toml.lint`, `stellar-toml.format`, and
+`stellar-toml.readiness` commands plus the `stellarToml.strict`,
+`stellarToml.domain`, and `stellarToml.rules` settings and a `$(check)`/`$(error)`
+status bar item. Package it with `npm run package:vscode` (wraps `vsce package`).
 
 ### Alerting a Slack or Discord channel
 
@@ -843,6 +875,24 @@ PROBLEMS=$(stellar-toml-lint --count public/.well-known/stellar.toml)
 echo "Linter status: $PROBLEMS"
 ```
 
+### Silent success output with `--silent-success`
+
+Pre-commit hooks, quiet build jobs, and dense CI matrices are expected to follow the Unix rule that
+silence is golden on success: a run that finds nothing should write nothing. `--silent-success` (also
+accepted as `--quiet-success`) makes the linter emit no stdout at all when the whole run has zero
+diagnostics, whatever reporter is selected:
+
+```console
+$ stellar-toml-lint stellar.toml --silent-success   # clean: no output, exit 0
+$ stellar-toml-lint stellar.toml --silent-success
+12:1  error  currencies/issuance-exclusive  …       # broken: the normal report, exit 1
+```
+
+The exit code is unchanged, so a hook only has to look at `$?`. The moment a single diagnostic exists
+the normal report comes back — errors and warnings are never hidden — and in a multi-file run only the
+files with findings are printed. `--silent-success` is a no-op for output written by the generator flags
+(`--graph`, `--generate-openapi`, `--export-ap-config`), which are explicit requests for stdout.
+
 ### GitHub step summaries
 
 GitHub Actions renders GitHub-flavored Markdown written to `$GITHUB_STEP_SUMMARY` as a status panel
@@ -1027,7 +1077,7 @@ interface Diagnostic {
 Run `stellar-toml-lint --list-rules` for the authoritative list. In summary:
 
 **File and general fields** — 100KB size limit, TOML syntax with line and column, UTF-8 BOM
-detection, `https://` on every endpoint field, and trailing-slash detection on service endpoints;
+detection, `https://` on every endpoint field, insecure `http://` URL detection (`general/insecure-http-url`, error) across all configuration fields (with exceptions for local mock environments), and trailing-slash detection on service endpoints;
 checksum-valid `SIGNING_KEY`, `URI_REQUEST_SIGNING_KEY`, `WEB_AUTH_CONTRACT_ID`, and `ACCOUNTS`;
 uppercase-only Stellar public keys; unknown fields; and empty string values in documentation fields.
 Deprecated configuration emits actionable `general/deprecated-field` warnings for `AUTH_SERVER`,
@@ -1058,7 +1108,7 @@ non-empty `[[CURRENCIES]]` list.
 **`[DOCUMENTATION]`** — completeness against what wallets weigh when listing an asset; `https://`
 URLs; `ORG_URL` matching the serving domain; attestation documents hosted on your own domain;
 `ORG_OFFICIAL_EMAIL` at the `ORG_URL` domain; E.164 phone format; handles that are handles, not URLs;
-and `ORG_GITHUB` as a valid GitHub username or `https://github.com/<username>` profile URL.
+`ORG_GITHUB` as a valid GitHub username or profile URL; and `ORG_TELEGRAM` handle or link format validation.
 
 **`[[PRINCIPALS]]`** — name and email present and well-formed; hex photo hashes of plausible length.
 **`[[CURRENCIES]]`** — code length and charset, with separate errors for codes over 12 characters
@@ -1158,6 +1208,13 @@ browser clients. A connection, TLS, timeout, or invalid-status failure emits
 `sep3/auth-server-unreachable`; a missing or unusable CORS header emits
 `sep3/missing-cors-headers`. This is an endpoint liveness and transport check, not a full signature
 verification.
+
+**History archive state validation** (with `--domain` or `--check-network`) — every declared
+`[[VALIDATORS]].HISTORY` URL is checked for `/.well-known/stellar-history.json` relative to its
+archive root. The request follows redirects and requires HTTP 200, valid JSON, an integer `version`
+of at least 1, a non-empty `server`, and a positive integer `currentLedger`. An HTTP or transport
+failure emits `validators/history-archive-unreachable` (error); invalid JSON or schema emits
+`validators/history-archive-malformed` (error). These network checks do not run for offline linting.
 
 **History publish validation** (with `--check-network`) — each validator `HISTORY` archive is
 checked for the three most recent checkpoints. The audit verifies that `ledger-*.xdr.gz`,
@@ -1327,6 +1384,16 @@ compared against `NETWORK_PASSPHRASE`:
 
 A network whose RPC did not answer is not treated as "absent", so an outage produces no finding.
 
+**Testnet contracts in a Mainnet file** (offline) — the same copy-paste mistake is caught without the
+network. Copying a staging file and updating only `NETWORK_PASSPHRASE` leaves the Soroban addresses
+behind, and a Testnet contract ID in a Mainnet file resolves to nothing on chain. When
+`NETWORK_PASSPHRASE` is exactly the Public passphrase, every `WEB_AUTH_CONTRACT_ID` and
+`[[CURRENCIES]].contract` is matched against a small denylist of known Testnet reference contracts
+(the Testnet native XLM SAC and the Circle Testnet USDC SAC), and a match emits
+`soroban/testnet-contract-on-mainnet` (error) naming the contract and the edit that fixes it. A file
+on Testnet — or on any custom network — is never flagged, so the check stays silent for the team that
+is legitimately deploying there.
+
 **Contract dependencies** (with `--check-contracts`) — a declared contract is rarely the whole
 system, and the edges it depends on are invisible in the file. Each contract's deployed WASM import
 table is read, and every import module name that decodes as a contract address becomes an edge, which
@@ -1378,6 +1445,18 @@ submits the envelopes to the compliance server, and validates response schemas a
 `revised`, `pending`, `rejected`, `action_required`). Emits `sep8/approval-server-unresponsive` (error) when unreachable,
 `sep8/invalid-response-status` (error) on unrecognized status or missing `action_url`, and `sep8/invalid-revised-tx-xdr`
 (error) when returned transaction envelopes fail XDR parsing.
+
+**SEP-38 anchor quotes and RFQ pricing engine simulator** (with `--check-network --verify-sep38`) — Queries the
+`ANCHOR_QUOTE_SERVER` the file advertises and verifies the numbers it answers with, not just that the routes answer.
+`GET /info` must list quotable assets whose `country_codes` are ISO 3166 codes a registry would recognise
+(`sep38/info-schema-invalid`, error). `GET /prices` must quote every pair built from the assets the file declares —
+each `stellar:CODE:ISSUER` leg in `[[CURRENCIES]]` and the `iso4217` side of a fiat-anchored currency — or the
+unpriced declared asset is reported (`sep38/prices-missing-declared-asset`, error). Every rate must be a positive
+number, and the reverse of each pair must agree with the forward rate inside a 15% bid-ask spread, so an inverted or
+absurd quotation is caught before a wallet sizes an order from it (`sep38/abnormal-exchange-rate-spread`, warning).
+`POST /quote` is asked for a firm and an indicative quote, and each answer must carry an `expires_at` still in the
+future (`sep38/invalid-quote-expiration`, error). Endpoint liveness, 5xx, and malformed bodies stay with the plain
+`--check-network` probe above, so nothing is reported twice.
 
 **Soroban WASM bytecode disassembler and SEP-41 conformance auditor** (with `--check-network`) — Fetches compiled WebAssembly
 bytecode for Soroban smart contracts declared under `[[CURRENCIES]].contract`, `[[CONTRACTS]]`, or `WEB_AUTH_CONTRACT_ID`.
@@ -1620,6 +1699,23 @@ matter of appending one object to a list and one fixture to a test.
 
 ## Integrations
 
+### VS Code extension
+
+Official VS Code client for `stellar.toml` files with live SEP-1 diagnostics,
+quick-fix code actions, hover documentation, SEP-1 syntax highlighting, a
+`$(check)`/`$(error)` status bar item, and the `stellar-toml.lint`,
+`stellar-toml.format`, and `stellar-toml.readiness` commands. Activates for
+`stellar.toml` and `.well-known/` files and spawns `stellar-toml-lint --lsp`
+over stdio. Configured via `stellarToml.strict`, `stellarToml.domain`, and
+`stellarToml.rules`.
+
+```bash
+npm run build:vscode
+npm run package:vscode
+```
+
+See [editors/vscode/README.md](./editors/vscode/README.md) for details.
+
 ### JetBrains IDE Plugin
 
 Official plugin for IntelliJ IDEA and WebStorm with real-time SEP-1 linting.
@@ -1704,3 +1800,54 @@ stellar-toml-lint --json-schema > stellar-toml.schema.json
   },
 }
 ```
+
+### Extended security & network checks
+
+Two additional auditors run automatically as part of `--check-network`:
+
+- **Signature state-machine validator** (`src/security/signature-state-machine.ts`,
+  rules `security/insufficient-threshold-protection` and
+  `security/unbalanced-signer-weights`) enumerates every combination of a
+  multisig signer set, computes each combination's cumulative weight, and flags
+  schemes where a single compromised key reaches the medium threshold on its
+  own, where one signer outweighs the rest combined, or where the high
+  threshold is unreachable (a deadlock). The analysis itself is offline; it
+  fires when a document (or tooling fixture) declares a `SIGNERS`/`THRESHOLDS`
+  block and is also exposed as a library API for on-chain account records.
+- **Horizon rate-limit resilience tester** (`src/network/rate-limit-tester.ts`,
+  rules `network/missing-rate-limit-headers` and
+  `network/unstandardized-rate-limit-response`) probes `HORIZON_URL` for the
+  `X-RateLimit-Limit`/`X-RateLimit-Remaining`/`X-RateLimit-Reset` headers and
+  verifies that HTTP 429 responses are returned as RFC 7807 problem details.
+  Unreachable endpoints degrade to silence so offline runs never fail hard.
+
+### Validator diversity & signing-key revocation
+
+- **Geo-distribution / ASN diversity** (`src/validators/geo-diversity.ts`, rules
+  `validators/high-asn-concentration` and
+  `validators/high-geographic-concentration`) resolves every `[[VALIDATORS]].HOST`
+  to an IP and flags quorum sets where more than a third of nodes share a single
+  ASN or country. Enable with `--check-network --audit-diversity`; ASN/country
+  enrichment reads the IP → `{ asn, country }` JSON table named by the
+  `ANCHOR_GEO_LOOKUP` environment variable (e.g. an offline MaxMind export).
+- **Signing-key revocation/rotation detector** (`src/security/key-revocation.ts`,
+  rules `security/revoked-signing-key` and `security/unrecorded-key-rotation`)
+  fetches the anchor account from Horizon under `--check-network` and flags a
+  declared `SIGNING_KEY` that has been removed or given weight 0, as well as a key
+  that has been superseded by another on-chain signer.
+
+## New Auditors
+
+### Clawback Audit (`src/rules/clawback-audit.ts`)
+
+Queries Horizon for account flags and compares with stellar.toml asset metadata to report:
+
+- `currencies/undisclosed-clawback-enabled` - clawback is enabled on chain but not disclosed in stellar.toml
+- `currencies/mismatched-auth-revocable-flag` - auth_revocable flag differs between Horizon and stellar.toml
+
+### SEP-8 Resilience Audit (`src/protocols/sep8-resilience.ts`)
+
+Measures response latency of a SEP-8 approval server over 5 sample requests and reports:
+
+- `sep8/approval-server-unresponsive` - more than 2 of 5 requests fail
+- `sep8/approval-server-high-latency` - average latency exceeds 3000ms SLA

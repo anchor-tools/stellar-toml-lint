@@ -15,6 +15,9 @@ import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import { checkCertExpiry } from './network/cert-expiry.js';
+import { checkRateLimitResilience } from './network/rate-limit-tester.js';
+import { horizonUrlFor } from './network-checks.js';
+import { checkSignatureStateMachineFromDocument } from './security/signature-state-machine.js';
 import { checkPeerPortReachability } from './validators/net-probe.js';
 import {
   formatCheckstyle,
@@ -57,16 +60,21 @@ import {
   type ContractErrorCatalogue,
 } from './soroban/errors.js';
 import { checkSep6 } from './cross-sep/sep6.js';
+import { checkHistoryArchive } from './rules/history-url-check.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkTokenBinding } from './security/token-binding.js';
 import { verifySep6Integration } from './protocols/sep6.js';
 import { verifySep31 } from './protocols/sep31.js';
 import { verifySep8 } from './protocols/sep8.js';
+import { verifySep38 } from './protocols/sep38.js';
+import { verifySep30 } from './protocols/sep30.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkArchiveDiff } from './history/archive-diff.js';
 import { checkQuorumIntersection } from './validators/quorum-solver.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
+import { checkSigningKeyRevocation } from './security/key-revocation.js';
+import { checkValidatorDiversityFromDocument } from './validators/geo-diversity.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { checkOverlayHandshake } from './overlay/handshake.js';
 import { allRules } from './rules/index.js';
@@ -124,6 +132,7 @@ interface Cli {
   color?: boolean;
   quiet: boolean;
   count: boolean;
+  silentSuccess?: boolean;
   showHelp: boolean;
   rules: RuleOverrides;
   preset?: PresetName;
@@ -131,12 +140,15 @@ interface Cli {
   failOn?: Severity;
   checkNetwork: boolean;
   auditQuorum: boolean;
+  auditDiversity?: boolean;
   followLinks: boolean;
   verifySep10: boolean;
   auditSecurity?: boolean;
   verifySep6?: boolean;
   verifySep31?: boolean;
   verifySep8?: boolean;
+  verifySep38?: boolean;
+  verifySep30: boolean;
   crawlPeers: boolean;
   verifyDnssec: boolean;
   verifyOverlay: boolean;
@@ -205,6 +217,9 @@ OPTIONS
                           quick-fix code actions, and SEP-1 hover docs)
   -q, --quiet             Report errors only
       --count             Print only problem count totals
+      --silent-success    Print nothing on stdout when a run has no diagnostics,
+                          so a clean build stays silent; errors and warnings
+                          still print as usual. --quiet-success is an alias
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL,
@@ -219,12 +234,16 @@ OPTIONS
                           ([[VALIDATORS]].QUORUM_SET or CONFIG_URL-linked
                           stellar-core.cfg) for split-brain risk and fragile
                           thresholds
+      --audit-diversity   With --check-network: resolve validator hosts and flag
+                          ASN or geographic concentration (>33% in one bucket).
+                          Enrichment uses the JSON table in ANCHOR_GEO_LOOKUP
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --audit-security    Audit cross-server token binding (SEP-10 JWT against
                           TRANSFER_SERVER_SEP0024, KYC_SERVER, DIRECT_PAYMENT_SERVER)
       --verify-sep6       Run end-to-end programmatic SEP-6 integration tester
       --verify-sep31      Audit SEP-31 cross-border payment lifecycle and schema
       --verify-sep8       Simulate SEP-8 regulated asset compliance approval server interaction
+      --verify-sep38      Audit SEP-38 quote coverage, bid-ask spread, and quote expirations
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-overlay    With --check-network: complete the overlay TCP handshake
                           with each [[VALIDATORS]] HOST and check its network,
@@ -403,13 +422,37 @@ async function main(argv: string[]): Promise<number> {
                   domain: cli.domain,
                 })
               : []),
+            ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
+            ...(cli.auditDiversity && cli.mockFixtures === undefined
+              ? await checkValidatorDiversityFromDocument(domainResult.parsed, { rules })
+              : []),
+            // Offline signer/threshold analysis (only fires for documents that
+            // declare a SIGNERS/THRESHOLDS block).
+            ...checkSignatureStateMachineFromDocument(domainResult.parsed, { rules }),
+            ...(cli.mockFixtures === undefined
+              ? await checkRateLimitResilience({
+                  rules,
+                  horizonUrl: horizonUrlFor(
+                    typeof domainResult.parsed.NETWORK_PASSPHRASE === 'string'
+                      ? domainResult.parsed.NETWORK_PASSPHRASE
+                      : undefined,
+                  ),
+                  fetchImpl,
+                })
+              : []),
             ...(cli.verifySep6
               ? await verifySep6Integration(domainResult.parsed, fetchImpl, { rules })
               : []),
             ...(cli.verifySep31
               ? await verifySep31(domainResult.parsed, fetchImpl, { rules })
               : []),
+            ...(cli.verifySep30 && domainResult.parsed?.RECOVERY_SERVER !== undefined
+              ? await verifySep30(domainResult.parsed, fetchImpl, { rules })
+              : []),
             ...(cli.verifySep8 ? await verifySep8(domainResult.parsed, fetchImpl, { rules }) : []),
+            ...(cli.verifySep38
+              ? await verifySep38(domainResult.parsed, fetchImpl, { rules })
+              : []),
             ...(cli.crawlPeers && cli.mockFixtures === undefined
               ? await checkOverlayPeers(domainResult.parsed, { rules })
               : []),
@@ -519,6 +562,7 @@ async function main(argv: string[]): Promise<number> {
             // explicit opt-in for a local file.
             if (cli.checkNetwork || cli.domain !== undefined) {
               networkDiagnostics.push(
+                ...(await checkHistoryArchive(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkSep6(fileResult.parsed, fetchImpl, { rules })),
               );
             }
@@ -546,6 +590,10 @@ async function main(argv: string[]): Promise<number> {
                   rules,
                   ...(cli.domain === undefined ? {} : { domain: cli.domain }),
                 })),
+                ...(await checkSigningKeyRevocation(fileResult.parsed, { rules, fetchImpl })),
+                ...(cli.auditDiversity && cli.mockFixtures === undefined
+                  ? await checkValidatorDiversityFromDocument(fileResult.parsed, { rules })
+                  : []),
               );
             }
 
@@ -561,9 +609,21 @@ async function main(argv: string[]): Promise<number> {
               );
             }
 
+            if (cli.verifySep30 && cli.checkNetwork && fileResult.parsed?.RECOVERY_SERVER !== undefined) {
+              networkDiagnostics.push(
+                ...(await verifySep30(fileResult.parsed, fetchImpl, { rules })),
+              );
+            }
+
             if (cli.verifySep8 && cli.checkNetwork) {
               networkDiagnostics.push(
                 ...(await verifySep8(fileResult.parsed, fetchImpl, { rules })),
+              );
+            }
+
+            if (cli.verifySep38 && cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await verifySep38(fileResult.parsed, fetchImpl, { rules })),
               );
             }
             if (cli.checkNetwork) {
@@ -598,6 +658,19 @@ async function main(argv: string[]): Promise<number> {
                   ? await checkDnsIntegrity(fileResult.parsed, fetchImpl, {
                       rules,
                       ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                    })
+                  : []),
+                // Offline signer/threshold analysis (see the domain path above).
+                ...checkSignatureStateMachineFromDocument(fileResult.parsed, { rules }),
+                ...(cli.mockFixtures === undefined
+                  ? await checkRateLimitResilience({
+                      rules,
+                      horizonUrl: horizonUrlFor(
+                        typeof fileResult.parsed.NETWORK_PASSPHRASE === 'string'
+                          ? fileResult.parsed.NETWORK_PASSPHRASE
+                          : undefined,
+                      ),
+                      fetchImpl,
                     })
                   : []),
                 ...(cli.crawlPeers && cli.mockFixtures === undefined
@@ -834,13 +907,28 @@ async function main(argv: string[]): Promise<number> {
         { color, ...(cli.quiet ? { filter: 'error' as const } : {}) },
       );
     } else if (!cli.exportApConfig) {
-      if (cli.count) {
+      // `--silent-success` follows the Unix "silence is golden" contract: a run
+      // with no diagnostics writes nothing at all, so a hook or a script only
+      // has to look at the exit code. The moment there is a diagnostic the
+      // normal report comes back, so nothing a reader needs is ever hidden.
+      const totalDiagnostics = results.reduce(
+        (sum, { result }) => sum + result.diagnostics.length,
+        0,
+      );
+      const silent = cli.silentSuccess === true && totalDiagnostics === 0;
+
+      if (!silent && cli.count) {
         process.stdout.write(formatCount(results, { color }));
-      } else {
+      } else if (!silent) {
         for (const { name, result } of results) {
           const filtered = cli.quiet
             ? { ...result, diagnostics: result.diagnostics.filter((d) => d.severity === 'error') }
             : result;
+
+          // Under --quiet a file whose only findings are warnings has nothing
+          // left to print. --silent-success skips those files too, while the
+          // files that do have something to read still report as usual.
+          if (cli.silentSuccess && filtered.diagnostics.length === 0) continue;
 
           process.stdout.write(render(filtered, name, cli, color));
         }
@@ -1024,8 +1112,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     rules: {},
     checkNetwork: false,
     auditQuorum: false,
+    auditDiversity: false,
     followLinks: false,
     verifySep10: false,
+    verifySep38: false,
     crawlPeers: false,
     verifyDnssec: false,
     verifyOverlay: false,
@@ -1133,6 +1223,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.auditQuorum = true;
         break;
 
+      case '--audit-diversity':
+        cli.auditDiversity = true;
+        break;
+
       case '--verify-sep10':
         cli.verifySep10 = true;
         break;
@@ -1151,6 +1245,14 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-sep8':
         cli.verifySep8 = true;
+        break;
+
+      case '--verify-sep38':
+        cli.verifySep38 = true;
+        break;
+
+      case '--verify-sep30':
+        cli.verifySep30 = true;
         break;
 
       case '--crawl-peers':
@@ -1295,6 +1397,11 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--count':
         cli.count = true;
+        break;
+
+      case '--silent-success':
+      case '--quiet-success':
+        cli.silentSuccess = true;
         break;
 
       case '--show-help-urls':
