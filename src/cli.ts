@@ -71,7 +71,11 @@ import { verifySep30 } from './protocols/sep30.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkArchiveDiff } from './history/archive-diff.js';
-import { checkQuorumIntersection } from './validators/quorum-solver.js';
+import {
+  auditQuorumSets,
+  formatQuorumSummaryTable,
+  simulateQuorumBft,
+} from './validators/quorum.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkSigningKeyRevocation } from './security/key-revocation.js';
 import { checkSigningKeyMultisig } from './security/multisig.js';
@@ -409,8 +413,8 @@ async function main(argv: string[]): Promise<number> {
           const networkDiagnostics: Diagnostic[] = [
             ...(await checkHistoryPublish(domainResult.parsed, fetchImpl, { rules })),
             ...(await checkArchiveDiff(domainResult.parsed, fetchImpl, { rules })),
-            ...(cli.auditQuorum
-              ? await checkQuorumIntersection(domainResult.parsed, fetchImpl, { rules })
+            ...(cli.auditQuorum || cli.auditSecurity
+              ? await auditQuorumSets(domainResult.parsed, fetchImpl, { rules })
               : []),
             ...(cli.verifyDnssec
               ? await checkDnsIntegrity(domainResult.parsed, fetchImpl, {
@@ -663,8 +667,8 @@ async function main(argv: string[]): Promise<number> {
                   : []),
                 ...(await checkHistoryPublish(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkArchiveDiff(fileResult.parsed, fetchImpl, { rules })),
-                ...(cli.auditQuorum
-                  ? await checkQuorumIntersection(fileResult.parsed, fetchImpl, { rules })
+                ...(cli.auditQuorum || cli.auditSecurity
+                  ? await auditQuorumSets(fileResult.parsed, fetchImpl, { rules })
                   : []),
                 ...(cli.verifyDnssec
                   ? await checkDnsIntegrity(fileResult.parsed, fetchImpl, {
@@ -991,6 +995,24 @@ async function main(argv: string[]): Promise<number> {
             healthCheckFailed = true;
           }
         }
+      }
+    }
+
+    // Quorum summary table — printed when --audit-quorum (or --audit-security)
+    // is active and at least one result has a parsed document. Uses the text
+    // format only; appending prose to JSON / SARIF would break those parsers.
+    if ((cli.auditQuorum || cli.auditSecurity) && cli.format === 'text') {
+      for (const { result } of results) {
+        if (!result.parsed) continue;
+        const bftResults = await simulateQuorumBft(
+          result.parsed as Record<string, unknown>,
+          fetchImpl,
+        );
+        if (bftResults.length === 0) continue;
+        const intersectionSafe = !result.diagnostics.some(
+          (d) => d.rule === 'validators/quorum-intersection-failure',
+        );
+        process.stdout.write(formatQuorumSummaryTable(bftResults, intersectionSafe));
       }
     }
 
