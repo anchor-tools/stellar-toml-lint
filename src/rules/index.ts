@@ -26,6 +26,7 @@ import { sorobanErrorRules } from '../soroban/errors.js';
 import { multiNetworkRules } from '../soroban/multi-network.js';
 import { dependencyGraphRules } from '../soroban/dependency-graph.js';
 import { sep12Rules } from './sep12-schema.js';
+import { sep10Rules } from '../protocols/sep10.js';
 import { sep6Rules } from '../cross-sep/sep6.js';
 import { corsPreflightRules } from '../network/cors-preflight.js';
 import { overlayCrawlerRules } from '../overlay/crawler-rules.js';
@@ -64,6 +65,7 @@ export const allRules: Rule[] = [
   ...generalRules,
   insecureHttpRule,
   ...deprecationRules,
+  ...sep10Rules,
   ...documentationRules,
   ...principalRules,
   ...currencyRules,
