@@ -67,6 +67,7 @@ import { verifySep6Integration } from './protocols/sep6.js';
 import { verifySep31 } from './protocols/sep31.js';
 import { verifySep8 } from './protocols/sep8.js';
 import { verifySep38 } from './protocols/sep38.js';
+  import { verifySep12 } from './protocols/sep12.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkArchiveDiff } from './history/archive-diff.js';
@@ -616,6 +617,12 @@ async function main(argv: string[]): Promise<number> {
             if (cli.verifySep38 && cli.checkNetwork) {
               networkDiagnostics.push(
                 ...(await verifySep38(fileResult.parsed, fetchImpl, { rules })),
+              );
+            }
+
+            if (cli.verifySep12 && cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await verifySep12(fileResult.parsed, fetchImpl, { rules })),
               );
             }
             if (cli.checkNetwork) {
@@ -1227,6 +1234,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-sep38':
         cli.verifySep38 = true;
+        break;
+
+      case '--verify-sep12':
+        cli.verifySep12 = true;
         break;
 
       case '--crawl-peers':
