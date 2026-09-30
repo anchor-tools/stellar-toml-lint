@@ -1,23 +1,107 @@
 {
-  "name": "stellar-toml-syntax",
-  "displayName": "Stellar TOML Syntax",
-  "description": "Syntax highlighting for stellar.toml files.",
+  "name": "vscode-stellar-toml",
+  "displayName": "Stellar TOML Lint",
+  "description": "Offline SEP-1 linting for stellar.toml via the stellar-toml-lint language server.",
   "version": "0.1.0",
+  "publisher": "anchor-tools",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anchor-tools/stellar-toml-lint.git",
+    "directory": "editors/vscode"
+  },
+  "homepage": "https://github.com/anchor-tools/stellar-toml-lint#readme",
+  "bugs": {
+    "url": "https://github.com/anchor-tools/stellar-toml-lint/issues"
+  },
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": "^1.90.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Linters"
   ],
+  "activationEvents": [
+    "onLanguage:toml",
+    "workspaceContains:**/stellar.toml",
+    "workspaceContains:**/.well-known/**"
+  ],
+  "main": "./out/extension.js",
   "contributes": {
     "grammars": [
       {
         "scopeName": "stellar.toml.injection",
-        "path": "../../syntaxes/stellar-toml.tmLanguage.json",
+        "path": "./syntaxes/stellar-toml.tmLanguage.json",
         "injectTo": [
           "source.toml"
         ]
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "stellar-toml.lint",
+        "title": "Stellar TOML: Lint active document",
+        "category": "Stellar TOML"
+      },
+      {
+        "command": "stellar-toml.format",
+        "title": "Stellar TOML: Apply safe fixes",
+        "category": "Stellar TOML"
+      },
+      {
+        "command": "stellar-toml.readiness",
+        "title": "Stellar TOML: Show wallet readiness score",
+        "category": "Stellar TOML"
+      }
+    ],
+    "configuration": {
+      "title": "Stellar TOML Lint",
+      "properties": {
+        "stellarToml.strict": {
+          "type": "boolean",
+          "default": false,
+          "description": "Treat warnings as errors when computing the document status."
+        },
+        "stellarToml.domain": {
+          "type": "string",
+          "default": "",
+          "description": "Serving domain used for same-domain checks (ORG_URL, CORS). Empty disables them."
+        },
+        "stellarToml.rules": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "off",
+              "error",
+              "warning",
+              "info"
+            ]
+          },
+          "description": "Per-rule severity overrides, e.g. { \"general/unknown-field\": \"off\" }."
+        },
+        "stellarToml.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Explicit path to the stellar-toml-lint CLI (dist/cli.js). Empty auto-discovers it next to the extension or falls back to stellar-toml-lint on PATH."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -p ./ --watch",
+    "package": "vsce package",
+    "vscode:prepublish": "npm run compile"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.7.2"
   }
 }

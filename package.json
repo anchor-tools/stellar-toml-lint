@@ -54,6 +54,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && npm run build:browser",
     "build:browser": "node scripts/build-browser.js",
+    "build:vscode": "tsc -p editors/vscode/tsconfig.json",
+    "package:vscode": "npm run build:vscode && npx --prefix editors/vscode vsce package --out ../../stellar-toml-lint.vsix",
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -62,6 +64,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "corpus": "vite-node test/corpus/run.ts",
+    "corpus:update": "vite-node test/corpus/run.ts --update",
     "prepublishOnly": "npm run build",
     "bench": "npx tsx benchmarks/runner.ts"
   },
@@ -80,6 +84,7 @@
     "prettier": "^3.4.2",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.0",
+    "vite-node": "^2.1.9",
     "vitest": "^2.1.8",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2",

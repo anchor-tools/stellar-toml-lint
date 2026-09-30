@@ -88,15 +88,33 @@ export const DEPRECATED_FIELDS: Record<string, DeprecatedField> = {
   },
 };
 
-/** Every field SEP-1 defines at the top level of the document. */
-export const KNOWN_GLOBAL_FIELDS = new Set<string>([
+/**
+ * Every global field, in the order SEP-1's "General Information" table lists
+ * them. The order matters to `--format-file`, which emits fields in spec order
+ * so two anchors' files line up when compared side by side.
+ */
+export const GLOBAL_FIELDS = [
   'VERSION',
   'NETWORK_PASSPHRASE',
+  'FEDERATION_SERVER',
+  'AUTH_SERVER',
+  'TRANSFER_SERVER',
+  'TRANSFER_SERVER_SEP0024',
+  'KYC_SERVER',
+  'WEB_AUTH_ENDPOINT',
+  'WEB_AUTH_FOR_CONTRACTS_ENDPOINT',
+  'WEB_AUTH_CONTRACT_ID',
+  'SIGNING_KEY',
   'HORIZON_URL',
   'ACCOUNTS',
-  'WEB_AUTH_CONTRACT_ID',
-  ...HTTPS_ENDPOINT_FIELDS,
-  ...ACCOUNT_ID_FIELDS,
+  'URI_REQUEST_SIGNING_KEY',
+  'DIRECT_PAYMENT_SERVER',
+  'ANCHOR_QUOTE_SERVER',
+] as const;
+
+/** Every field SEP-1 defines at the top level of the document. */
+export const KNOWN_GLOBAL_FIELDS = new Set<string>([
+  ...GLOBAL_FIELDS,
   ...Object.keys(DEPRECATED_FIELDS),
   // Tables, handled by their own rule sets.
   'DOCUMENTATION',
@@ -105,8 +123,14 @@ export const KNOWN_GLOBAL_FIELDS = new Set<string>([
   'VALIDATORS',
 ]);
 
-/** Every field SEP-1 defines in `[DOCUMENTATION]`. */
-export const KNOWN_DOCUMENTATION_FIELDS = new Set<string>([
+/**
+ * SEP-1's tables and array-of-tables, in spec order. Sections outside this
+ * list sort after all of them, keeping their original relative order.
+ */
+export const TABLE_ORDER = ['DOCUMENTATION', 'PRINCIPALS', 'CURRENCIES', 'VALIDATORS'] as const;
+
+/** `[DOCUMENTATION]` fields, in spec order. */
+export const DOCUMENTATION_FIELDS = [
   'ORG_NAME',
   'ORG_DBA',
   'ORG_URL',
@@ -119,6 +143,7 @@ export const KNOWN_DOCUMENTATION_FIELDS = new Set<string>([
   'ORG_KEYBASE',
   'ORG_TWITTER',
   'ORG_GITHUB',
+  'ORG_TELEGRAM',
   'ORG_OFFICIAL_EMAIL',
   'ORG_SUPPORT_EMAIL',
   'ORG_LICENSING_AUTHORITY',
@@ -126,10 +151,10 @@ export const KNOWN_DOCUMENTATION_FIELDS = new Set<string>([
   'ORG_LICENSE_NUMBER',
   'ORG_TERMS_OF_SERVICE',
   'ORG_PRIVACY_POLICY',
-]);
+] as const;
 
-/** Every field SEP-1 defines in a `[[PRINCIPALS]]` entry. */
-export const KNOWN_PRINCIPAL_FIELDS = new Set<string>([
+/** `[[PRINCIPALS]]` fields, in spec order. */
+export const PRINCIPAL_FIELDS = [
   'name',
   'email',
   'keybase',
@@ -138,10 +163,10 @@ export const KNOWN_PRINCIPAL_FIELDS = new Set<string>([
   'github',
   'id_photo_hash',
   'verification_photo_hash',
-]);
+] as const;
 
-/** Every field SEP-1 defines in a `[[CURRENCIES]]` entry. */
-export const KNOWN_CURRENCY_FIELDS = new Set<string>([
+/** `[[CURRENCIES]]` fields, in spec order. */
+export const CURRENCY_FIELDS = [
   'code',
   'issuer',
   'contract',
@@ -167,16 +192,22 @@ export const KNOWN_CURRENCY_FIELDS = new Set<string>([
   'approval_server',
   'approval_criteria',
   'toml',
-]);
+] as const;
+
+/** `[[VALIDATORS]]` fields, in spec order. */
+export const VALIDATOR_FIELDS = ['ALIAS', 'DISPLAY_NAME', 'PUBLIC_KEY', 'HOST', 'HISTORY'] as const;
+
+/** Every field SEP-1 defines in `[DOCUMENTATION]`. */
+export const KNOWN_DOCUMENTATION_FIELDS = new Set<string>(DOCUMENTATION_FIELDS);
+
+/** Every field SEP-1 defines in a `[[PRINCIPALS]]` entry. */
+export const KNOWN_PRINCIPAL_FIELDS = new Set<string>(PRINCIPAL_FIELDS);
+
+/** Every field SEP-1 defines in a `[[CURRENCIES]]` entry. */
+export const KNOWN_CURRENCY_FIELDS = new Set<string>(CURRENCY_FIELDS);
 
 /** Every field SEP-1 defines in a `[[VALIDATORS]]` entry. */
-export const KNOWN_VALIDATOR_FIELDS = new Set<string>([
-  'ALIAS',
-  'DISPLAY_NAME',
-  'PUBLIC_KEY',
-  'HOST',
-  'HISTORY',
-]);
+export const KNOWN_VALIDATOR_FIELDS = new Set<string>(VALIDATOR_FIELDS);
 
 /**
  * stellar-core config keywords that cannot be reused as a `[[VALIDATORS]]` alias.
@@ -543,6 +574,13 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
     name: 'ORG_GITHUB',
     type: 'string',
     description: "Your organization's Github account.",
+    anchor: 'organization-documentation',
+  },
+  {
+    section: 'DOCUMENTATION',
+    name: 'ORG_TELEGRAM',
+    type: 'string',
+    description: "Your organization's Telegram community handle or link.",
     anchor: 'organization-documentation',
   },
   {

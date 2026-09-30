@@ -9,6 +9,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--format-file` rewrites a `stellar.toml` in place into a canonical layout: SEP-1 field order,
+  sections in spec order, single spaces around `=`, one blank line between sections, and consistent
+  quoting. Comments and string contents are preserved. The rewrite is idempotent, is proven not to
+  change the parsed document before it is written, and leaves a file that does not parse byte-for-byte
+  untouched with a positioned error. Also exported as `formatToml()`.
+- A regression corpus (`npm run corpus`): a catalogue of real, published `stellar.toml` files is
+  fetched, linted, and diffed against committed snapshots, so any change in the linter's behaviour on
+  real-world input shows up as a reviewable diff instead of as a surprise. Unreachable hosts are
+  reported without failing the run, and a scheduled workflow uploads the diff as an artifact. See
+  `test/corpus/README.md`.
 - A lossless, comment-preserving Concrete Syntax Tree parser (`src/cst/`) now backs parsing in
   `lint`, replacing the `smol-toml` call. Every token, trivia span, comment, quoting style, and
   whitespace run is retained, and serializing an unmodified tree reproduces the source
@@ -39,6 +49,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   matching Horizon's `core_latest_ledger`, and the archive checkpoint hash against the Horizon
   ledger hash for the same sequence — so a stalled or rebuilt-out-of-sync archive is caught before
   a relying peer or wallet falls behind (#86).
+- `history/bucket-download-failed`, `history/bucket-hash-mismatch`, and
+  `history/bucket-xdr-corrupted` (all errors) under `--check-network --verify-buckets`: a sample of
+  the `currentBuckets` each validator `HISTORY` archive declares is downloaded from the
+  content-addressed `bucket/xx/yy/zz/bucket-<sha256>.xdr.gz` tree, gunzipped, verified against the
+  SHA-256 its file name encodes, and decoded as a stream of XDR `BucketEntry` values — so a
+  truncated, altered, or bit-rotted bucket that still leaves the HAS intact is caught before a
+  catching-up node crashes on it (#87).
 
 - `network/image-unreachable`, `network/image-cors`, `network/image-content-type`, and
   `network/image-max-size` (all warnings) under `--domain`: the branding images wallets actually

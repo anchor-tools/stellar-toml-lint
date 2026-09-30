@@ -1,5 +1,7 @@
 node_modules/
 dist/
+editors/vscode/out/
+*.vsix
 coverage/
 *.tsbuildinfo
 
@@ -14,3 +16,7 @@ npm-debug.log*
 .env
 .env.*
 !.env.example
+
+# Corpus harness: local fetch cache and the snapshot diff it writes for CI.
+test/corpus/.cache/
+test/corpus/.diff/

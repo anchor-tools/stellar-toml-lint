@@ -13,8 +13,10 @@ import {
 import { emptyStringValuesRule } from './empty-values.js';
 import { githubHandleRules } from './github-handle.js';
 import { twitterHandleRules } from './twitter-handle.js';
+import { telegramHandleRules } from './telegram-handle.js';
 import { trailingSlashRule } from './trailing-slash.js';
 import { uppercaseKeyRules } from './uppercase-keys.js';
+import { whitespaceRules } from './whitespace.js';
 
 /**
  * The `WEB_AUTH_CONTRACT_ID` when it is a valid C... id, with its file path,
@@ -31,6 +33,7 @@ export function webAuthContractIdOf(
 
 /** Rules covering file-level constraints and the global (untabled) fields. */
 export const generalRules: Rule[] = [
+  ...whitespaceRules,
   ...uppercaseKeyRules,
   trailingSlashRule,
   {
@@ -507,4 +510,5 @@ export const generalRules: Rule[] = [
   emptyStringValuesRule,
   ...githubHandleRules,
   ...twitterHandleRules,
+  ...telegramHandleRules,
 ];

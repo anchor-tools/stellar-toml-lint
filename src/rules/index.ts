@@ -1,8 +1,14 @@
 import type { Rule } from '../types.js';
 import { generalRules } from './general.js';
+import { telegramHandleRules } from './telegram-handle.js';
 import { documentationRules } from './documentation.js';
 import { principalRules } from './principals.js';
-import { currencyRules, sep41MetadataRules, collateralSigFormatRules } from './currencies.js';
+import {
+  currencyRules,
+  sep41MetadataRules,
+  collateralSigFormatRules,
+  duplicateCurrencyRules,
+} from './currencies.js';
 import { regulatedFlagRules } from './regulated-flags.js';
 import { validatorRules } from './validators.js';
 import { validatorDedupRules } from './validator-dedup.js';
@@ -27,7 +33,9 @@ import { overlayHandshakeRules } from '../overlay/handshake.js';
 import { cryptoAuditorRules } from '../overlay/crypto-auditor.js';
 import { historyPublishRules } from '../history/publish-validator.js';
 import { archiveDiffRules } from '../history/archive-diff.js';
+import { bucketAuditorRules } from '../history/bucket-auditor.js';
 import { quorumSolverRules } from '../validators/quorum-solver.js';
+import { quorumAuditRules } from '../validators/quorum.js';
 import { dnsIntegrityRules } from '../security/dns-integrity.js';
 import { certExpiryRules } from '../network/cert-expiry.js';
 import { peerPortRule } from '../validators/net-probe.js';
@@ -99,7 +107,9 @@ export const allRules: Rule[] = [
   ...cryptoAuditorRules,
   ...historyPublishRules,
   ...archiveDiffRules,
+  ...bucketAuditorRules,
   ...quorumSolverRules,
+  ...quorumAuditRules,
   ...dnsIntegrityRules,
   ...certExpiryRules,
   peerPortRule,
@@ -114,11 +124,13 @@ export const ruleIds: string[] = allRules.map((r) => r.id).sort();
 
 export {
   generalRules,
+  telegramHandleRules,
   deprecationRules,
   documentationRules,
   principalRules,
   currencyRules,
   collateralSigFormatRules,
+  duplicateCurrencyRules,
   fixedSupplyLockRules,
   regulatedFlagRules,
   maxDecimalsRules,
@@ -143,7 +155,9 @@ export {
   cryptoAuditorRules,
   historyPublishRules,
   archiveDiffRules,
+  bucketAuditorRules,
   quorumSolverRules,
+  quorumAuditRules,
   dnsIntegrityRules,
   certExpiryRules,
   peerPortRule,

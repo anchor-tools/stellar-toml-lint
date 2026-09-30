@@ -341,6 +341,7 @@ export async function lintDomain(
     [
       ...diagnostics,
       ...images,
+      ...historyDiagnostics,
       ...fileResult.diagnostics,
       ...historyDiagnostics,
       ...orgUrlDiagnostics,

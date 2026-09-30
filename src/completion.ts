@@ -96,6 +96,7 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--verify-sep31', description: 'Audit SEP-31 cross-border payment lifecycle' },
   { long: '--verify-sep38', description: 'Audit SEP-38 quotes, spreads, and expirations' },
   { long: '--crawl-peers', description: 'Discover and audit overlay peers' },
+  { long: '--verify-buckets', description: 'Hash- and XDR-verify published archive buckets' },
   { long: '--verify-overlay', description: 'Handshake with each validator over the overlay' },
   { long: '--verify-dnssec', description: 'Compare DNSSEC-validating DNS resolvers' },
   { long: '--check-contracts', description: 'Verify Soroban contracts on chain' },

@@ -10,6 +10,8 @@
  * ```
  */
 export { lint, lintDomain } from './lint.js';
+export { formatToml } from './format-file.js';
+export type { FormatResult } from './format-file.js';
 export { lspMain } from './lsp.js';
 export {
   parseCst,
@@ -225,6 +227,26 @@ export {
   ARCHIVE_LAG_ERROR_LEDGERS,
 } from './history/archive-diff.js';
 export type { ArchiveDiffOptions } from './history/archive-diff.js';
+export {
+  checkBucketIntegrity,
+  checkBucketAudit,
+  checkBucketHashes,
+  verifyBuckets,
+  bucketReferences,
+  bucketHashFromName,
+  bucketPathFor,
+  isBucketEntryStream,
+  sampleBuckets,
+  auditBucketFile,
+  bucketAuditorRules,
+  bucketAuditorRuleIds,
+  BUCKET_DOWNLOAD_FAILED_RULE,
+  BUCKET_HASH_MISMATCH_RULE,
+  BUCKET_XDR_CORRUPTED_RULE,
+  DEFAULT_BUCKET_SAMPLE_COUNT,
+  DEFAULT_MAX_BUCKET_BYTES,
+} from './history/bucket-auditor.js';
+export type { BucketAuditorOptions, BucketReference } from './history/bucket-auditor.js';
 export {
   checkQuorumIntersection,
   quorumSolverRules,
@@ -465,11 +487,25 @@ export {
   checkSigningKeyMultisig,
   multisigRules,
   multisigRuleIds,
+  SECURITY_SIGNING_KEY_INSUFFICIENT_WEIGHT,
   SECURITY_SIGNING_KEY_SINGLE_SIGNATURE,
   SECURITY_SIGNING_KEY_UNUSABLE,
+  SECURITY_SINGLE_SIGNER_HIGH_THRESHOLD,
+  SECURITY_UNREACHABLE_THRESHOLD,
 } from './security/multisig.js';
 export type {
   HorizonSigner as MultisigHorizonSigner,
   MultisigAnalysisInput,
   MultisigAuditOptions,
 } from './security/multisig.js';
+
+export {
+  analyzeCtCertificates,
+  checkCertificateTransparency,
+  checkCertificateTransparencyFromDocument,
+  ctAuditorRules,
+  ctAuditorRuleIds,
+  SECURITY_MISSING_SCT_TIMESTAMPS,
+  SECURITY_UNRECOGNIZED_CA_IN_CT_LOGS,
+} from './security/ct-auditor.js';
+export type { CtCertificate, CtAuditOptions } from './security/ct-auditor.js';

@@ -67,14 +67,21 @@ import { verifySep6Integration } from './protocols/sep6.js';
 import { verifySep31 } from './protocols/sep31.js';
 import { verifySep8 } from './protocols/sep8.js';
 import { verifySep38 } from './protocols/sep38.js';
-  import { verifySep12 } from './protocols/sep12.js';
+import { verifySep12 } from './protocols/sep12.js';
+import { verifySep30 } from './protocols/sep30.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkArchiveDiff } from './history/archive-diff.js';
-import { checkQuorumIntersection } from './validators/quorum-solver.js';
+import { checkBucketIntegrity } from './history/bucket-auditor.js';
+import {
+  auditQuorumSets,
+  formatQuorumSummaryTable,
+  simulateQuorumBft,
+} from './validators/quorum.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkSigningKeyRevocation } from './security/key-revocation.js';
 import { checkSigningKeyMultisig } from './security/multisig.js';
+import { checkCertificateTransparencyFromDocument } from './security/ct-auditor.js';
 import { checkValidatorDiversityFromDocument } from './validators/geo-diversity.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { checkOverlayHandshake } from './overlay/handshake.js';
@@ -105,6 +112,8 @@ import {
 } from './codemod/migrate.js';
 import { applyFixes } from './fix.js';
 import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
+import { formatToml } from './format-file.js';
+import type { FormatResult } from './format-file.js';
 
 const VERSION = '0.1.0';
 const DEFAULT_PATH = 'stellar.toml';
@@ -127,6 +136,7 @@ interface Cli {
   paths: string[];
   domain?: string;
   format: Format;
+  formatFile: boolean;
   healthCheck?: boolean;
   strict: boolean;
   watch?: boolean;
@@ -149,9 +159,11 @@ interface Cli {
   verifySep31?: boolean;
   verifySep8?: boolean;
   verifySep38?: boolean;
+  verifySep30?: boolean;
   crawlPeers: boolean;
   verifyDnssec: boolean;
   verifyOverlay: boolean;
+  verifyBuckets: boolean;
   badgeSvg?: string;
   badgeJson?: string;
   exportApConfig?: boolean;
@@ -191,6 +203,7 @@ USAGE
                                          expanding it (or failing to)
   stellar-toml-lint --domain <domain>    Fetch and lint https://<domain>/.well-known/stellar.toml
   cat stellar.toml | stellar-toml-lint - Lint stdin
+  stellar-toml-lint --format-file <file> Rewrite the file in canonical SEP-1 layout
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type,
@@ -201,6 +214,9 @@ OPTIONS
                           html, checkstyle, markdown (for GitHub step
                           summaries), or pr-comment (for the aggregate
                           pull-request comment)
+      --format-file       Rewrite files in place: SEP-1 field order, consistent
+                          quoting, comments preserved. Distinct from --format
+                          (a reporter).
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
       --fail-on <sev>     Exit 1 when any diagnostic meets or exceeds <sev>:
@@ -245,6 +261,9 @@ OPTIONS
       --verify-sep8       Simulate SEP-8 regulated asset compliance approval server interaction
       --verify-sep38      Audit SEP-38 quote coverage, bid-ask spread, and quote expirations
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
+      --verify-buckets    With --check-network: download a sample of the archive
+                          buckets a validator publishes, verify each against the
+                          SHA-256 in its name, and decode its XDR entries
       --verify-overlay    With --check-network: complete the overlay TCP handshake
                           with each [[VALIDATORS]] HOST and check its network,
                           node ID, and protocol version
@@ -367,6 +386,8 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
+  if (cli.formatFile) return formatFiles(cli);
+
   const color = cli.color ?? shouldUseColor();
 
   const runLint = async (cli: Cli, color: boolean): Promise<number> => {
@@ -407,8 +428,11 @@ async function main(argv: string[]): Promise<number> {
           const networkDiagnostics: Diagnostic[] = [
             ...(await checkHistoryPublish(domainResult.parsed, fetchImpl, { rules })),
             ...(await checkArchiveDiff(domainResult.parsed, fetchImpl, { rules })),
-            ...(cli.auditQuorum
-              ? await checkQuorumIntersection(domainResult.parsed, fetchImpl, { rules })
+            ...(cli.verifyBuckets
+              ? await checkBucketIntegrity(domainResult.parsed, fetchImpl, { rules })
+              : []),
+            ...(cli.auditQuorum || cli.auditSecurity
+              ? await auditQuorumSets(domainResult.parsed, fetchImpl, { rules })
               : []),
             ...(cli.verifyDnssec
               ? await checkDnsIntegrity(domainResult.parsed, fetchImpl, {
@@ -424,6 +448,10 @@ async function main(argv: string[]): Promise<number> {
               : []),
             ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkSigningKeyMultisig(domainResult.parsed, { rules, fetchImpl })),
+            ...(await checkCertificateTransparencyFromDocument(domainResult.parsed, {
+              rules,
+              fetchImpl,
+            })),
             ...(cli.auditDiversity && cli.mockFixtures === undefined
               ? await checkValidatorDiversityFromDocument(domainResult.parsed, { rules })
               : []),
@@ -446,6 +474,9 @@ async function main(argv: string[]): Promise<number> {
               : []),
             ...(cli.verifySep31
               ? await verifySep31(domainResult.parsed, fetchImpl, { rules })
+              : []),
+            ...(cli.verifySep30 && domainResult.parsed?.RECOVERY_SERVER !== undefined
+              ? await verifySep30(domainResult.parsed, fetchImpl, { rules })
               : []),
             ...(cli.verifySep8 ? await verifySep8(domainResult.parsed, fetchImpl, { rules }) : []),
             ...(cli.verifySep38
@@ -608,6 +639,16 @@ async function main(argv: string[]): Promise<number> {
               );
             }
 
+            if (
+              cli.verifySep30 &&
+              cli.checkNetwork &&
+              fileResult.parsed?.RECOVERY_SERVER !== undefined
+            ) {
+              networkDiagnostics.push(
+                ...(await verifySep30(fileResult.parsed, fetchImpl, { rules })),
+              );
+            }
+
             if (cli.verifySep8 && cli.checkNetwork) {
               networkDiagnostics.push(
                 ...(await verifySep8(fileResult.parsed, fetchImpl, { rules })),
@@ -650,8 +691,11 @@ async function main(argv: string[]): Promise<number> {
                   : []),
                 ...(await checkHistoryPublish(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkArchiveDiff(fileResult.parsed, fetchImpl, { rules })),
-                ...(cli.auditQuorum
-                  ? await checkQuorumIntersection(fileResult.parsed, fetchImpl, { rules })
+                ...(cli.verifyBuckets
+                  ? await checkBucketIntegrity(fileResult.parsed, fetchImpl, { rules })
+                  : []),
+                ...(cli.auditQuorum || cli.auditSecurity
+                  ? await auditQuorumSets(fileResult.parsed, fetchImpl, { rules })
                   : []),
                 ...(cli.verifyDnssec
                   ? await checkDnsIntegrity(fileResult.parsed, fetchImpl, {
@@ -981,6 +1025,24 @@ async function main(argv: string[]): Promise<number> {
       }
     }
 
+    // Quorum summary table — printed when --audit-quorum (or --audit-security)
+    // is active and at least one result has a parsed document. Uses the text
+    // format only; appending prose to JSON / SARIF would break those parsers.
+    if ((cli.auditQuorum || cli.auditSecurity) && cli.format === 'text') {
+      for (const { result } of results) {
+        if (!result.parsed) continue;
+        const bftResults = await simulateQuorumBft(
+          result.parsed as Record<string, unknown>,
+          fetchImpl,
+        );
+        if (bftResults.length === 0) continue;
+        const intersectionSafe = !result.diagnostics.some(
+          (d) => d.rule === 'validators/quorum-intersection-failure',
+        );
+        process.stdout.write(formatQuorumSummaryTable(bftResults, intersectionSafe));
+      }
+    }
+
     const lintPassed = verdict(results, { strict, failOn: cli.failOn, maxWarnings });
     return lintPassed && !healthCheckFailed ? 0 : 1;
   };
@@ -1037,6 +1099,57 @@ async function expandInputs(inputs: string[]): Promise<string[]> {
   }
 
   return [...new Set(paths)];
+}
+
+/**
+ * `--format-file` mode: rewrite each file in place and report what happened.
+ *
+ * A file that does not parse is never written to — the whole point of the
+ * round-trip guarantee is that a broken or half-saved file survives a
+ * formatting hook untouched — and it exits 2, the CLI's I/O failure code.
+ */
+async function formatFiles(cli: Cli): Promise<number> {
+  if (cli.domain) {
+    process.stderr.write(
+      '--format-file rewrites local files, so it cannot be combined with --domain.\n',
+    );
+    return 2;
+  }
+
+  const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
+  let failed = false;
+
+  for (const path of paths) {
+    try {
+      const source = path === '-' ? await readStdin() : await readFile(path, 'utf8');
+      const result = formatToml(source);
+
+      if (!result.ok) {
+        process.stderr.write(formatFailure(path === '-' ? 'stdin' : path, result));
+        failed = true;
+        continue;
+      }
+
+      if (path === '-') {
+        process.stdout.write(result.output);
+        continue;
+      }
+
+      if (result.changed) await writeFile(path, result.output, 'utf8');
+      process.stdout.write(`${result.changed ? 'Formatted' : 'Unchanged'} ${path}\n`);
+    } catch (error) {
+      process.stderr.write(`${message(error)}\n`);
+      failed = true;
+    }
+  }
+
+  return failed ? 2 : 0;
+}
+
+function formatFailure(name: string, result: Extract<FormatResult, { ok: false }>): string {
+  const at =
+    result.line === undefined ? '' : ` at line ${result.line}, column ${result.column ?? 1}`;
+  return `${name}${at}: ${result.error}\n`;
 }
 
 function render(result: LintResult, name: string, cli: Cli, color: boolean): string {
@@ -1104,6 +1217,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
   const cli: Cli = {
     paths: [],
     format: 'text',
+    formatFile: false,
     strict: false,
     quiet: false,
     count: false,
@@ -1115,9 +1229,11 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     followLinks: false,
     verifySep10: false,
     verifySep38: false,
+    verifySep30: false,
     crawlPeers: false,
     verifyDnssec: false,
     verifyOverlay: false,
+    verifyBuckets: false,
     checkContracts: false,
     simulateSoroban: false,
     sorobanRentAudit: false,
@@ -1137,7 +1253,21 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '-v':
       case '--version':
-        process.stdout.write(`${VERSION}\n`);
+        if (hasJsonFormatFlag(argv)) {
+          process.stdout.write(
+            `${JSON.stringify(
+              {
+                name: 'stellar-toml-lint',
+                version: VERSION,
+                node: process.version,
+              },
+              null,
+              2,
+            )}\n`,
+          );
+        } else {
+          process.stdout.write(`${VERSION}\n`);
+        }
         return 'handled';
 
       case '--list-rules':
@@ -1164,6 +1294,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '-d':
       case '--domain':
         cli.domain = requireValue(argv, ++i, arg);
+        break;
+
+      case '--format-file':
+        cli.formatFile = true;
         break;
 
       case '-f':
@@ -1240,12 +1374,20 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.verifySep12 = true;
         break;
 
+      case '--verify-sep30':
+        cli.verifySep30 = true;
+        break;
+
       case '--crawl-peers':
         cli.crawlPeers = true;
         break;
 
       case '--verify-overlay':
         cli.verifyOverlay = true;
+        break;
+
+      case '--verify-buckets':
+        cli.verifyBuckets = true;
         break;
 
       case '--verify-dnssec':
@@ -1545,6 +1687,19 @@ function isFormat(value: string): value is Format {
     value === 'markdown' ||
     value === 'pr-comment'
   );
+}
+
+function hasJsonFormatFlag(argv: string[]): boolean {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    if ((arg === '-f' || arg === '--format') && argv[i + 1] === 'json') {
+      return true;
+    }
+    if (arg === '--format=json' || arg === '-f=json') {
+      return true;
+    }
+  }
+  return false;
 }
 
 function listRules(): string {
