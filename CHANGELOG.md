@@ -76,6 +76,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`sep38/invalid-quote-expiration`, error). Endpoint liveness and malformed bodies stay with the
   plain `--check-network` probe, so nothing is reported twice (#66).
 
+- `--check-network --verify-sep24` runs a SEP-24 hosted deposit/withdrawal flow validator
+  (`src/protocols/sep24.ts`): `GET {TRANSFER_SERVER_SEP0024}/info` must answer 200 with `deposit`
+  and `withdraw` maps (`sep24/info-endpoint-unreachable`; an outage is reported as a warning so a
+  transient transfer-server blip does not fail a run over a file that was never at fault); every
+  anchored `[[CURRENCIES]]` entry must appear in the `/info` deposit or withdraw maps
+  (`sep24/currency-not-supported-in-info`, warning); fee objects and flat `fee_fixed`/`fee_percent`/
+  `fee_minimum` fields must carry numeric values (`sep24/invalid-fee-schema`, error); and an
+  interactive deposit session must return a transaction `id` and an HTTPS `url`
+  (`sep24/interactive-url-insecure`, error). The engine stays silent when the file declares no
+  usable transfer server, and honours `--off`/`--warn`/`--error` on each rule.
+
 - `--serve-mock [port]` starts a local mock anchor on `node:http` (default port `8080`): the file at
   `/.well-known/stellar.toml` with `Access-Control-Allow-Origin: *`, SEP-10 challenges at `/auth`
   for `NETWORK_PASSPHRASE`, and SEP-24 `/sep24/info` plus SEP-38 `/sep38/info` and `/sep38/prices`
