@@ -53,6 +53,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && npm run build:browser",
+    "build:binaries": "node scripts/build-binaries.mjs",
     "build:browser": "node scripts/build-browser.js",
     "build:vscode": "tsc -p editors/vscode/tsconfig.json",
     "package:vscode": "npm run build:vscode && npx --prefix editors/vscode vsce package --out ../../stellar-toml-lint.vsix",
@@ -79,6 +80,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^2.1.8",
+    "esbuild": "^0.25.0",
     "eslint": "^9.17.0",
     "fast-xml-parser": "^5.11.1",
     "prettier": "^3.4.2",
@@ -88,7 +90,8 @@
     "vitest": "^2.1.8",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "@yao-pkg/pkg": "^5.16.1"
   },
   "repository": {
     "type": "git",

@@ -16,14 +16,7 @@
  * are not findings - only spec violations are.
  */
 
-import {
-  Account,
-  Keypair,
-  Operation,
-  StrKey,
-  Transaction,
-  TransactionBuilder,
-} from '@stellar/stellar-base';
+import { Keypair, StrKey, type Transaction, TransactionBuilder } from '@stellar/stellar-base';
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 
 export const INVALID_SOURCE_RULE = 'sep10/invalid-source-account';
@@ -80,10 +73,7 @@ function nowSeconds(options: Sep10Options): number {
 }
 
 /** Verify the server signed `tx` with the key identified by `serverSigningKey`. */
-function hasValidServerSignature(
-  tx: Transaction,
-  serverSigningKey: string,
-): boolean {
+function hasValidServerSignature(tx: Transaction, serverSigningKey: string): boolean {
   let hint: Buffer;
   let serverKeypair: Keypair;
   try {
@@ -231,9 +221,7 @@ export async function verifySep10(
   // 3e. First operation must be `<home_domain> auth` manageData.
   const firstOp = tx.operations[0];
   const expectedName = homeDomain ? `${homeDomain} auth` : undefined;
-  const expectedNameLength = expectedName
-    ? Buffer.byteLength(expectedName, 'utf8')
-    : undefined;
+  const expectedNameLength = expectedName ? Buffer.byteLength(expectedName, 'utf8') : undefined;
   const isManageData =
     firstOp !== undefined && (firstOp as { type?: string }).type === 'manageData';
   const opName = isManageData ? (firstOp as { name?: string }).name : undefined;
@@ -243,8 +231,7 @@ export async function verifySep10(
       : opName !== undefined && opName.endsWith(' auth');
   // `TransactionBuilder` truncates long operation names to <= 64 bytes; a
   // longer `home_domain` cannot round-trip and is itself a spec problem.
-  const nameOverlong =
-    expectedNameLength !== undefined && expectedNameLength > 64;
+  const nameOverlong = expectedNameLength !== undefined && expectedNameLength > 64;
   if (!isManageData || !nameMatches || nameOverlong) {
     push(
       diagnostics,
@@ -276,10 +263,7 @@ export async function verifySep10(
   }
 
   // 4. Sign and submit the challenge.
-  const signed = TransactionBuilder.fromXDR(
-    challengeXdr,
-    challengePassphrase,
-  ) as Transaction;
+  const signed = TransactionBuilder.fromXDR(challengeXdr, challengePassphrase) as Transaction;
   signed.sign(clientKeypair);
 
   let token: string | undefined;

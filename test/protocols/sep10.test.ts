@@ -21,12 +21,18 @@ interface ChallengeOptions {
 
 /** Build and server-sign a SEP-10 challenge transaction. */
 function makeChallenge(server: Keypair, options: ChallengeOptions = {}): string {
-  const account = new Account(options.source ?? server.publicKey(), options.sequence ?? '0');
+  const account = new Account(options.source ?? server.publicKey(), options.sequence ?? '-1');
   const builder = new TransactionBuilder(account, {
     networkPassphrase: PASSPHRASE,
     fee: '100',
     ...(options.timebounds ? { timebounds: options.timebounds } : {}),
-  }).addOperation(
+  });
+
+  if (!options.timebounds) {
+    builder.setTimeout(0);
+  }
+
+  builder.addOperation(
     Operation.manageData({
       name: options.opName ?? `${HOME} auth`,
       value: Buffer.from('nonce'),

@@ -364,15 +364,15 @@ export const sep24Rules: Rule[] = [
     id: INFO_ENDPOINT_UNREACHABLE_RULE,
     category: 'network',
     severity: 'error',
-    description:
-      'TRANSFER_SERVER_SEP0024 GET /info must answer 200 with deposit and withdraw maps',
+    description: 'TRANSFER_SERVER_SEP0024 GET /info must answer 200 with deposit and withdraw maps',
     run() {},
   },
   {
     id: CURRENCY_NOT_SUPPORTED_IN_INFO_RULE,
     category: 'network',
     severity: 'warning',
-    description: 'Every anchored [[CURRENCIES]] entry must appear in SEP-24 /info deposit or withdraw',
+    description:
+      'Every anchored [[CURRENCIES]] entry must appear in SEP-24 /info deposit or withdraw',
     run() {},
   },
   {

@@ -138,7 +138,13 @@ export async function verifySep12(
   const overrides = options.rules;
 
   // ---- 1. GET /customer?type=<type> for declared customer types ----
-  const customerTypes = ['sep12', 'sep31-sender', 'sep31-receiver', 'sep6-deposit', 'sep6-withdrawal'];
+  const customerTypes = [
+    'sep12',
+    'sep31-sender',
+    'sep31-receiver',
+    'sep6-deposit',
+    'sep6-withdrawal',
+  ];
   let needsInfoResponse: CustomerResponse | null = null;
 
   for (const type of customerTypes) {
@@ -160,7 +166,10 @@ export async function verifySep12(
           'error',
           overrides,
           `SEP-12 GET /customer?type=${type} returned status "${body.status}", which is not one of ${SEP12_STATUSES.join(', ')}`,
-          { suggestion: 'Return one of the SEP-12 defined status values or 404 when the customer is unknown' },
+          {
+            suggestion:
+              'Return one of the SEP-12 defined status values or 404 when the customer is unknown',
+          },
         );
         if (diag) diagnostics.push(diag);
       }
@@ -204,7 +213,10 @@ export async function verifySep12(
 
   if (registerResult && registerResult.status >= 200 && registerResult.status < 300) {
     const registered = registerResult.body as CustomerResponse | null;
-    if (registered?.status !== undefined && !SEP12_STATUSES.includes(registered.status as Sep12Status)) {
+    if (
+      registered?.status !== undefined &&
+      !SEP12_STATUSES.includes(registered.status as Sep12Status)
+    ) {
       const diag = makeDiagnostic(
         INVALID_CUSTOMER_STATUS_RULE,
         'sep12',
@@ -226,11 +238,7 @@ export async function verifySep12(
   ]);
 
   const form = new FormData();
-  form.append(
-    'file',
-    new Blob([pngBytes], { type: 'image/png' }),
-    'identity-document.png',
-  );
+  form.append('file', new Blob([pngBytes], { type: 'image/png' }), 'identity-document.png');
 
   const uploadResult = await fetchJson(
     fetchImpl,
@@ -242,7 +250,9 @@ export async function verifySep12(
   if (uploadResult) {
     const unsupported = uploadResult.status === 415 || uploadResult.status === 400;
     const message =
-      typeof uploadResult.body === 'object' && uploadResult.body !== null && 'error' in uploadResult.body
+      typeof uploadResult.body === 'object' &&
+      uploadResult.body !== null &&
+      'error' in uploadResult.body
         ? String((uploadResult.body as { error: unknown }).error)
         : '';
     const rejectReason =
@@ -259,7 +269,8 @@ export async function verifySep12(
         overrides,
         `SEP-12 PUT /customer/verification rejected a valid multipart/form-data upload (HTTP ${uploadResult.status})${message ? `: ${message}` : ''}`,
         {
-          suggestion: 'Accept multipart/form-data with binary identity documents as SEP-12 requires',
+          suggestion:
+            'Accept multipart/form-data with binary identity documents as SEP-12 requires',
         },
       );
       if (diag) diagnostics.push(diag);

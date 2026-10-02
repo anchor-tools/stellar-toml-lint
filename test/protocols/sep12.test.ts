@@ -45,8 +45,7 @@ function fetchServer(routes: Routes): typeof fetch {
 
     if (method === 'PUT' && url.pathname.endsWith('/customer/verification')) {
       return (
-        routes.putVerification ??
-        (() => jsonResponse({ id: 'cust-1', status: 'PROCESSING' }))
+        routes.putVerification ?? (() => jsonResponse({ id: 'cust-1', status: 'PROCESSING' }))
       )(init ?? {});
     }
 

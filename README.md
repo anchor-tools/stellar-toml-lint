@@ -274,7 +274,7 @@ failure.
 | `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                                                                                                          |
 | `--verify-sep30`            | Validate RECOVERY_SERVER /accounts endpoint and signer public keys (requires `--check-network`)                                                                                                             |
 | `--verify-sep38`            | Audit SEP-38 quote coverage, bid-ask spread, and quote expirations (requires `--check-network`)                                                                                                             |
-| `--verify-sep24`            | Audit SEP-24 hosted deposit/withdrawal flow: `/info` currency coverage, numeric fee schemas, and HTTPS interactive session URLs (requires `--check-network`)                                                  |
+| `--verify-sep24`            | Audit SEP-24 hosted deposit/withdrawal flow: `/info` currency coverage, numeric fee schemas, and HTTPS interactive session URLs (requires `--check-network`)                                                |
 | `--crawl-peers`             | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                                                                                                     |
 | `--verify-buckets`          | Download a sample of each archive's `currentBuckets`, verify the SHA-256 of the decompressed stream, and decode the XDR `BucketEntry` stream (requires `--check-network`)                                   |
 | `--verify-overlay`          | Complete the overlay TCP handshake with each `[[VALIDATORS]]` HOST and check its network, node ID, and protocol version (requires `--check-network`)                                                        |
@@ -1947,11 +1947,11 @@ synthetic sandbox data only — the suite never sends real PII.
 
 Diagnostics emitted:
 
-| Rule | Severity | When it fires |
-|------|----------|---------------|
-| `sep12/invalid-customer-status` | error | `GET /customer` or `PUT /customer` returns a status other than `NEEDS_INFO`, `PROCESSING`, `ACCEPTED`, `REJECTED` |
-| `sep12/missing-required-kyc-fields` | warning | A `NEEDS_INFO` response omits one or more of `first_name`, `last_name`, `email_address` from its `fields` map |
-| `sep12/binary-upload-unsupported` | error | `PUT /customer/verification` rejects a well-formed multipart/form-data request carrying a binary identity document |
+| Rule                                | Severity | When it fires                                                                                                      |
+| ----------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `sep12/invalid-customer-status`     | error    | `GET /customer` or `PUT /customer` returns a status other than `NEEDS_INFO`, `PROCESSING`, `ACCEPTED`, `REJECTED`  |
+| `sep12/missing-required-kyc-fields` | warning  | A `NEEDS_INFO` response omits one or more of `first_name`, `last_name`, `email_address` from its `fields` map      |
+| `sep12/binary-upload-unsupported`   | error    | `PUT /customer/verification` rejects a well-formed multipart/form-data request carrying a binary identity document |
 
 The suite exercises three endpoints end to end:
 

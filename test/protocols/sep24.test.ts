@@ -43,7 +43,10 @@ function validInfo(): Response {
 }
 
 function validInteractive(): Response {
-  return jsonResponse({ id: 'itxn_sep24_001', url: 'https://sep24.example.com/deposit/itxn_sep24_001' }, 201);
+  return jsonResponse(
+    { id: 'itxn_sep24_001', url: 'https://sep24.example.com/deposit/itxn_sep24_001' },
+    201,
+  );
 }
 
 interface Routes {
@@ -78,7 +81,9 @@ describe('SEP-24 hosted deposit and withdrawal flow validator', () => {
 
   it('stays silent when the file declares no usable transfer server', async () => {
     expect(await verifySep24({ CURRENCIES: DOC.CURRENCIES }, fetchServer({}))).toEqual([]);
-    expect(await verifySep24({ TRANSFER_SERVER_SEP0024: 'not a url' }, fetchServer({}))).toEqual([]);
+    expect(await verifySep24({ TRANSFER_SERVER_SEP0024: 'not a url' }, fetchServer({}))).toEqual(
+      [],
+    );
   });
 
   it('falls back to TRANSFER_SERVER when TRANSFER_SERVER_SEP0024 is absent', async () => {
