@@ -145,6 +145,7 @@ it was before.
 | `-q, --quiet`        | Show errors only                                                                |
 | `--count`            | Print only problem count totals                                                 |
 | `--silent-success`   | Print nothing on stdout when a run has no diagnostics                           |
+| `--export-anchor-tests` | Generate a JSON configuration for `@stellar/anchor-tests`     |
 | `--show-help-urls`   | Print the spec link for each finding                                            |
 | `--list-rules`       | Print every rule and exit                                                       |
 | `--no-suggestions`   | Hide diagnostic suggestions in the output                                       |
@@ -1850,6 +1851,18 @@ Not affiliated with or endorsed by the Stellar Development Foundation.
 [sep9]: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0009.md
 [anchor-tests]: https://github.com/stellar/stellar-anchor-tests
 [gfi]: https://github.com/anchor-tools/stellar-toml-lint/labels/good%20first%20issue
+
+### Exporting to @stellar/anchor-tests
+
+`stellar-toml-lint` can automatically generate a configuration file for the official `@stellar/anchor-tests` suite based on the contents of your `stellar.toml`.
+
+```bash
+# Output to a file
+stellar-toml-lint public/.well-known/stellar.toml --export-anchor-tests anchor-tests-config.json
+
+# Or pipe directly into the test suite using '-' as the output file
+stellar-toml-lint public/.well-known/stellar.toml --export-anchor-tests - | npx @stellar/anchor-tests --config stdin
+```
 
 ### Editor autocompletion with `--json-schema`
 

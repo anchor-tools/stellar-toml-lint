@@ -21,7 +21,7 @@ interface ChallengeOptions {
 
 /** Build and server-sign a SEP-10 challenge transaction. */
 function makeChallenge(server: Keypair, options: ChallengeOptions = {}): string {
-  const account = new Account(options.source ?? server.publicKey(), options.sequence ?? '0');
+  const account = new Account(options.source ?? server.publicKey(), options.sequence ?? '-1');
   const builder = new TransactionBuilder(account, {
     networkPassphrase: PASSPHRASE,
     fee: '100',
@@ -32,6 +32,7 @@ function makeChallenge(server: Keypair, options: ChallengeOptions = {}): string 
       value: Buffer.from('nonce'),
     }),
   );
+  if (!options.timebounds) builder.setTimeout(0);
   const tx = builder.build();
   tx.sign(server);
   return tx.toXDR();
@@ -97,7 +98,7 @@ describe('verifySep10', () => {
   it('flags a challenge with a non-zero sequence number', async () => {
     const server = Keypair.random();
     const now = Math.floor(Date.now() / 1000);
-    const xdr = makeChallenge(server, { sequence: '1', timebounds: freshTimebounds() });
+    const xdr = makeChallenge(server, { sequence: '0', timebounds: freshTimebounds() });
     const token = makeJwt({ iss: HOME, sub: 'GCLIENT', iat: now, exp: now + 3600 });
 
     const diagnostics = await verifySep10(ENDPOINT, server.publicKey(), {
