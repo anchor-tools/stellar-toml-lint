@@ -53,6 +53,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && npm run build:browser && npm run build:docs",
+    "build:binaries": "node scripts/build-binaries.mjs",
     "build:browser": "node scripts/build-browser.js",
     "build:docs": "node scripts/build-docs.js",
     "build:vscode": "tsc -p editors/vscode/tsconfig.json",
@@ -74,13 +75,14 @@
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.8.0",
     "@stellar/stellar-base": "^15.0.0",
+    "@yao-pkg/pkg": "^5.16.1",
     "smol-toml": "^1.7.1"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^2.1.8",
-    "esbuild": "^0.21.5",
+    "esbuild": "^0.25.12",
     "eslint": "^9.17.0",
     "fast-xml-parser": "^5.11.1",
     "prettier": "^3.4.2",

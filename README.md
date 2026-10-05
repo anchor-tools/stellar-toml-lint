@@ -131,25 +131,25 @@ it was before.
 
 ### Options
 
-| Flag                 | Effect                                                                          |
-| -------------------- | ------------------------------------------------------------------------------- |
-| `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks           |
-| `-f, --format <fmt>` | `text` (default), `summary`, `json`, `sarif`, `github`, `junit`                 |
-| `--format-file`      | Rewrite files in place in canonical SEP-1 layout                                |
-| `--strict`           | Treat warnings as errors                                                        |
-| `--max-warnings <n>` | Fail if warnings exceed `n`                                                     |
-| `--check-network`    | Verify accounts, `HORIZON_URL`, `AUTH_SERVER`, and `ANCHOR_QUOTE_SERVER` online |
-| `--off <rule>`       | Disable a rule (repeatable)                                                     |
-| `--error <rule>`     | Raise a rule to error (repeatable)                                              |
-| `--warn <rule>`      | Lower a rule to warning (repeatable)                                            |
-| `-q, --quiet`        | Show errors only                                                                |
-| `--count`            | Print only problem count totals                                                 |
-| `--silent-success`   | Print nothing on stdout when a run has no diagnostics                           |
-| `--export-anchor-tests` | Generate a JSON configuration for `@stellar/anchor-tests`     |
-| `--show-help-urls`   | Print the spec link for each finding                                            |
-| `--list-rules`       | Print every rule and exit                                                       |
-| `--no-suggestions`   | Hide diagnostic suggestions in the output                                       |
-| `--check-network`    | Validate `ORG_OFFICIAL_EMAIL` domain MX records for email deliverability        |
+| Flag                    | Effect                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `-d, --domain <d>`      | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks           |
+| `-f, --format <fmt>`    | `text` (default), `summary`, `json`, `sarif`, `github`, `junit`                 |
+| `--format-file`         | Rewrite files in place in canonical SEP-1 layout                                |
+| `--strict`              | Treat warnings as errors                                                        |
+| `--max-warnings <n>`    | Fail if warnings exceed `n`                                                     |
+| `--check-network`       | Verify accounts, `HORIZON_URL`, `AUTH_SERVER`, and `ANCHOR_QUOTE_SERVER` online |
+| `--off <rule>`          | Disable a rule (repeatable)                                                     |
+| `--error <rule>`        | Raise a rule to error (repeatable)                                              |
+| `--warn <rule>`         | Lower a rule to warning (repeatable)                                            |
+| `-q, --quiet`           | Show errors only                                                                |
+| `--count`               | Print only problem count totals                                                 |
+| `--silent-success`      | Print nothing on stdout when a run has no diagnostics                           |
+| `--export-anchor-tests` | Generate a JSON configuration for `@stellar/anchor-tests`                       |
+| `--show-help-urls`      | Print the spec link for each finding                                            |
+| `--list-rules`          | Print every rule and exit                                                       |
+| `--no-suggestions`      | Hide diagnostic suggestions in the output                                       |
+| `--check-network`       | Validate `ORG_OFFICIAL_EMAIL` domain MX records for email deliverability        |
 
 | Flag                      | Effect                                                                          |
 | ------------------------- | ------------------------------------------------------------------------------- |
