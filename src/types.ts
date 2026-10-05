@@ -6,6 +6,8 @@
  * produces diagnostics or a reporter that formats them.
  */
 
+import type { CstDocument } from './cst/parser.js';
+
 /** How much a violation matters. Only `error` affects the default exit code. */
 export type Severity = 'error' | 'warning' | 'info';
 
@@ -19,7 +21,8 @@ export type RuleCategory =
   | 'validators'
   | 'network'
   | 'policy'
-  | 'sep12';
+  | 'sep12'
+  | 'codemod';
 
 /** A 1-based position in the source file. */
 export interface Position {
@@ -94,6 +97,14 @@ export interface LintOptions {
   strict?: boolean;
   /** Verify network-dependent account and currency metadata checks. */
   checkNetwork?: boolean;
+  /**
+   * Fetch and lint the `toml` pointers referenced by `CURRENCIES` entries.
+   *
+   * Consumes the caller's transport, so a stubbed `fetchImpl` keeps the linked
+   * documents hermetic. Only honoured by `lintDomain`; offline `lint` runs have
+   * no transport to follow a pointer with.
+   */
+  followLinks?: boolean;
   /**
    * TLS session observed while fetching the file.
    *
@@ -210,6 +221,15 @@ export interface StellarToml {
 export interface RuleContext {
   /** The parsed TOML document. */
   doc: Record<string, unknown>;
+  /**
+   * The lossless Concrete Syntax Tree the document was parsed into.
+   *
+   * Optional so a hand-built context in a test keeps compiling, but every run
+   * through {@link lint} supplies one. Rules that need comments, whitespace, or
+   * exact token spans rather than decoded values can walk it with `walk` from
+   * `cst/visitor.js`.
+   */
+  cst?: CstDocument;
   /** Raw source, for rules that care about bytes or formatting. */
   source: string;
   options: LintOptions;

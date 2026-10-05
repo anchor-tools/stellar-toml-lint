@@ -1,0 +1,8 @@
+id: stellar-toml-lint
+name: stellar.toml lint
+description: Validate a Stellar Info File (stellar.toml) against SEP-1 — offline, before you deploy it.
+entry: stellar-toml-lint
+language: node
+files: (?:.*/)?\.?stellar\.toml$
+types:
+  - toml

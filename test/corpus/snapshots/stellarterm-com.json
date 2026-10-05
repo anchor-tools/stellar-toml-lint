@@ -1,0 +1,62 @@
+{
+  "url": "https://stellarterm.com/.well-known/stellar.toml",
+  "domain": "stellarterm.com",
+  "sourceSha256": "e766117528e376393d6db64877fd3225670d655a7d7eebc3f3f3f697eae3d507",
+  "ok": true,
+  "counts": {
+    "error": 0,
+    "warning": 2,
+    "info": 3
+  },
+  "diagnostics": [
+    {
+      "rule": "general/version",
+      "category": "general",
+      "message": "VERSION is missing, so parsers cannot tell which fields to expect",
+      "path": "VERSION",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#general-information",
+      "suggestion": "Add VERSION=\"2.7.0\" at the top of the file.",
+      "severity": "warning"
+    },
+    {
+      "rule": "network/passphrase",
+      "category": "network",
+      "severity": "warning",
+      "message": "NETWORK_PASSPHRASE is missing, so clients cannot tell which network you operate on",
+      "path": "NETWORK_PASSPHRASE",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#general-information",
+      "suggestion": "Add NETWORK_PASSPHRASE=\"Public Global Stellar Network ; September 2015\" for mainnet."
+    },
+    {
+      "rule": "general/unknown-field",
+      "category": "general",
+      "message": "DESIRED_BASE_FEE is not a field defined by SEP-1",
+      "path": "DESIRED_BASE_FEE",
+      "position": {
+        "line": 6,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#general-information",
+      "suggestion": "Check the spelling and casing — SEP-1 global fields are UPPER_SNAKE_CASE.",
+      "severity": "info"
+    },
+    {
+      "rule": "documentation/missing-privacy-policy",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_PRIVACY_POLICY is missing",
+      "path": "DOCUMENTATION.ORG_PRIVACY_POLICY",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Add a link to your organization's privacy policy.",
+      "severity": "info"
+    },
+    {
+      "rule": "documentation/missing-terms-of-service",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_TERMS_OF_SERVICE is missing",
+      "path": "DOCUMENTATION.ORG_TERMS_OF_SERVICE",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Add a link to your organization's terms of service.",
+      "severity": "info"
+    }
+  ]
+}

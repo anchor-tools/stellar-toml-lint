@@ -1,0 +1,83 @@
+{
+  "url": "https://anchor-sep-server-dev.stellar.org/.well-known/stellar.toml",
+  "domain": "anchor-sep-server-dev.stellar.org",
+  "sourceSha256": "cb2e3e81109b5108c8092059154dd223c20e886e104034fa5fb43848cdbb7261",
+  "ok": true,
+  "counts": {
+    "error": 0,
+    "warning": 4,
+    "info": 2
+  },
+  "diagnostics": [
+    {
+      "rule": "currencies/issuance-exclusive",
+      "category": "currencies",
+      "severity": "warning",
+      "message": "CURRENCIES[0] declares no issuance policy",
+      "path": "CURRENCIES[0]",
+      "position": {
+        "line": 15,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Add one of fixed_number, max_number, or is_unlimited so holders know the supply model."
+    },
+    {
+      "rule": "currencies/issuance-exclusive",
+      "category": "currencies",
+      "severity": "warning",
+      "message": "CURRENCIES[1] declares no issuance policy",
+      "path": "CURRENCIES[1]",
+      "position": {
+        "line": 23,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Add one of fixed_number, max_number, or is_unlimited so holders know the supply model."
+    },
+    {
+      "rule": "documentation/recommended-fields",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_LOGO is missing, which weakens your listing case",
+      "path": "DOCUMENTATION.ORG_LOGO",
+      "position": {
+        "line": 38,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Wallets and exchanges rank issuers by documentation completeness.",
+      "severity": "warning"
+    },
+    {
+      "rule": "documentation/recommended-fields",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_OFFICIAL_EMAIL is missing, which weakens your listing case",
+      "path": "DOCUMENTATION.ORG_OFFICIAL_EMAIL",
+      "position": {
+        "line": 38,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Wallets and exchanges rank issuers by documentation completeness.",
+      "severity": "warning"
+    },
+    {
+      "rule": "documentation/missing-privacy-policy",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_PRIVACY_POLICY is missing",
+      "path": "DOCUMENTATION.ORG_PRIVACY_POLICY",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Add a link to your organization's privacy policy.",
+      "severity": "info"
+    },
+    {
+      "rule": "documentation/missing-terms-of-service",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_TERMS_OF_SERVICE is missing",
+      "path": "DOCUMENTATION.ORG_TERMS_OF_SERVICE",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Add a link to your organization's terms of service.",
+      "severity": "info"
+    }
+  ]
+}

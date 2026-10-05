@@ -9,6 +9,8 @@ const sampleToml = {
     ORG_URL: 'https://example.com',
     ORG_OFFICIAL_EMAIL: 'contact@example.com',
     ORG_GITHUB: 'testanchor',
+    ORG_PRIVACY_POLICY: 'https://example.com/privacy',
+    ORG_TERMS_OF_SERVICE: 'https://example.com/terms',
   },
   SIGNING_KEY: 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
   SERVERS: [

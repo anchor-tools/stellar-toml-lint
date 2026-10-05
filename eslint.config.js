@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'coverage/**', 'node_modules/**'] },
+  { ignores: ['dist/**', 'coverage/**', 'docs/stellar-toml-lint.browser.js', 'node_modules/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
