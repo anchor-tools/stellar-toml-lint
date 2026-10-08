@@ -1,0 +1,14 @@
+{
+  "buy_assets": [
+    {
+      "asset": "stellar:USDC:GBXHQL5SHDWJJ2WQXJZOVQBVVIFXLFQQFIKVWMU6XA7YZVMVMB5APS5D",
+      "price": "1.02",
+      "decimals": 2
+    },
+    {
+      "asset": "iso4217:USD",
+      "price": "1.00",
+      "decimals": 2
+    }
+  ]
+}

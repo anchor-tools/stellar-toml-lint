@@ -30,9 +30,13 @@ ORG_URL="http://example-anchor.net"
 ORG_LOGO="https://example.com/logo.svg"
 ORG_PHONE_NUMBER="(415) 555-2671"
 ORG_TWITTER="https://twitter.com/exampleanchor"
+# A URL where the bare Keybase account name belongs.
+ORG_KEYBASE="https://keybase.io/exampleanchor"
 ORG_OFFICIAL_EMAIL="ops@gmail.com"
 ORG_SUPPORT_EMAIL="not-an-email"
 ORG_PHYSICAL_ADDRESS_ATTESTATION="https://cdn.other-domain.net/address.pdf"
+ORG_PRIVACY_POLICY="https://example-anchor.net/privacy"
+ORG_TERMS_OF_SERVICE="https://example-anchor.net/terms"
 
 [[PRINCIPALS]]
 email="jane@@example.com"
@@ -57,6 +61,11 @@ collateral_address_signatures=["304502206e21798a42fae0e854281abd38bacd1aeed3ee37
 [[CURRENCIES]]
 # Neither issuer nor contract, and no issuance policy.
 code="ORPH"
+
+[[CURRENCIES]]
+# The native asset's scale is fixed by the protocol, so this is meaningless.
+code="native"
+display_decimals=2
 
 [[VALIDATORS]]
 ALIAS="Example_US_Node"

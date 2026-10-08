@@ -1,0 +1,52 @@
+[
+  {
+    "name": "stellar-org",
+    "url": "https://stellar.org/.well-known/stellar.toml",
+    "note": "Stellar Development Foundation"
+  },
+  {
+    "name": "anchor-platform-dev",
+    "url": "https://anchor-sep-server-dev.stellar.org/.well-known/stellar.toml",
+    "note": "SDF's reference anchor platform (dev instance), exercising every endpoint field"
+  },
+  {
+    "name": "zeam-money",
+    "url": "https://zeam.money/.well-known/stellar.toml",
+    "note": "Large validator and collateral-heavy currency document"
+  },
+  {
+    "name": "keybase-io",
+    "url": "https://keybase.io/.well-known/stellar.toml",
+    "note": "Federation service with a sparse documentation section"
+  },
+  {
+    "name": "lobstr-co",
+    "url": "https://lobstr.co/.well-known/stellar.toml",
+    "note": "Wallet; header comments and an unknown validator field"
+  },
+  {
+    "name": "stellarx-com",
+    "url": "https://stellarx.com/.well-known/stellar.toml",
+    "note": "Minimal DEX info file"
+  },
+  {
+    "name": "stellarterm-com",
+    "url": "https://stellarterm.com/.well-known/stellar.toml",
+    "note": "Served as application/octet-stream rather than text/plain"
+  },
+  {
+    "name": "stellarport-io",
+    "url": "https://stellarport.io/.well-known/stellar.toml",
+    "note": "Multi-validator, multi-currency file with no [DOCUMENTATION] table"
+  },
+  {
+    "name": "ultrastellar-com",
+    "url": "https://ultrastellar.com/.well-known/stellar.toml",
+    "note": "Payment service with spaced key/value formatting"
+  },
+  {
+    "name": "stellar-sui-li",
+    "url": "https://stellar.sui.li/.well-known/stellar.toml",
+    "note": "Community stellar.toml checker; the densest comment block in the corpus"
+  }
+]

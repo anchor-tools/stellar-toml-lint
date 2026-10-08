@@ -1,0 +1,5 @@
+{
+  "status": 400,
+  "headers": { "content-type": "application/problem+json" },
+  "body": { "error": "SEP-10 authentication required" }
+}

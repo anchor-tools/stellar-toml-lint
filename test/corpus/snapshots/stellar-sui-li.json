@@ -1,0 +1,160 @@
+{
+  "url": "https://stellar.sui.li/.well-known/stellar.toml",
+  "domain": "stellar.sui.li",
+  "sourceSha256": "28fb0e6635bdcd683d33cb4c38d73e873e939cb4d349c5c8e95e75f574295f50",
+  "ok": false,
+  "counts": {
+    "error": 3,
+    "warning": 7,
+    "info": 2
+  },
+  "diagnostics": [
+    {
+      "rule": "currencies/display-decimals",
+      "category": "currencies",
+      "message": "CURRENCIES[0].display_decimals must be an integer from 0 to 7",
+      "path": "CURRENCIES[0].display_decimals",
+      "position": {
+        "line": 78,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Stellar amounts carry at most 7 decimal places.",
+      "severity": "error"
+    },
+    {
+      "rule": "currencies/issuance-exclusive",
+      "category": "currencies",
+      "message": "CURRENCIES[0] sets max_number and is_unlimited, but these issuance policies are mutually exclusive",
+      "path": "CURRENCIES[0].max_number",
+      "position": {
+        "line": 85,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "SEP-1 requires exactly one of fixed_number, max_number, or is_unlimited.",
+      "severity": "error"
+    },
+    {
+      "rule": "validators/host",
+      "category": "validators",
+      "message": "VALIDATORS[0].HOST must be in host:port form",
+      "path": "VALIDATORS[0].HOST",
+      "position": {
+        "line": 90,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#validator-information",
+      "suggestion": "Include the peer port, e.g. \"core-au.example.com:11625\".",
+      "severity": "error"
+    },
+    {
+      "rule": "documentation/recommended-fields",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_DESCRIPTION is missing, which weakens your listing case",
+      "path": "DOCUMENTATION.ORG_DESCRIPTION",
+      "position": {
+        "line": 57,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Wallets and exchanges rank issuers by documentation completeness.",
+      "severity": "warning"
+    },
+    {
+      "rule": "documentation/recommended-fields",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_LOGO is missing, which weakens your listing case",
+      "path": "DOCUMENTATION.ORG_LOGO",
+      "position": {
+        "line": 57,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Wallets and exchanges rank issuers by documentation completeness.",
+      "severity": "warning"
+    },
+    {
+      "rule": "documentation/recommended-fields",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_OFFICIAL_EMAIL is missing, which weakens your listing case",
+      "path": "DOCUMENTATION.ORG_OFFICIAL_EMAIL",
+      "position": {
+        "line": 57,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Wallets and exchanges rank issuers by documentation completeness.",
+      "severity": "warning"
+    },
+    {
+      "rule": "documentation/phone-e164",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_PHONE_NUMBER is not in E.164 format",
+      "path": "DOCUMENTATION.ORG_PHONE_NUMBER",
+      "position": {
+        "line": 61,
+        "column": 1
+      },
+      "helpUri": "https://en.wikipedia.org/wiki/E.164",
+      "suggestion": "Use a leading + and digits only, e.g. \"+491738959456\".",
+      "fix": {
+        "value": "+491738959456"
+      },
+      "severity": "warning"
+    },
+    {
+      "rule": "currencies/anchored-asset-fields",
+      "category": "currencies",
+      "message": "CURRENCIES[0] is anchored but does not specify redemption_instructions",
+      "path": "CURRENCIES[0]",
+      "position": {
+        "line": 74,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Holders need to know what backs the token and how to redeem it.",
+      "severity": "warning"
+    },
+    {
+      "rule": "currencies/missing-anchor-asset-code",
+      "category": "currencies",
+      "message": "CURRENCIES[0] is marked asset-anchored but has no anchor_asset",
+      "path": "CURRENCIES[0].anchor_asset",
+      "position": {
+        "line": 74,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Add anchor_asset with the code or identifier of the backing asset.",
+      "severity": "warning"
+    },
+    {
+      "rule": "network/passphrase",
+      "category": "network",
+      "severity": "warning",
+      "message": "NETWORK_PASSPHRASE is missing, so clients cannot tell which network you operate on",
+      "path": "NETWORK_PASSPHRASE",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#general-information",
+      "suggestion": "Add NETWORK_PASSPHRASE=\"Public Global Stellar Network ; September 2015\" for mainnet."
+    },
+    {
+      "rule": "documentation/missing-privacy-policy",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_PRIVACY_POLICY is missing",
+      "path": "DOCUMENTATION.ORG_PRIVACY_POLICY",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Add a link to your organization's privacy policy.",
+      "severity": "info"
+    },
+    {
+      "rule": "documentation/missing-terms-of-service",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_TERMS_OF_SERVICE is missing",
+      "path": "DOCUMENTATION.ORG_TERMS_OF_SERVICE",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Add a link to your organization's terms of service.",
+      "severity": "info"
+    }
+  ]
+}

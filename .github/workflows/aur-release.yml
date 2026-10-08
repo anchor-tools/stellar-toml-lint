@@ -1,0 +1,75 @@
+name: AUR Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  aur-release:
+    name: Publish to AUR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Update PKGBUILD version
+        run: |
+          sed -i "s/pkgver=.*/pkgver=${{ steps.version.outputs.version }}/" packaging/aur/PKGBUILD
+          sed -i "s/pkgrel=.*/pkgrel=1/" packaging/aur/PKGBUILD
+
+      - name: Generate .SRCINFO
+        run: |
+          cd packaging/aur
+          makepkg --printsrcinfo > .SRCINFO
+
+      - name: Setup SSH key for AUR
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+
+      - name: Add AUR remote
+        run: |
+          git remote add aur ssh://aur@aur.archlinux.org/stellar-toml-lint.git
+          git fetch aur
+
+      - name: Commit and push to AUR
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create a temporary branch for AUR
+          git checkout -b aur-release
+          git add packaging/aur/PKGBUILD packaging/aur/.SRCINFO
+          git commit -m "chore: update to v${{ steps.version.outputs.version }}"
+          git push -f aur aur-release:master
+        env:
+          GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=no

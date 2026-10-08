@@ -1,0 +1,363 @@
+{
+  "url": "https://zeam.money/.well-known/stellar.toml",
+  "domain": "zeam.money",
+  "sourceSha256": "92a309791b0eefff07c1e2e509f93c51aac9947daa5ed1507bc8a5e12511dde7",
+  "ok": false,
+  "counts": {
+    "error": 11,
+    "warning": 15,
+    "info": 2
+  },
+  "diagnostics": [
+    {
+      "rule": "currencies/collateral-consistency",
+      "category": "currencies",
+      "message": "CURRENCIES[0] lists collateral_addresses but no collateral_address_messages, so the reserve claim cannot be verified",
+      "path": "CURRENCIES[0].collateral_addresses",
+      "position": {
+        "line": 38,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "severity": "error"
+    },
+    {
+      "rule": "currencies/collateral-consistency",
+      "category": "currencies",
+      "message": "CURRENCIES[0] lists collateral_addresses but no collateral_address_signatures, so the reserve claim cannot be verified",
+      "path": "CURRENCIES[0].collateral_addresses",
+      "position": {
+        "line": 38,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "severity": "error"
+    },
+    {
+      "rule": "currencies/collateral-consistency",
+      "category": "currencies",
+      "message": "CURRENCIES[1].collateral_address_signatures has 0 entries but collateral_addresses has 2",
+      "path": "CURRENCIES[1].collateral_address_signatures",
+      "position": {
+        "line": 50,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Provide one message and one signature per collateral address, in order.",
+      "severity": "error"
+    },
+    {
+      "rule": "currencies/collateral-consistency",
+      "category": "currencies",
+      "message": "CURRENCIES[1].collateral_address_messages has 1 entries but collateral_addresses has 2",
+      "path": "CURRENCIES[1].collateral_address_messages",
+      "position": {
+        "line": 58,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Provide one message and one signature per collateral address, in order.",
+      "severity": "error"
+    },
+    {
+      "rule": "currencies/collateral-consistency",
+      "category": "currencies",
+      "message": "CURRENCIES[2] lists collateral_addresses but no collateral_address_messages, so the reserve claim cannot be verified",
+      "path": "CURRENCIES[2].collateral_addresses",
+      "position": {
+        "line": 75,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "severity": "error"
+    },
+    {
+      "rule": "currencies/collateral-consistency",
+      "category": "currencies",
+      "message": "CURRENCIES[2] lists collateral_addresses but no collateral_address_signatures, so the reserve claim cannot be verified",
+      "path": "CURRENCIES[2].collateral_addresses",
+      "position": {
+        "line": 75,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "severity": "error"
+    },
+    {
+      "rule": "currencies/urls",
+      "category": "currencies",
+      "message": "CURRENCIES[3].attestation_of_reserve must be a valid URL",
+      "path": "CURRENCIES[3].attestation_of_reserve",
+      "position": {
+        "line": 90,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "severity": "error"
+    },
+    {
+      "rule": "currencies/collateral-consistency",
+      "category": "currencies",
+      "message": "CURRENCIES[3] lists collateral_addresses but no collateral_address_messages, so the reserve claim cannot be verified",
+      "path": "CURRENCIES[3].collateral_addresses",
+      "position": {
+        "line": 91,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "severity": "error"
+    },
+    {
+      "rule": "currencies/collateral-consistency",
+      "category": "currencies",
+      "message": "CURRENCIES[3] lists collateral_addresses but no collateral_address_signatures, so the reserve claim cannot be verified",
+      "path": "CURRENCIES[3].collateral_addresses",
+      "position": {
+        "line": 91,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "severity": "error"
+    },
+    {
+      "rule": "currencies/urls",
+      "category": "currencies",
+      "message": "CURRENCIES[5].attestation_of_reserve must be a valid URL",
+      "path": "CURRENCIES[5].attestation_of_reserve",
+      "position": {
+        "line": 108,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "severity": "error"
+    },
+    {
+      "rule": "validators/alias",
+      "category": "validators",
+      "message": "VALIDATORS[1].ALIAS must match ^[a-z0-9-]{2,16}$",
+      "path": "VALIDATORS[1].ALIAS",
+      "position": {
+        "line": 153,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#validator-information",
+      "suggestion": "Try \"zeam-singapore-0\".",
+      "severity": "error"
+    },
+    {
+      "rule": "currencies/issuance-exclusive",
+      "category": "currencies",
+      "severity": "warning",
+      "message": "CURRENCIES[0] declares no issuance policy",
+      "path": "CURRENCIES[0]",
+      "position": {
+        "line": 25,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Add one of fixed_number, max_number, or is_unlimited so holders know the supply model."
+    },
+    {
+      "rule": "currencies/issuance-exclusive",
+      "category": "currencies",
+      "severity": "warning",
+      "message": "CURRENCIES[1] declares no issuance policy",
+      "path": "CURRENCIES[1]",
+      "position": {
+        "line": 42,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Add one of fixed_number, max_number, or is_unlimited so holders know the supply model."
+    },
+    {
+      "rule": "currencies/issuance-exclusive",
+      "category": "currencies",
+      "severity": "warning",
+      "message": "CURRENCIES[2] declares no issuance policy",
+      "path": "CURRENCIES[2]",
+      "position": {
+        "line": 64,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Add one of fixed_number, max_number, or is_unlimited so holders know the supply model."
+    },
+    {
+      "rule": "currencies/anchored-asset-fields",
+      "category": "currencies",
+      "message": "CURRENCIES[3] is anchored but does not specify redemption_instructions",
+      "path": "CURRENCIES[3]",
+      "position": {
+        "line": 80,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Holders need to know what backs the token and how to redeem it.",
+      "severity": "warning"
+    },
+    {
+      "rule": "currencies/issuance-exclusive",
+      "category": "currencies",
+      "severity": "warning",
+      "message": "CURRENCIES[3] declares no issuance policy",
+      "path": "CURRENCIES[3]",
+      "position": {
+        "line": 80,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Add one of fixed_number, max_number, or is_unlimited so holders know the supply model."
+    },
+    {
+      "rule": "currencies/anchored-asset-fields",
+      "category": "currencies",
+      "message": "CURRENCIES[4] is anchored but does not specify redemption_instructions",
+      "path": "CURRENCIES[4]",
+      "position": {
+        "line": 94,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Holders need to know what backs the token and how to redeem it.",
+      "severity": "warning"
+    },
+    {
+      "rule": "currencies/issuance-exclusive",
+      "category": "currencies",
+      "severity": "warning",
+      "message": "CURRENCIES[4] declares no issuance policy",
+      "path": "CURRENCIES[4]",
+      "position": {
+        "line": 94,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Add one of fixed_number, max_number, or is_unlimited so holders know the supply model."
+    },
+    {
+      "rule": "currencies/issuance-exclusive",
+      "category": "currencies",
+      "severity": "warning",
+      "message": "CURRENCIES[5] declares no issuance policy",
+      "path": "CURRENCIES[5]",
+      "position": {
+        "line": 105,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Add one of fixed_number, max_number, or is_unlimited so holders know the supply model."
+    },
+    {
+      "rule": "currencies/anchored-asset-fields",
+      "category": "currencies",
+      "message": "CURRENCIES[6] is anchored but does not specify redemption_instructions",
+      "path": "CURRENCIES[6]",
+      "position": {
+        "line": 120,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Holders need to know what backs the token and how to redeem it.",
+      "severity": "warning"
+    },
+    {
+      "rule": "currencies/issuance-exclusive",
+      "category": "currencies",
+      "severity": "warning",
+      "message": "CURRENCIES[6] declares no issuance policy",
+      "path": "CURRENCIES[6]",
+      "position": {
+        "line": 120,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Add one of fixed_number, max_number, or is_unlimited so holders know the supply model."
+    },
+    {
+      "rule": "currencies/anchored-asset-fields",
+      "category": "currencies",
+      "message": "CURRENCIES[7] is anchored but does not specify redemption_instructions",
+      "path": "CURRENCIES[7]",
+      "position": {
+        "line": 131,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Holders need to know what backs the token and how to redeem it.",
+      "severity": "warning"
+    },
+    {
+      "rule": "currencies/issuance-exclusive",
+      "category": "currencies",
+      "severity": "warning",
+      "message": "CURRENCIES[7] declares no issuance policy",
+      "path": "CURRENCIES[7]",
+      "position": {
+        "line": 131,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Add one of fixed_number, max_number, or is_unlimited so holders know the supply model."
+    },
+    {
+      "rule": "general/invalid-github-handle",
+      "category": "general",
+      "message": "DOCUMENTATION.ORG_GITHUB is not a valid GitHub username or profile URL",
+      "path": "DOCUMENTATION.ORG_GITHUB",
+      "position": {
+        "line": 167,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Use the GitHub account name, e.g. \"stellar\", or its profile URL, e.g. \"https://github.com/stellar\".",
+      "severity": "warning"
+    },
+    {
+      "rule": "documentation/social-handles",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_KEYBASE should be an account name, not a URL",
+      "path": "DOCUMENTATION.ORG_KEYBASE",
+      "position": {
+        "line": 171,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Use the bare handle, e.g. \"zeam\".",
+      "fix": {
+        "value": "zeam"
+      },
+      "severity": "warning"
+    },
+    {
+      "rule": "documentation/urls",
+      "category": "documentation",
+      "severity": "warning",
+      "message": "DOCUMENTATION.ORG_LOGO should be a PNG on a transparent background",
+      "path": "DOCUMENTATION.ORG_LOGO",
+      "position": {
+        "line": 173,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation"
+    },
+    {
+      "rule": "documentation/missing-privacy-policy",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_PRIVACY_POLICY is missing",
+      "path": "DOCUMENTATION.ORG_PRIVACY_POLICY",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Add a link to your organization's privacy policy.",
+      "severity": "info"
+    },
+    {
+      "rule": "documentation/missing-terms-of-service",
+      "category": "documentation",
+      "message": "DOCUMENTATION.ORG_TERMS_OF_SERVICE is missing",
+      "path": "DOCUMENTATION.ORG_TERMS_OF_SERVICE",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Add a link to your organization's terms of service.",
+      "severity": "info"
+    }
+  ]
+}

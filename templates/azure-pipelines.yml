@@ -1,0 +1,95 @@
+# Azure DevOps steps template: lint your Stellar Info File (SEP-1).
+#
+# Copy this file into your repository and reference it as a steps template:
+#
+#   # azure-pipelines.yml
+#   steps:
+#     - template: templates/azure-pipelines.yml
+#       parameters:
+#         stellarTomlPath: public/.well-known/stellar.toml
+#         strict: true
+#
+# The template runs the linter on the agent via `npx` (installing a Node.js 18+
+# toolchain with NodeTool@0) unless `containerImage` is set, in which case it runs
+# the published `ghcr.io/anchor-tools/stellar-toml-lint` container with the workspace
+# mounted read-write. Set `publishTestResults` to route the run into the Tests tab.
+
+parameters:
+  - name: stellarTomlPath
+    type: string
+    default: stellar.toml
+  - name: format
+    type: string
+    default: text
+    values:
+      - text
+      - json
+      - sarif
+      - github
+      - junit
+  - name: strict
+    type: boolean
+    default: false
+  - name: args
+    type: string
+    default: ''
+  - name: nodeVersion
+    type: string
+    default: '20.x'
+  - name: containerImage
+    type: string
+    default: ''
+  - name: publishTestResults
+    type: boolean
+    default: false
+  - name: resultsFile
+    type: string
+    default: stellar-toml-results.xml
+
+steps:
+  - task: NodeTool@0
+    displayName: Use Node.js ${{ parameters.nodeVersion }}
+    condition: and(succeeded(), eq('${{ parameters.containerImage }}', ''))
+    inputs:
+      versionSpec: ${{ parameters.nodeVersion }}
+
+  - bash: |
+      set -euo pipefail
+
+      publish="${{ parameters.publishTestResults }}"
+      format="${{ parameters.format }}"
+      if [ "$publish" = "True" ]; then
+        format="junit"
+      fi
+
+      args=(--format "$format")
+      if [ "${{ parameters.strict }}" = "True" ]; then
+        args+=(--strict)
+      fi
+      # Intentional word splitting: the caller may pass several space-separated flags.
+      extra=(${{ parameters.args }})
+      args+=("${extra[@]}")
+      args+=("${{ parameters.stellarTomlPath }}")
+
+      if [ -n "${{ parameters.containerImage }}" ]; then
+        # The container's entrypoint is the linter CLI, so arguments pass straight through.
+        runner=(docker run --rm -v "$PWD:/workspace" -w /workspace "${{ parameters.containerImage }}")
+      else
+        runner=(npx --yes stellar-toml-lint@latest)
+      fi
+
+      if [ "$publish" = "True" ]; then
+        "${runner[@]}" "${args[@]}" > "${{ parameters.resultsFile }}"
+      else
+        "${runner[@]}" "${args[@]}"
+      fi
+    displayName: Lint stellar.toml (SEP-1)
+
+  - task: PublishTestResults@2
+    displayName: Publish stellar-toml-lint results
+    condition: and(succeededOrFailed(), eq('${{ parameters.publishTestResults }}', 'True'))
+    inputs:
+      testResultsFormat: JUnit
+      testResultsFiles: ${{ parameters.resultsFile }}
+      mergeTestResults: true
+      testRunTitle: stellar-toml-lint

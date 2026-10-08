@@ -6,17 +6,37 @@
  * produces diagnostics or a reporter that formats them.
  */
 
+import type { CstDocument } from './cst/parser.js';
+
 /** How much a violation matters. Only `error` affects the default exit code. */
 export type Severity = 'error' | 'warning' | 'info';
 
 /** Which part of SEP-1 a rule covers. Used for grouping in reports. */
 export type RuleCategory =
-  'file' | 'general' | 'documentation' | 'principals' | 'currencies' | 'validators' | 'network';
+  | 'file'
+  | 'general'
+  | 'documentation'
+  | 'principals'
+  | 'currencies'
+  | 'validators'
+  | 'network'
+  | 'policy'
+  | 'sep12'
+  | 'codemod';
 
 /** A 1-based position in the source file. */
 export interface Position {
   line: number;
   column: number;
+}
+
+/**
+ * A mechanically safe rewrite `--fix` can apply by itself. Present only when
+ * there is exactly one unambiguous correction, so the tool never guesses.
+ */
+export interface Fix {
+  /** The corrected value, unencoded, to put in place of the offending one. */
+  value: string;
 }
 
 /** One rule violation at one place in the file. */
@@ -87,6 +107,14 @@ export interface LintOptions {
   /** Verify network-dependent account and currency metadata checks. */
   checkNetwork?: boolean;
   /**
+   * Fetch and lint the `toml` pointers referenced by `CURRENCIES` entries.
+   *
+   * Consumes the caller's transport, so a stubbed `fetchImpl` keeps the linked
+   * documents hermetic. Only honoured by `lintDomain`; offline `lint` runs have
+   * no transport to follow a pointer with.
+   */
+  followLinks?: boolean;
+  /**
    * TLS session observed while fetching the file.
    *
    * Set by {@link lintDomain} only, so offline runs leave it undefined and the
@@ -102,13 +130,115 @@ export interface LintResult {
   ok: boolean;
   counts: Record<Severity, number>;
   /** Parsed document, or `undefined` when the file could not be parsed. */
-  parsed?: Record<string, unknown>;
+  parsed?: StellarToml;
+}
+
+export interface StellarToml {
+  VERSION?: string;
+  NETWORK_PASSPHRASE?: string;
+  HORIZON_URL?: string;
+  ACCOUNTS?: string[];
+  WEB_AUTH_CONTRACT_ID?: string;
+  SIGNING_KEY?: string;
+  URI_REQUEST_SIGNING_KEY?: string;
+  FEDERATION_SERVER?: string;
+  AUTH_SERVER?: string;
+  TRANSFER_SERVER?: string;
+  TRANSFER_SERVER_SEP0024?: string;
+  KYC_SERVER?: string;
+  WEB_AUTH_ENDPOINT?: string;
+  WEB_AUTH_FOR_CONTRACTS_ENDPOINT?: string;
+  DIRECT_PAYMENT_SERVER?: string;
+  ANCHOR_QUOTE_SERVER?: string;
+  DOCUMENTATION?: {
+    ORG_NAME?: string;
+    ORG_DBA?: string;
+    ORG_URL?: string;
+    ORG_LOGO?: string;
+    ORG_DESCRIPTION?: string;
+    ORG_PHYSICAL_ADDRESS?: string;
+    ORG_PHYSICAL_ADDRESS_ATTESTATION?: string;
+    ORG_PHONE_NUMBER?: string;
+    ORG_PHONE_NUMBER_ATTESTATION?: string;
+    ORG_KEYBASE?: string;
+    ORG_TWITTER?: string;
+    ORG_GITHUB?: string;
+    ORG_OFFICIAL_EMAIL?: string;
+    ORG_SUPPORT_EMAIL?: string;
+    ORG_LICENSING_AUTHORITY?: string;
+    ORG_LICENSE_TYPE?: string;
+    ORG_LICENSE_NUMBER?: string;
+  };
+  PRINCIPALS?: Array<{
+    name?: string;
+    email?: string;
+    keybase?: string;
+    telegram?: string;
+    twitter?: string;
+    github?: string;
+    id_photo_hash?: string;
+    verification_photo_hash?: string;
+  }>;
+  CURRENCIES?: Array<{
+    code?: string;
+    issuer?: string;
+    contract?: string;
+    code_template?: string;
+    status?: string;
+    display_decimals?: number;
+    name?: string;
+    desc?: string;
+    conditions?: string;
+    image?: string;
+    fixed_number?: string;
+    max_number?: string;
+    is_unlimited?: boolean;
+    is_asset_anchored?: boolean;
+    anchor_asset_type?: string;
+    anchor_asset?: string;
+    attestation_of_reserve?: string;
+    redemption_instructions?: string;
+    collateral_addresses?: string[];
+    collateral_address_messages?: string[];
+    collateral_address_signatures?: string[];
+    regulated?: boolean;
+    approval_server?: string;
+    approval_criteria?: string;
+    toml?: string;
+  }>;
+  VALIDATORS?: Array<{
+    ALIAS?: string;
+    DISPLAY_NAME?: string;
+    PUBLIC_KEY?: string;
+    HOST?: string;
+    HISTORY?: string;
+  }>;
+  SERVERS?: Array<{
+    WEB_AUTH_ENDPOINT?: string;
+    TRANSFER_SERVER?: string;
+    TRANSFER_SERVER_SEP0024?: string;
+    KYC_SERVER?: string;
+    ANCHOR_QUOTE_SERVER?: string;
+    DIRECT_PAYMENT_SERVER?: string;
+    WEB_AUTH_CONTRACT_ID?: string;
+    TLS_CERT?: string;
+  }>;
+  [key: string]: unknown;
 }
 
 /** Everything a rule needs to inspect a document. */
 export interface RuleContext {
   /** The parsed TOML document. */
   doc: Record<string, unknown>;
+  /**
+   * The lossless Concrete Syntax Tree the document was parsed into.
+   *
+   * Optional so a hand-built context in a test keeps compiling, but every run
+   * through {@link lint} supplies one. Rules that need comments, whitespace, or
+   * exact token spans rather than decoded values can walk it with `walk` from
+   * `cst/visitor.js`.
+   */
+  cst?: CstDocument;
   /** Raw source, for rules that care about bytes or formatting. */
   source: string;
   options: LintOptions;
