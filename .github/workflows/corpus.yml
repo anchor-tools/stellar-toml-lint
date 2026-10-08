@@ -1,0 +1,92 @@
+name: Corpus
+
+# The corpus is not a merge gate: it needs the network, and its findings are
+# meant for a human to read rather than to block a PR. It runs on a schedule so
+# that drift in the linter, the SEP-1 spec, or a published stellar.toml shows up
+# as a red run with a reviewable diff instead of as a surprise in production.
+
+on:
+  schedule:
+    - cron: '43 4 * * 3'
+  workflow_dispatch:
+    inputs:
+      update:
+        description: "Rewrite the snapshots from this run's fetch"
+        type: boolean
+        default: false
+      refresh:
+        description: Ignore the local cache when fetching
+        type: boolean
+        default: false
+      filter:
+        description: Comma-separated catalogue entries (leave blank for all)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: corpus-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  corpus:
+    name: Lint the published corpus
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Reuse of the last fetch keeps the scheduled run gentle on third-party
+      # hosts, while `restore-keys` means a new cache is saved every run.
+      - name: Restore the fetch cache
+        uses: actions/cache@v4
+        with:
+          path: test/corpus/.cache
+          key: corpus-cache-${{ hashFiles('test/corpus/corpus.json') }}-${{ github.run_id }}
+          restore-keys: |
+            corpus-cache-${{ hashFiles('test/corpus/corpus.json') }}-
+
+      - name: Run the harness
+        env:
+          UPDATE: ${{ inputs.update }}
+          REFRESH: ${{ inputs.refresh }}
+          FILTER: ${{ inputs.filter }}
+        run: |
+          args=()
+          if [ "$UPDATE" = "true" ]; then args+=(--update); fi
+          if [ "$REFRESH" = "true" ]; then args+=(--refresh); fi
+          for entry in $(echo "$FILTER" | tr ',' ' '); do
+            args+=(--filter "$entry")
+          done
+          npm run corpus -- "${args[@]}"
+
+      # The run already failed on a change; the artifacts say exactly what.
+      - name: Upload the snapshot diff
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-diff
+          path: test/corpus/.diff
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # `--update` writes snapshots that nobody has reviewed yet, so hand them
+      # over as an artifact instead of committing with a token that could not
+      # trigger CI anyway.
+      - name: Upload rewritten snapshots
+        if: ${{ inputs.update }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-snapshots
+          path: test/corpus/snapshots
+          if-no-files-found: error
+          retention-days: 14

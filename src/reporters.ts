@@ -1,13 +1,16 @@
 import type { Diagnostic, LintResult, Severity } from './types.js';
+import { READINESS_MAX_SCORE, type ReadinessGrade, type ReadinessReport } from './readiness.js';
 
 export { formatHtml } from './reporters/html.js';
+export { formatPrComment } from './reporters/pr-comment.js';
 
 /** Minimal ANSI helpers. Avoids a dependency for what is a dozen escape codes. */
-function makeColors(enabled: boolean) {
+export function makeColors(enabled: boolean) {
   const wrap = (open: number, close: number) => (s: string) =>
     enabled ? `[${open}m${s}[${close}m` : s;
   return {
     red: wrap(31, 39),
+    green: wrap(32, 39),
     yellow: wrap(33, 39),
     blue: wrap(34, 39),
     grey: wrap(90, 39),
@@ -114,8 +117,30 @@ function summaryLine(result: LintResult, c: ReturnType<typeof makeColors>): stri
   return error > 0 ? c.red(c.bold(text)) : warning > 0 ? c.yellow(text) : c.grey(text);
 }
 
-function plural(n: number, word: string): string {
+export function plural(n: number, word: string): string {
   return n === 1 ? word : `${word}s`;
+}
+
+/**
+ * Emits only the problem count line: `3 problems (1 error, 2 warnings)`.
+ *
+ * Designed for bash scripts and CI status checks that need a minimal output
+ * format without diagnostic text. Summarizes errors and warnings across the
+ * linted results.
+ */
+export function formatCount(
+  target: { result: LintResult }[] | LintResult,
+  options: { color?: boolean } = {},
+): string {
+  const c = makeColors(options.color ?? false);
+  const results = Array.isArray(target) ? target : [{ result: target }];
+  const totalErrors = results.reduce((acc, { result }) => acc + result.counts.error, 0);
+  const totalWarnings = results.reduce((acc, { result }) => acc + result.counts.warning, 0);
+  const totalProblems = totalErrors + totalWarnings;
+  const line = `${totalProblems} ${plural(totalProblems, 'problem')} (${totalErrors} ${plural(totalErrors, 'error')}, ${totalWarnings} ${plural(totalWarnings, 'warning')})`;
+  const painted =
+    totalErrors > 0 ? c.red(c.bold(line)) : totalWarnings > 0 ? c.yellow(line) : c.green(line);
+  return `${painted}\n`;
 }
 
 /**
@@ -126,8 +151,12 @@ function plural(n: number, word: string): string {
  * is reflected exactly as it is in that file's report; the totals behind the
  * parentheses are summed across every file, which is what a CI log needs to
  * judge the whole set at a glance.
+ *
+ * Named for the run rather than for a summary because `formatSummary` below
+ * reports one file's status on one line, and the two are easily confused when
+ * both are in scope.
  */
-export function formatSummary(
+export function formatRunSummary(
   entries: { name: string; result: LintResult }[],
   options: { color?: boolean } = {},
 ): string {
@@ -161,6 +190,52 @@ export function formatSummary(
   // every text block already ends with.
   const text = `\n${line}\n`;
   return failed > 0 ? c.red(c.bold(text)) : totals.warning > 0 ? c.yellow(text) : c.grey(text);
+}
+
+export interface SummaryReporterOptions {
+  /** Green for a pass, yellow when only warnings were found, red for a fail. */
+  color?: boolean;
+}
+
+/**
+ * One line per file: `stellar.toml: PASS (0 errors, 0 warnings)`.
+ *
+ * The other formats answer "what is wrong, and where"; this one answers "did
+ * it pass", which is the only question a pre-push hook, a monitoring poll, or a
+ * status line has room to ask. Holding it to a single line is the whole point —
+ * `grep`, `awk`, and a line-oriented CI log can all read it without a parser,
+ * and one file's report can never spill into the next file's status.
+ *
+ * The verdict is {@link LintResult.ok} rather than a count computed here, so
+ * `PASS`/`FAIL` means exactly what it means in the text report and in the exit
+ * code: `--strict` turns a warning into a `FAIL` in all three. Nothing here can
+ * change which exit code the CLI returns.
+ *
+ * Info findings are named only when there are some, exactly as the closing line
+ * of a multi-file run does, so a file carrying nothing but info notes still
+ * says so rather than reading as untouched.
+ */
+export function formatSummary(
+  result: LintResult,
+  filename = 'stellar.toml',
+  options: SummaryReporterOptions = {},
+): string {
+  const c = makeColors(options.color ?? false);
+  const { error, warning, info } = result.counts;
+
+  const counts = [`${error} ${plural(error, 'error')}`, `${warning} ${plural(warning, 'warning')}`];
+  if (info > 0) counts.push(`${info} ${plural(info, 'info')}`);
+
+  // The one-line contract has to survive the one input the caller does not
+  // control: a path is a shell argument, and a filename holding a newline would
+  // otherwise split one file's status across two lines of a monitoring log.
+  const name = filename.replace(/[\r\n]+/g, ' ');
+  const text = `${name}: ${result.ok ? 'PASS' : 'FAIL'} (${counts.join(', ')})`;
+
+  // Driven by the verdict rather than the error count alone, so a `--strict`
+  // run that fails on a warning is red for the same reason it exits 1.
+  const painted = !result.ok ? c.red(c.bold(text)) : warning > 0 ? c.yellow(text) : c.green(text);
+  return `${painted}\n`;
 }
 
 /** Machine-readable output for scripts and dashboards. */
@@ -357,6 +432,102 @@ function escapeXmlAttribute(s: string): string {
   return escapeXml(s).replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
+export interface ReadinessReporterOptions {
+  /** Path shown in the header. */
+  filename?: string;
+  color?: boolean;
+}
+
+/** Letter grade to colour, so a failing file reads as alarming at a glance. */
+const GRADE_COLOR: Record<ReadinessGrade, 'green' | 'blue' | 'yellow' | 'red'> = {
+  'A+': 'green',
+  A: 'green',
+  B: 'blue',
+  C: 'yellow',
+  D: 'yellow',
+  F: 'red',
+};
+
+/** A 20-cell bar so the score is visible before the number is read. */
+function scoreBar(score: number, width = 20): string {
+  const filled = Math.round((Math.max(0, Math.min(100, score)) / 100) * width);
+  return '\u2588'.repeat(filled) + '\u2591'.repeat(width - filled);
+}
+
+/**
+ * Human-readable listing readiness: score, letter grade, and a checklist that
+ * marks every requirement as met or missing.
+ */
+export function formatReadiness(
+  report: ReadinessReport,
+  options: ReadinessReporterOptions = {},
+): string {
+  const { filename = 'stellar.toml', color = false } = options;
+  const c = makeColors(color);
+  const gradeColor = GRADE_COLOR[report.grade];
+  const lines: string[] = [];
+
+  lines.push(`${c.bold(c.underline(filename))} ${c.grey('\u2014 listing readiness')}`);
+  lines.push('');
+  lines.push(
+    `  ${c.bold(`Grade ${report.grade}`.padEnd(10))}${c.grey(` ${report.score}/${READINESS_MAX_SCORE}`)}`,
+  );
+  lines.push(`  ${c[gradeColor](scoreBar(report.score))}`);
+  lines.push('');
+  lines.push(`  ${c.bold('Listing Readiness Checklist')}`);
+  lines.push('');
+
+  for (const pillar of report.pillars) {
+    lines.push(`  ${c.bold(pillar.label)} ${c.grey(`${pillar.score}/${pillar.maxScore}`)}`);
+    for (const check of pillar.checks) {
+      const mark = check.passed ? c.green('[\u2713]') : c.red('[\u2717]');
+      const points = check.maxPoints > 0 ? c.grey(` (${check.points}/${check.maxPoints})`) : '';
+      lines.push(`    ${mark} ${check.label}${points}`);
+      if (!check.passed && check.detail) {
+        lines.push(`        ${c.grey(check.detail)}`);
+      }
+      if (!check.passed && check.suggestion) {
+        lines.push(`        ${c.grey('\u21b3')} ${c.grey(check.suggestion)}`);
+      }
+    }
+    lines.push('');
+  }
+
+  const passed = report.checklist.filter((check) => check.passed).length;
+  const total = report.checklist.length;
+  const summary = `${passed} of ${total} checklist items passed`;
+  lines.push(
+    `  ${report.grade === 'A+' || report.grade === 'A' ? c.green(summary) : c.yellow(summary)}`,
+  );
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
+ * Machine-readable readiness for scripts and dashboards.
+ *
+ * Pillars carry their scores; `checklist` carries every individual item, so a
+ * consumer can render exactly the terminal view or chart the gaps.
+ */
+export function formatReadinessJson(report: ReadinessReport, filename = 'stellar.toml'): string {
+  return `${JSON.stringify(
+    {
+      file: filename,
+      maxScore: READINESS_MAX_SCORE,
+      score: report.score,
+      grade: report.grade,
+      parseFailure: report.parseFailure,
+      pillars: report.pillars.map(({ id, label, score, maxScore }) => ({
+        id,
+        label,
+        score,
+        maxScore,
+      })),
+      checklist: report.checklist,
+    },
+    null,
+    2,
+  )}\n`;
 /**
  * Checkstyle XML, the shape Jenkins (Warnings NG), SonarQube-adjacent
  * dashboards, and Java-adjacent CI pipelines read for static-analysis results.
@@ -401,6 +572,83 @@ export function formatCheckstyle(
     '</checkstyle>',
     '',
   ].join('\n');
+}
+
+/**
+ * GitHub-flavored Markdown for a workflow's `$GITHUB_STEP_SUMMARY`.
+ *
+ * GitHub Actions caps the inline annotations `--format github` emits at ten
+ * per run, and scatters the rest across commits and files. Piping this report
+ * into the step summary instead renders the whole run — a pass/fail badge, the
+ * error and warning counts, and one table row per finding — on the Action
+ * overview page. Each diagnostic with a suggestion or spec link also gets a
+ * collapsible `<details>` block so the table stays scannable.
+ *
+ * ```bash
+ * stellar-toml-lint --format markdown >> "$GITHUB_STEP_SUMMARY"
+ * ```
+ */
+export function formatMarkdown(result: LintResult, filename = 'stellar.toml'): string {
+  const { error, warning, info } = result.counts;
+  const name = escapeMarkdown(filename);
+
+  if (result.diagnostics.length === 0) {
+    return `### ✅ ${name}: No SEP-1 issues found\n`;
+  }
+
+  const status = result.ok ? '✅ Passed' : '❌ Failed';
+  const lines: string[] = [
+    `### ${status}: ${name}`,
+    '',
+    `**${error} ${plural(error, 'error')}**, **${warning} ${plural(warning, 'warning')}**, **${info} ${plural(info, 'info')}**`,
+    '',
+    '| Location | Severity | Rule | Message |',
+    '| --- | --- | --- | --- |',
+  ];
+
+  for (const d of result.diagnostics) {
+    lines.push(
+      `| ${escapeMarkdownCell(locationOf(d))} | ${d.severity} | ${escapeMarkdownCell(d.rule)} | ${escapeMarkdownCell(d.message)} |`,
+    );
+  }
+
+  const details = result.diagnostics.filter((d) => hasText(d.suggestion) || hasText(d.helpUri));
+  if (details.length > 0) {
+    lines.push('');
+    lines.push('<details>');
+    lines.push(`<summary>Details &amp; suggestions (${details.length})</summary>`);
+    lines.push('');
+    for (const d of details) {
+      lines.push(`- **${escapeMarkdownCell(d.rule)}** (${escapeMarkdownCell(locationOf(d))})`);
+      if (hasText(d.suggestion)) lines.push(`  - ${escapeMarkdownCell(d.suggestion)}`);
+      if (hasText(d.helpUri)) lines.push(`  - Spec: <${d.helpUri}>`);
+    }
+    lines.push('');
+    lines.push('</details>');
+  }
+
+  return `${lines.join('\n')}\n`;
+}
+
+/**
+ * Escapes the characters GitHub's Markdown renderer would otherwise read as
+ * markup. Diagnostic messages quote values straight out of the linted file, so
+ * a `|` in a currency code or a `<script>` in a description must not be able to
+ * break the table or inject markup into the run summary.
+ */
+function escapeMarkdown(s: string): string {
+  return s
+    .replace(/\\/g, '\\\\')
+    .replace(/([|`<>*_[\]])/g, '\\$1')
+    .replace(/\r?\n/g, ' ');
+}
+
+/**
+ * Table cells additionally have to escape their column separator, and the
+ * angle brackets a raw `<` would open a tag with inside the summary document.
+ */
+function escapeMarkdownCell(s: string): string {
+  return s.replace(/\|/g, '\\|').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r?\n/g, ' ');
 }
 
 /** Newline-delimited JSON for streaming analysis. */

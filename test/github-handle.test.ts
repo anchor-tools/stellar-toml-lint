@@ -58,10 +58,10 @@ describe('general/invalid-github-handle', () => {
     );
   });
 
-  it('does not touch ORG_TWITTER, which still wants a bare handle', () => {
+  it('does not touch ORG_TWITTER, which has its own rule for the bare handle', () => {
     const source = '[DOCUMENTATION]\nORG_TWITTER="https://twitter.com/exampleanchor"\n';
     const rules = lint(source).diagnostics.map((d) => d.rule);
-    expect(rules).toContain('documentation/social-handles');
+    expect(rules).toContain('general/invalid-twitter-handle');
     expect(rules).not.toContain(RULE);
   });
 });

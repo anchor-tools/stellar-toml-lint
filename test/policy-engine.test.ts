@@ -16,6 +16,8 @@ describe('Policy Engine', () => {
       ORG_URL: 'https://example.com',
       ORG_OFFICIAL_EMAIL: 'contact@example.com',
       ORG_GITHUB: 'testanchor',
+      ORG_PRIVACY_POLICY: 'https://example.com/privacy',
+      ORG_TERMS_OF_SERVICE: 'https://example.com/terms',
     },
     SIGNING_KEY: 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
     SERVERS: [
@@ -56,7 +58,7 @@ describe('Policy Engine', () => {
 
   const sampleSource = `VERSION = "2.0.0"
 NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"
-DOCUMENTATION = { ORG_NAME = "Test Anchor", ORG_URL = "https://example.com", ORG_OFFICIAL_EMAIL = "contact@example.com", ORG_GITHUB = "testanchor" }
+DOCUMENTATION = { ORG_NAME = "Test Anchor", ORG_URL = "https://example.com", ORG_OFFICIAL_EMAIL = "contact@example.com", ORG_GITHUB = "testanchor", ORG_PRIVACY_POLICY = "https://example.com/privacy", ORG_TERMS_OF_SERVICE = "https://example.com/terms" }
 SIGNING_KEY = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
 SERVERS = [{ WEB_AUTH_ENDPOINT = "https://auth.example.com", TRANSFER_SERVER = "https://transfer.example.com", KYC_SERVER = "https://kyc.example.com" }]
 CURRENCIES = [{ code = "USDC", issuer = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF", status = "test", display_decimals = 2, regulated = true }, { code = "EURC", issuer = "GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", status = "live", display_decimals = 2 }]

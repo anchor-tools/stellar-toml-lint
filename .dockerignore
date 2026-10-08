@@ -1,0 +1,14 @@
+# Keep the image small and avoid shipping build or lint tooling
+node_modules
+.git
+*.log
+.DS_Store
+coverage
+*.ts
+tsconfig*.json
+# The image's build stage compiles from source, so it needs the tsconfigs.
+!tsconfig.json
+!tsconfig.build.json
+
+# Pre-commit source fixtures
+*.toml

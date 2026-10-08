@@ -26,6 +26,7 @@
         <nav>
           <a href="#overview">Overview</a>
           <a href="#checks">What it checks</a>
+          <a href="#playground">Playground</a>
           <a href="#usage">Usage</a>
           <a href="#api">API</a>
           <a href="#ci">CI</a>
@@ -87,6 +88,55 @@ public/.well-known/stellar.toml
   19:1      warning  DOCUMENTATION.ORG_PHONE_NUMBER is not in E.164 format
 
   4 problems (3 errors, 1 warning, 0 infos)</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="playground" class="content-section playground-section">
+        <div class="container">
+          <div class="section-heading">
+            <p class="eyebrow">In-browser validation</p>
+            <h2>Try a stellar.toml</h2>
+            <p>
+              Linting runs locally in your browser. Share the URL to send someone the current TOML.
+            </p>
+          </div>
+
+          <div class="playground-toolbar">
+            <label for="playground-sample">Load a sample</label>
+            <select id="playground-sample" name="sample">
+              <option>Minimal Issuer</option>
+              <option>SEP-24 Anchor</option>
+              <option>Validator Node</option>
+              <option>Broken TOML</option>
+            </select>
+            <div class="diagnostic-counts" aria-label="Diagnostic counts">
+              <span class="count-pill error-count"
+                ><span>Errors</span> <strong id="error-count">0</strong></span
+              >
+              <span class="count-pill warning-count"
+                ><span>Warnings</span> <strong id="warning-count">0</strong></span
+              >
+            </div>
+          </div>
+
+          <div class="playground-grid">
+            <div class="editor-pane">
+              <label class="pane-heading" for="toml-editor">stellar.toml editor</label>
+              <textarea
+                id="toml-editor"
+                name="toml"
+                spellcheck="false"
+                autocapitalize="off"
+                autocomplete="off"
+                aria-describedby="editor-note"
+              ></textarea>
+              <p id="editor-note" class="editor-note">Changes are linted as you type.</p>
+            </div>
+            <section class="diagnostics-pane" aria-labelledby="diagnostics-heading">
+              <h3 id="diagnostics-heading" class="pane-heading">Diagnostics</h3>
+              <ol id="diagnostic-list" class="diagnostic-list"></ol>
+            </section>
           </div>
         </div>
       </section>
@@ -387,5 +437,7 @@ const live = await lintDomain('example.com');</code></pre>
         </div>
       </div>
     </footer>
+    <script src="./stellar-toml-lint.browser.js"></script>
+    <script type="module" src="./playground.js"></script>
   </body>
 </html>

@@ -249,6 +249,170 @@ nav a {
   border-bottom: 1px solid var(--border);
 }
 
+.playground-section {
+  background: rgba(9, 17, 27, 0.5);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.playground-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.playground-toolbar label,
+.pane-heading {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.playground-toolbar select {
+  min-height: 2.6rem;
+  padding: 0.45rem 2rem 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--panel-alt);
+  color: var(--text);
+  font: inherit;
+}
+
+.diagnostic-counts {
+  display: flex;
+  gap: 0.55rem;
+  margin-left: auto;
+}
+
+.count-pill,
+.severity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.error-count,
+.severity-error {
+  color: #ff9a9a;
+}
+
+.warning-count,
+.severity-warning {
+  color: var(--warning);
+}
+
+.severity-info {
+  color: var(--primary);
+}
+
+.playground-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  min-height: 26rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  overflow: hidden;
+  background: rgba(9, 17, 27, 0.85);
+}
+
+.editor-pane,
+.diagnostics-pane {
+  min-width: 0;
+  padding: 1rem;
+}
+
+.editor-pane {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+}
+
+#toml-editor {
+  flex: 1;
+  width: 100%;
+  min-height: 21rem;
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: #06111a;
+  color: #dfeeff;
+  font:
+    0.88rem/1.55 'SFMono-Regular',
+    Consolas,
+    'Liberation Mono',
+    Menlo,
+    monospace;
+  tab-size: 2;
+}
+
+.editor-note {
+  margin: 0.55rem 0 0;
+  font-size: 0.82rem;
+}
+
+.diagnostics-pane h3 {
+  margin-bottom: 0.75rem;
+}
+
+.diagnostic-list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diagnostic-item,
+.diagnostic-clean {
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.diagnostic-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.4rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.diagnostic-rule {
+  color: var(--primary);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.diagnostic-message,
+.diagnostic-suggestion {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.diagnostic-suggestion {
+  margin-top: 0.45rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.diagnostic-clean {
+  color: var(--accent);
+}
+
+:is(#toml-editor, #playground-sample):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .section-heading {
   margin-bottom: 1.5rem;
 }
@@ -378,6 +542,7 @@ td {
 
   .hero-grid,
   .two-column,
+  .playground-grid,
   .feature-grid,
   .check-grid,
   .footer-grid {
@@ -386,5 +551,19 @@ td {
 
   .hero {
     padding-top: 3.5rem;
+  }
+
+  .playground-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .diagnostic-counts {
+    margin-left: 0;
+  }
+
+  .editor-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
   }
 }
