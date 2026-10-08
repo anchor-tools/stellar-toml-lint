@@ -10,7 +10,7 @@ vi.mock('node:dns/promises', async () => ({
 }));
 
 function makeContext(doc: Record<string, unknown>): RuleContext {
-  const source = `VERSION="2.7.0"\nNETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"\n[DOCUMENTATION]\nORG_NAME="Example"\nORG_URL="https://example.com"\nORG_DESCRIPTION="Example"\nORG_OFFICIAL_EMAIL="ops@example.com"\n`;
+  const source = `VERSION="2.7.0"\nNETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"\n[DOCUMENTATION]\nORG_NAME="Example"\nORG_URL="https://example.com"\nORG_DESCRIPTION="Example"\nORG_OFFICIAL_EMAIL="ops@example.com"\nORG_PRIVACY_POLICY="https://example.com/privacy"\nORG_TERMS_OF_SERVICE="https://example.com/terms"\n`;
   const pathToLine: Record<string, number> = {};
   let lineNum = 1;
   for (const line of source.split('\n')) {

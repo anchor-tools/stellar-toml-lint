@@ -39,6 +39,8 @@ function withValidBase(body: string): string {
     'ORG_DESCRIPTION="Example"',
     'ORG_LOGO="https://example.com/logo.png"',
     'ORG_OFFICIAL_EMAIL="ops@example.com"',
+    'ORG_PRIVACY_POLICY="https://example.com/privacy"',
+    'ORG_TERMS_OF_SERVICE="https://example.com/terms"',
   ].join('\n');
 }
 
@@ -82,6 +84,7 @@ describe('broken fixture', () => {
     'general/auth-requires-signing-key',
     'general/deprecated-field',
     'general/unknown-field',
+    'general/invalid-twitter-handle',
     'documentation/urls',
     'documentation/emails',
     'documentation/phone-e164',
@@ -91,7 +94,7 @@ describe('broken fixture', () => {
     'principals/required-fields',
     'principals/photo-hashes',
     'principals/social-handles',
-    'currencies/code',
+    'currencies/asset-code-too-long',
     'currencies/issuer-or-contract',
     'currencies/issuance-exclusive',
     'currencies/enums',
@@ -111,7 +114,9 @@ describe('broken fixture', () => {
   it('gives every diagnostic a message and a rule id', () => {
     for (const d of result.diagnostics) {
       expect(d.message.length).toBeGreaterThan(0);
-      expect(d.rule).toMatch(/^[a-z]+\/[a-z0-9-]+$/);
+      // Namespaces may contain digits (sep12/...), so the first segment is
+      // [a-z][a-z0-9]* rather than [a-z]+.
+      expect(d.rule).toMatch(/^[a-z][a-z0-9]*\/[a-z0-9-]+$/);
     }
   });
 
@@ -270,6 +275,33 @@ describe('the native asset', () => {
     const result = lint(withValidBase('[[CURRENCIES]]\ncode="USDC"'));
     expect(find(result, 'currencies/issuer-or-contract')).toHaveLength(1);
   });
+
+  it('flags display_decimals on the native asset as info', () => {
+    const result = lint(withValidBase('[[CURRENCIES]]\ncode="native"\ndisplay_decimals=2'));
+    const [d] = find(result, 'currencies/display-decimals');
+    expect(d?.severity).toBe('info');
+    expect(d?.message).toContain('native asset');
+    expect(d?.path).toBe('CURRENCIES[0].display_decimals');
+  });
+
+  it('flags display_decimals on bare XLM with no issuer', () => {
+    const result = lint(withValidBase('[[CURRENCIES]]\ncode="XLM"\ndisplay_decimals=2'));
+    expect(find(result, 'currencies/display-decimals')).toHaveLength(1);
+  });
+
+  it('stays silent when the native entry omits display_decimals', () => {
+    const result = lint(withValidBase('[[CURRENCIES]]\ncode="native"'));
+    expect(find(result, 'currencies/display-decimals')).toEqual([]);
+  });
+
+  it('stays silent when a non-native entry sets display_decimals', () => {
+    const result = lint(
+      withValidBase(
+        `[[CURRENCIES]]\ncode="USDC"\nissuer="${ACCOUNT_A}"\ndisplay_decimals=2\nis_unlimited=true`,
+      ),
+    );
+    expect(find(result, 'currencies/display-decimals')).toEqual([]);
+  });
 });
 
 describe('currencies/toml-pointer', () => {
@@ -291,11 +323,11 @@ describe('currencies/toml-pointer', () => {
   });
 });
 
-describe('currencies/duplicate-asset', () => {
+describe('currencies/duplicate-currency-declaration', () => {
   it('flags the same code and issuer twice', () => {
     const entry = `[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_A}"\nis_unlimited=true`;
     const result = lint(withValidBase(`${entry}\n\n${entry}`));
-    expect(find(result, 'currencies/duplicate-asset')).toHaveLength(1);
+    expect(find(result, 'currencies/duplicate-currency-declaration')).toHaveLength(1);
   });
 
   it('allows the same code from different issuers', () => {
@@ -305,7 +337,7 @@ describe('currencies/duplicate-asset', () => {
           `[[CURRENCIES]]\ncode="AAA"\nissuer="${ACCOUNT_B}"\nis_unlimited=true`,
       ),
     );
-    expect(find(result, 'currencies/duplicate-asset')).toEqual([]);
+    expect(find(result, 'currencies/duplicate-currency-declaration')).toEqual([]);
   });
 });
 
@@ -537,6 +569,97 @@ describe('cross-SEP structural consistency', () => {
   });
 });
 
+describe('disposable email domains', () => {
+  /**
+   * Sets a `[DOCUMENTATION]` contact field on the otherwise valid base,
+   * dropping the base's own value first: TOML forbids duplicate keys, and a
+   * parse error would stop every semantic rule from running.
+   */
+  const withContact = (field: string, value: string): string => {
+    const base = withValidBase('')
+      .split('\n')
+      .filter((line) => !line.startsWith(`${field}=`))
+      .join('\n');
+    return `${base}\n${field}="${value}"\n`;
+  };
+
+  it('warns when ORG_SUPPORT_EMAIL uses a disposable domain', () => {
+    const result = lint(withContact('ORG_SUPPORT_EMAIL', 'help@mailinator.com'));
+    const [d] = find(result, 'documentation/disposable-email');
+    expect(d?.severity).toBe('warning');
+    expect(d?.message).toContain('mailinator.com');
+    expect(d?.path).toBe('DOCUMENTATION.ORG_SUPPORT_EMAIL');
+    expect(d?.position?.line).toBe(13);
+    expect(d?.helpUri).toBeTruthy();
+    expect(d?.suggestion).toContain('permanently maintained');
+    // Syntax is fine, so the validity rule must stay silent: one problem,
+    // one diagnostic.
+    expect(find(result, 'documentation/emails')).toEqual([]);
+  });
+
+  it('warns when ORG_OFFICIAL_EMAIL uses a disposable domain', () => {
+    // withValidBase already sets ORG_OFFICIAL_EMAIL, so swap the value rather
+    // than append a duplicate key (TOML would fail to parse).
+    const source = withContact('ORG_SUPPORT_EMAIL', 'support@example.com').replace(
+      'ORG_OFFICIAL_EMAIL="ops@example.com"',
+      'ORG_OFFICIAL_EMAIL="ceo@yopmail.com"',
+    );
+    const [d] = find(lint(source), 'documentation/disposable-email');
+    expect(d?.severity).toBe('warning');
+    expect(d?.message).toContain('yopmail.com');
+    expect(d?.path).toBe('DOCUMENTATION.ORG_OFFICIAL_EMAIL');
+  });
+
+  it('warns when a principal uses a disposable domain', () => {
+    const source = withValidBase('[[PRINCIPALS]]\nname="Jane"\nemail="jane@guerrillamail.com"');
+    const [d] = find(lint(source), 'principals/disposable-email');
+    expect(d?.severity).toBe('warning');
+    expect(d?.message).toContain('guerrillamail.com');
+    expect(d?.path).toBe('PRINCIPALS[0].email');
+    expect(d?.position?.line).toBe(5);
+    expect(d?.suggestion).toContain('permanently maintained');
+  });
+
+  it('flags a disposable domain regardless of case or subdomain alias', () => {
+    const upper = lint(withContact('ORG_SUPPORT_EMAIL', 'User@MAILINATOR.COM'));
+    expect(find(upper, 'documentation/disposable-email')).toHaveLength(1);
+
+    const alias = withValidBase('[[PRINCIPALS]]\nname="Jane"\nemail="jane@west.us.yopmail.com"');
+    expect(find(lint(alias), 'principals/disposable-email')).toHaveLength(1);
+  });
+
+  it('stays silent for ordinary company domains', () => {
+    const result = lint(withContact('ORG_SUPPORT_EMAIL', 'support@example.com'), {
+      domain: 'example.com',
+    });
+    expect(rules(result)).not.toContain('documentation/disposable-email');
+    expect(rules(result)).not.toContain('principals/disposable-email');
+
+    const clean = lint(fixture('valid.toml'), { domain: 'example.com' });
+    expect(rules(clean)).not.toContain('documentation/disposable-email');
+    expect(rules(clean)).not.toContain('principals/disposable-email');
+  });
+
+  it('leaves a malformed address to the validity rule instead of doubling up', () => {
+    const result = lint(withContact('ORG_SUPPORT_EMAIL', 'not-an-email'));
+    expect(find(result, 'documentation/emails')).toHaveLength(1);
+    expect(find(result, 'documentation/disposable-email')).toEqual([]);
+  });
+
+  it('can be switched off by rule id', () => {
+    const result = lint(withContact('ORG_SUPPORT_EMAIL', 'help@mailinator.com'), {
+      rules: { 'documentation/disposable-email': 'off' },
+    });
+    expect(find(result, 'documentation/disposable-email')).toEqual([]);
+  });
+
+  it('registers both rules so --list-rules and --off know them', () => {
+    const ids = allRules.map((r) => r.id);
+    expect(ids).toContain('documentation/disposable-email');
+    expect(ids).toContain('principals/disposable-email');
+  });
+});
+
 describe('rule configuration', () => {
   it('disables a rule with off', () => {
     const result = lint(fixture('broken.toml'), { rules: { 'general/version': 'off' } });
@@ -582,5 +705,149 @@ describe('rule registry', () => {
     ].join('\n');
     const result = lint(hostile);
     expect(find(result, 'internal/rule-error')).toEqual([]);
+  });
+});
+
+describe('CST-backed parsing (#29)', () => {
+  it('produces identical diagnostics with and without comments', () => {
+    const plain = [
+      'VERSION="2.7.0"',
+      'NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"',
+      'TRANSFER_SERVER="http://api.example.com/sep6"',
+    ].join('\n');
+    const commented = [
+      '# The spec version this file targets.',
+      'VERSION="2.7.0"   # keep in step with the app',
+      '',
+      '# The network this anchor serves.',
+      'NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"',
+      'TRANSFER_SERVER="http://api.example.com/sep6" # not https',
+    ].join('\n');
+
+    const plainResult = lint(plain);
+    const commentedResult = lint(commented);
+    expect(commentedResult.diagnostics.map((d) => d.rule)).toEqual(
+      plainResult.diagnostics.map((d) => d.rule),
+    );
+    expect(commentedResult.parsed).toEqual(plainResult.parsed);
+  });
+
+  it('reports the same positioned syntax error as the previous parser', () => {
+    const result = lint('VERSION="1.0.0"\nthis is not toml\n');
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.rule).toBe('file/parse');
+    expect(result.diagnostics[0]?.position?.line).toBe(2);
+    expect(result.parsed).toBeUndefined();
+  });
+
+  it('keeps the parsed document shape for every TOML construct', () => {
+    const account = 'GC7T6T56DX23PT7Q6WGCTIJT5O6TP6SJ47RP73JCA3ISLVCCVMGHNSDI';
+    const source = [
+      'VERSION = "2.7.0"',
+      "HORIZON_URL = 'https://horizon.example.com'",
+      `SIGNING_KEY = "${ACCOUNT_A}"`,
+      'CHECKPOINT = 1979-05-27T07:32:00Z',
+      'RATIO = 1.5',
+      'ENABLED = true',
+      `ACCOUNTS = ["${account}"]`,
+      'EXTRA = { nested = "inline" }',
+      'dotted.key = "value"',
+    ].join('\n');
+
+    const result = lint(source);
+    expect(find(result, 'file/parse')).toEqual([]);
+    expect(result.parsed?.VERSION).toBe('2.7.0');
+    expect(result.parsed?.HORIZON_URL).toBe('https://horizon.example.com');
+    expect(result.parsed?.ENABLED).toBe(true);
+    expect(result.parsed?.EXTRA).toEqual({ nested: 'inline' });
+    expect(result.parsed?.dotted).toEqual({ key: 'value' });
+  });
+
+  it('rejects a duplicate key the way TOML requires', () => {
+    const result = lint('VERSION="1.0.0"\nVERSION="2.0.0"\n');
+    expect(result.diagnostics[0]?.rule).toBe('file/parse');
+    expect(result.diagnostics[0]?.position?.line).toBe(2);
+  });
+});
+
+describe('testnet contract IDs on Mainnet (#45)', () => {
+  const RULE = 'soroban/testnet-contract-on-mainnet';
+  const TESTNET_NATIVE_SAC = 'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC';
+  const TESTNET_USDC_SAC = 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA';
+  const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
+
+  /** The valid base, but pointing at a different network. */
+  const onTestnet = (body: string): string =>
+    withValidBase(body).replace(
+      '"Public Global Stellar Network ; September 2015"',
+      `"${TESTNET_PASSPHRASE}"`,
+    );
+
+  const nativeCurrency = withValidBase(
+    `[[CURRENCIES]]\ncode="XLMX"\ncontract="${TESTNET_NATIVE_SAC}"\nis_unlimited=true`,
+  );
+
+  it('flags the Testnet native SAC in a Mainnet [[CURRENCIES]] entry', () => {
+    const [d] = find(lint(nativeCurrency), RULE);
+    expect(d?.severity).toBe('error');
+    expect(d?.path).toBe('CURRENCIES[0].contract');
+    expect(d?.position?.line).toBe(5);
+    expect(d?.message).toContain('Stellar Testnet');
+    expect(d?.message).toContain(TESTNET_NATIVE_SAC);
+    expect(d?.helpUri).toBeTruthy();
+    expect(d?.suggestion).toContain('Mainnet');
+  });
+
+  it('flags the Testnet USDC SAC too', () => {
+    const source = withValidBase(
+      `[[CURRENCIES]]\ncode="USDC"\ncontract="${TESTNET_USDC_SAC}"\nis_unlimited=true`,
+    );
+    expect(find(lint(source), RULE)).toHaveLength(1);
+  });
+
+  it('flags a Testnet contract in WEB_AUTH_CONTRACT_ID', () => {
+    const source = withValidBase(`WEB_AUTH_CONTRACT_ID="${TESTNET_NATIVE_SAC}"`);
+    const [d] = find(lint(source), RULE);
+    expect(d?.severity).toBe('error');
+    expect(d?.path).toBe('WEB_AUTH_CONTRACT_ID');
+    expect(d?.position?.line).toBe(3);
+  });
+
+  it('reports every Testnet contract in the file, not just the first', () => {
+    const source = withValidBase(
+      `WEB_AUTH_CONTRACT_ID="${TESTNET_NATIVE_SAC}"\n[[CURRENCIES]]\ncode="USDC"\ncontract="${TESTNET_USDC_SAC}"\nis_unlimited=true`,
+    );
+    expect(find(lint(source), RULE)).toHaveLength(2);
+  });
+
+  it('stays silent on a Testnet file naming a Testnet contract', () => {
+    const result = lint(
+      onTestnet(`[[CURRENCIES]]\ncode="XLMX"\ncontract="${TESTNET_NATIVE_SAC}"\nis_unlimited=true`),
+    );
+    expect(find(result, RULE)).toEqual([]);
+  });
+
+  it('stays silent on a Mainnet contract', () => {
+    const source = withValidBase(
+      `[[CURRENCIES]]\ncode="AAA"\ncontract="${CONTRACT_A}"\nis_unlimited=true`,
+    );
+    expect(find(lint(source), RULE)).toEqual([]);
+  });
+
+  it('only gates on the Public passphrase, not on any non-Testnet one', () => {
+    const source = onTestnet(nativeCurrency).replace(
+      `"${TESTNET_PASSPHRASE}"`,
+      '"My Private Chain ; 2026"',
+    );
+    expect(find(lint(source), RULE)).toEqual([]);
+  });
+
+  it('is switched off by rule id', () => {
+    const result = lint(nativeCurrency, { rules: { [RULE]: 'off' } });
+    expect(find(result, RULE)).toEqual([]);
+  });
+
+  it('registers the rule so --list-rules and --off know it', () => {
+    expect(allRules.map((r) => r.id)).toContain(RULE);
   });
 });

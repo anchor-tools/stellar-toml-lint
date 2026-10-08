@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "package": "stellar-toml-lint-nvim",
+  "name": "stellar-toml-lint-nvim",
+  "description": "Neovim LSP package for stellar.toml files providing diagnostics, code actions, and hover documentation with Tree-sitter integration.",
+  "author": "anchor-tools",
+  "homepage": "https://github.com/anchor-tools/stellar-toml-lint",
+  "last_modified": "2026-09-25",
+  "platforms": {
+    "linux": [
+      {
+        "version": "1.0.0",
+        "url": "https://github.com/anchor-tools/stellar-toml-lint/raw/main/integrations/neovim/stellar-toml-lint-nvim.zip",
+        "hash": ""
+      }
+    ],
+    "osx": [
+      {
+        "version": "1.0.0",
+        "url": "https://github.com/anchor-tools/stellar-toml-lint/raw/main/integrations/neovim/stellar-toml-lint-nvim.zip",
+        "hash": ""
+      }
+    ],
+    "windows": [
+      {
+        "version": "1.0.0",
+        "url": "https://github.com/anchor-tools/stellar-toml-lint/raw/main/integrations/neovim/stellar-toml-lint-nvim.zip",
+        "hash": ""
+      }
+    ]
+  }
+}

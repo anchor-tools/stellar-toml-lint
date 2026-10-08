@@ -19,6 +19,7 @@ export interface LspInitializeResult {
   capabilities: {
     textDocumentSync?: { openClose: boolean; change: number };
     codeActionProvider?: boolean | { codeActionKinds?: string[] };
+    hoverProvider?: boolean;
   };
   serverInfo?: { name: string; version: string };
 }
@@ -54,6 +55,11 @@ export interface CodeActionParams {
     end: { line: number; character: number };
   };
   context: { diagnostics: unknown[] };
+}
+
+export interface HoverParams {
+  textDocument: { uri: string };
+  position: { line: number; character: number };
 }
 
 /** JSON-RPC error codes used by this server. */

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 import { lint } from '../src/lint.js';
 import {
@@ -12,6 +13,7 @@ import {
   lintBrowserFile,
   lintBrowserRun,
 } from '../src/browser.js';
+import type * as BrowserApi from '../src/browser.js';
 import { connectWorker, handleMessage, installWorker } from '../src/worker.js';
 import type { WorkerResponse } from '../src/worker.js';
 
@@ -31,6 +33,29 @@ function goodResponse(body: string): Response {
       'content-type': 'text/plain; charset=utf-8',
     },
   });
+}
+
+/** Image URLs the domain audit probes on top of the file itself. */
+const IMAGE_URL = /\.(?:png|jpe?g|webp|svg|gif)(?:$|[?#])/i;
+
+/** A response shaped like the one an anchor serves for a branding image. */
+function goodImage(): Response {
+  return new Response('', {
+    status: 200,
+    headers: {
+      'access-control-allow-origin': '*',
+      'content-type': 'image/png',
+    },
+  });
+}
+
+/**
+ * A `fetch` whose branding images answer like a healthy CDN's would, so the
+ * file-level behaviour under test is not diluted by image findings.
+ */
+function withHealthyImages(file: () => Response): typeof fetch {
+  return (async (url: string | URL) =>
+    IMAGE_URL.test(String(url)) ? goodImage() : file()) as unknown as typeof fetch;
 }
 
 // ── the browser entry point ────────────────────────────────────────────────
@@ -105,7 +130,27 @@ describe('virtual file system', () => {
 describe('lintBrowserDomain', () => {
   it('reports nothing network-related for a correctly configured host', async () => {
     const result = await lintBrowserDomain('anchor.example', {
-      fetchImpl: async () => goodResponse(valid()),
+      // The SEP-6 /info route advertises the currencies valid.toml declares,
+      // branding images answer like a healthy CDN's, and every other request
+      // (the file, the ORG_URL probe) gets the file.
+      fetchImpl: async (input) =>
+        IMAGE_URL.test(String(input))
+          ? goodImage()
+          : String(input).endsWith('/info')
+            ? new Response(
+                JSON.stringify({
+                  deposit: { USDX: { enabled: true }, EXPL: { enabled: true } },
+                  withdraw: { USDX: { enabled: true } },
+                }),
+                {
+                  status: 200,
+                  headers: {
+                    'access-control-allow-origin': '*',
+                    'content-type': 'application/json',
+                  },
+                },
+              )
+            : goodResponse(valid()),
     });
 
     const network = result.diagnostics.filter((d) => d.category === 'network');
@@ -114,8 +159,9 @@ describe('lintBrowserDomain', () => {
 
   it('keeps the CORS finding, which is the point of the browser path', async () => {
     const result = await lintBrowserDomain('anchor.example', {
-      fetchImpl: async () =>
-        new Response(valid(), { status: 200, headers: { 'content-type': 'text/plain' } }),
+      fetchImpl: withHealthyImages(
+        () => new Response(valid(), { status: 200, headers: { 'content-type': 'text/plain' } }),
+      ),
     });
 
     expect(result.diagnostics.map((d) => d.rule)).toContain('network/cors');
@@ -135,7 +181,7 @@ describe('lintBrowserDomain', () => {
 
   it('stays silent about TLS rather than guessing a session', async () => {
     const result = await lintBrowserDomain('anchor.example', {
-      fetchImpl: async () => goodResponse(valid()),
+      fetchImpl: withHealthyImages(() => goodResponse(valid())),
     });
 
     expect(result.diagnostics.filter((d) => d.rule.startsWith('security/'))).toEqual([]);
@@ -283,6 +329,83 @@ describe('browser boundary', () => {
       // The tests run against the built artifact, so these should exist.
       expect(existsSync(join(here, '..', entry?.import ?? ''))).toBe(true);
       expect(existsSync(join(here, '..', entry?.types ?? ''))).toBe(true);
+    }
+  });
+});
+
+describe('browser bundle artifacts and sandbox', () => {
+  const browserDist = join(here, '..', 'dist', 'browser');
+
+  it('generates minified ESM, UMD, and Worker bundles with sourcemaps', () => {
+    const requiredArtifacts = [
+      'stellar-toml-lint.esm.min.js',
+      'stellar-toml-lint.esm.min.js.map',
+      'stellar-toml-lint.umd.min.js',
+      'stellar-toml-lint.umd.min.js.map',
+      'stellar-toml-lint.worker.min.js',
+      'stellar-toml-lint.worker.min.js.map',
+      'index.js',
+      'index.umd.js',
+      'worker.js',
+      'index.d.ts',
+      'worker.d.ts',
+    ];
+
+    for (const file of requiredArtifacts) {
+      expect(existsSync(join(browserDist, file)), `missing bundle artifact: ${file}`).toBe(true);
+    }
+  });
+
+  it('executes UMD bundle in an isolated browser sandbox environment', async () => {
+    const umdFile = join(browserDist, 'stellar-toml-lint.umd.min.js');
+    const code = readFileSync(umdFile, 'utf8');
+
+    const sandbox: Record<string, unknown> = {
+      console,
+      Response,
+      fetch,
+      setTimeout,
+      clearTimeout,
+      TextEncoder,
+      TextDecoder,
+      URL,
+      URLSearchParams,
+    };
+    sandbox['window'] = sandbox;
+    sandbox['globalThis'] = sandbox;
+    sandbox['self'] = sandbox;
+
+    vm.createContext(sandbox);
+    vm.runInContext(code, sandbox);
+
+    const bundle = sandbox['stellarTomlLint'] as typeof BrowserApi;
+    expect(bundle).toBeDefined();
+    expect(typeof bundle.lintBrowser).toBe('function');
+    expect(typeof bundle.createVirtualFileSystem).toBe('function');
+
+    const validResult = await bundle.lintBrowser(valid());
+    expect(validResult.ok).toBe(true);
+    expect(validResult.counts.error).toBe(0);
+
+    const brokenResult = await bundle.lintBrowser(broken());
+    expect(brokenResult.ok).toBe(false);
+    expect(brokenResult.counts.error).toBeGreaterThan(0);
+  });
+
+  it('runs ESM bundle and produces parity with source module', async () => {
+    const esmPath = join(browserDist, 'index.js');
+    const esm = (await import(esmPath)) as typeof BrowserApi;
+
+    expect(typeof esm.lintBrowser).toBe('function');
+    const result = await esm.lintBrowser(valid());
+    expect(result.ok).toBe(true);
+  });
+
+  it('has no Node.js built-ins in browser bundle code', () => {
+    for (const filename of ['stellar-toml-lint.esm.min.js', 'stellar-toml-lint.umd.min.js']) {
+      const code = readFileSync(join(browserDist, filename), 'utf8');
+      expect(code).not.toMatch(/from\s*['"]node:/);
+      expect(code).not.toMatch(/require\(['"]node:/);
     }
   });
 });

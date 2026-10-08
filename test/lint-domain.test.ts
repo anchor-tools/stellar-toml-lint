@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { lintDomain } from '../src/lint.js';
+import { describe, expect, it, vi } from 'vitest';
+import { lint, lintDomain } from '../src/lint.js';
 
 const GOOD_TOML = [
   'VERSION="2.7.0"',
@@ -11,31 +11,87 @@ const GOOD_TOML = [
   'ORG_DESCRIPTION="Example"',
   'ORG_LOGO="https://example.com/logo.png"',
   'ORG_OFFICIAL_EMAIL="ops@example.com"',
+  'ORG_PRIVACY_POLICY="https://example.com/privacy"',
+  'ORG_TERMS_OF_SERVICE="https://example.com/terms"',
 ].join('\n');
+
+/** Image URLs are routed to their own stub, separate from the file itself. */
+const IMAGE_URL = /\.(?:png|jpe?g|webp|svg|gif)(?:$|[?#])/i;
+
+/** What an anchor's CDN answers with when everything about it is correct. */
+const HEALTHY_IMAGE_HEADERS = {
+  'content-type': 'image/png',
+  'access-control-allow-origin': '*',
+  'content-length': '2048',
+};
+
+interface ImageStub {
+  status?: number;
+  /** Status the HEAD probe gets; `status` is used for both when absent. */
+  headStatus?: number;
+  /** Replaces {@link HEALTHY_IMAGE_HEADERS} wholesale when given. */
+  headers?: Record<string, string>;
+}
 
 interface StubOptions {
   headers?: Record<string, string>;
   status?: number;
   body?: string;
+  image?: ImageStub;
+}
+
+/** One request the stub saw, so tests can assert on what was sent. */
+interface RecordedCall {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
 }
 
 /**
  * A fetch stub that records the request, so tests can assert on what the linter
- * sent as well as what it did with the response.
+ * sent as well as what it did with the response. Pass a single set of options
+ * to answer every URL the same way, or a pathname→options map to answer the
+ * well-known and root paths differently.
+ *
+ * Requests for image URLs answer like an anchor's CDN, unless the test says
+ * otherwise, so the image probes stay out of the way of the checks aimed at
+ * the stellar.toml itself.
  */
-function stubFetch(options: StubOptions = {}) {
-  const calls: { url: string; headers: Record<string, string> }[] = [];
+function stubFetch(options: StubOptions | Record<string, StubOptions> = {}) {
+  const calls: RecordedCall[] = [];
+  const routes = isRouteMap(options) ? options : undefined;
+  const single: StubOptions | undefined = isRouteMap(options) ? undefined : options;
+  const fallback: StubOptions = isRouteMap(options) ? { status: 404 } : options;
 
   const impl = (async (url: string | URL, init?: RequestInit) => {
+    const target = String(url);
+    const method = (init?.method ?? 'GET').toUpperCase();
     calls.push({
-      url: String(url),
+      url: target,
+      method,
       headers: (init?.headers ?? {}) as Record<string, string>,
     });
-    return new Response(options.body ?? GOOD_TOML, {
-      status: options.status ?? 200,
+    const pathname = new URL(String(url)).pathname;
+
+    if (IMAGE_URL.test(target) && !target.includes('/.well-known/')) {
+      const image = single?.image ?? {};
+      const status =
+        method === 'HEAD' ? (image.headStatus ?? image.status ?? 200) : (image.status ?? 200);
+      // No body, so the Response constructor cannot add the default
+      // `text/plain` it would otherwise stamp on a string body — the headers
+      // are the whole answer a probe gets to judge.
+      return new Response(null, {
+        status,
+        headers: image.headers ?? HEALTHY_IMAGE_HEADERS,
+      });
+    }
+
+    const matched = routes?.[pathname] ?? fallback;
+    return new Response(matched.body ?? GOOD_TOML, {
+      status: matched.status ?? 200,
       headers: {
         'content-type': 'text/plain',
-        ...(options.headers ?? { 'access-control-allow-origin': '*' }),
+        ...(matched.headers ?? { 'access-control-allow-origin': '*' }),
       },
     });
   }) as unknown as typeof fetch;
@@ -43,14 +99,55 @@ function stubFetch(options: StubOptions = {}) {
   return { impl, calls };
 }
 
+function isRouteMap(
+  options: StubOptions | Record<string, StubOptions>,
+): options is Record<string, StubOptions> {
+  // Route maps are keyed by pathname; a single options object carries none.
+  return Object.keys(options).some((key) => key.startsWith('/'));
+}
+
 const ruleIds = (result: { diagnostics: { rule: string }[] }): string[] =>
   result.diagnostics.map((d) => d.rule);
+
+const imageCalls = (calls: RecordedCall[]): RecordedCall[] =>
+  calls.filter((call) => IMAGE_URL.test(call.url));
 
 describe('lintDomain', () => {
   it('requests the well-known path over https', async () => {
     const { impl, calls } = stubFetch();
     await lintDomain('example.com', {}, impl);
     expect(calls[0]?.url).toBe('https://example.com/.well-known/stellar.toml');
+  });
+
+  it('verifies declared validator history archives in domain mode', async () => {
+    const calls: string[] = [];
+    const source = `${GOOD_TOML}\n[[VALIDATORS]]\nALIAS="core-1"\nHISTORY="https://history.example.com/archive/"`;
+    const impl = (async (input: string | URL) => {
+      const url = new URL(String(input));
+      calls.push(url.toString());
+      if (url.pathname.endsWith('/.well-known/stellar.toml')) {
+        return new Response(source, {
+          status: 200,
+          headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+        });
+      }
+      if (url.pathname.endsWith('/.well-known/stellar-history.json')) {
+        return Response.json({
+          version: 1,
+          server: 'https://history.example.com/archive',
+          currentLedger: 52_000_000,
+        });
+      }
+      return new Response(GOOD_TOML, {
+        status: 200,
+        headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+      });
+    }) as unknown as typeof fetch;
+
+    const result = await lintDomain('example.com', {}, impl);
+    expect(calls).toContain('https://history.example.com/archive/.well-known/stellar-history.json');
+    expect(ruleIds(result)).not.toContain('validators/history-archive-unreachable');
+    expect(ruleIds(result)).not.toContain('validators/history-archive-malformed');
   });
 
   it('normalises a domain given with a scheme or path', async () => {
@@ -104,6 +201,58 @@ describe('lintDomain', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('points at the root when only /.well-known/stellar.toml is missing', async () => {
+    const { impl, calls } = stubFetch({
+      '/.well-known/stellar.toml': { status: 404 },
+      '/stellar.toml': { status: 200 },
+    });
+    const result = await lintDomain('example.com', {}, impl);
+
+    expect(ruleIds(result)).toContain('network/wrong-path');
+    expect(result.diagnostics.find((d) => d.rule === 'network/wrong-path')?.message).toContain(
+      'https://example.com/stellar.toml',
+    );
+    expect(result.ok).toBe(false);
+
+    // Exactly one extra request, and only for the root path.
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.url).toBe('https://example.com/stellar.toml');
+  });
+
+  it('keeps network/unreachable alone when the root probe also fails', async () => {
+    const { impl, calls } = stubFetch({
+      '/.well-known/stellar.toml': { status: 404 },
+      '/stellar.toml': { status: 404 },
+    });
+    const result = await lintDomain('example.com', {}, impl);
+
+    expect(ruleIds(result)).toEqual(['network/unreachable']);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('does not probe the root for a non-404 failure', async () => {
+    const { impl, calls } = stubFetch({ status: 500 });
+    const result = await lintDomain('example.com', {}, impl);
+
+    expect(ruleIds(result)).toEqual(['network/unreachable']);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('survives a transport failure on the root probe', async () => {
+    const calls: string[] = [];
+    const impl = (async (url: string | URL) => {
+      calls.push(String(url));
+      if (String(url).endsWith('/stellar.toml') && !String(url).includes('.well-known')) {
+        throw new Error('socket hang up');
+      }
+      return new Response('nope', { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const result = await lintDomain('example.com', {}, impl);
+    expect(ruleIds(result)).toEqual(['network/unreachable']);
+    expect(calls).toHaveLength(2);
+  });
+
   it('reports a transport failure without throwing', async () => {
     const failing = (async () => {
       throw new Error('getaddrinfo ENOTFOUND');
@@ -124,6 +273,302 @@ describe('lintDomain', () => {
     const { impl } = stubFetch({ body: 'VERSION="two"\n' });
     const result = await lintDomain('example.com', {}, impl);
     expect(ruleIds(result)).toContain('general/version');
+  });
+
+  describe('followTomlPointers', () => {
+    it('fetches and lints valid toml pointers', async () => {
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://example.com/asset.toml"'].join('\n');
+      const assetToml = ['[[CURRENCIES]]', 'code="FOO"', 'issuer="invalid-account"'].join('\n');
+
+      const impl = (async (url: string | URL) => {
+        if (String(url).endsWith('stellar.toml')) {
+          return new Response(mainToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        } else {
+          return new Response(assetToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        }
+      }) as unknown as typeof fetch;
+
+      const result = await lintDomain('example.com', { followLinks: true }, impl);
+
+      expect(ruleIds(result)).toContain('currencies/issuer-or-contract');
+      const err = result.diagnostics.find((d) => d.rule === 'currencies/issuer-or-contract');
+      expect(err?.message).toContain('[https://example.com/asset.toml]');
+    });
+
+    it('gracefully handles missing toml pointers as warnings', async () => {
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://example.com/broken.toml"'].join('\n');
+
+      const impl = (async (url: string | URL) => {
+        if (String(url).endsWith('stellar.toml')) {
+          return new Response(mainToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        } else {
+          return new Response('Not found', { status: 404 });
+        }
+      }) as unknown as typeof fetch;
+
+      const result = await lintDomain('example.com', { followLinks: true }, impl);
+
+      expect(ruleIds(result)).toContain('network/toml-pointer-fetch');
+      const warn = result.diagnostics.find((d) => d.rule === 'network/toml-pointer-fetch');
+      expect(warn?.severity).toBe('warning');
+      expect(warn?.message).toContain('HTTP 404');
+    });
+
+    it('detects a self-referencing circular toml pointer', async () => {
+      const mainToml = [
+        '[[CURRENCIES]]',
+        'toml="https://example.com/.well-known/stellar.toml"',
+      ].join('\n');
+
+      const impl = (async () => {
+        return new Response(mainToml, {
+          status: 200,
+          headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+        });
+      }) as unknown as typeof fetch;
+
+      const result = await lintDomain('example.com', { followLinks: true }, impl);
+
+      expect(ruleIds(result)).toContain('currencies/circular-toml-pointer');
+      const err = result.diagnostics.find((d) => d.rule === 'currencies/circular-toml-pointer');
+      expect(err?.severity).toBe('error');
+      expect(err?.message).toContain('Circular currency reference');
+      expect(err?.path).toBe('CURRENCIES[0].toml');
+    });
+
+    it('detects a two-step circular chain (A → B → A)', async () => {
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://example.com/a.toml"'].join('\n');
+      const aToml = ['[[CURRENCIES]]', 'toml="https://example.com/b.toml"'].join('\n');
+      const bToml = ['[[CURRENCIES]]', 'toml="https://example.com/a.toml"'].join('\n');
+
+      const impl = (async (url: string | URL) => {
+        const target = String(url);
+        if (target.endsWith('stellar.toml')) {
+          return new Response(mainToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        } else if (target.endsWith('a.toml')) {
+          return new Response(aToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        } else {
+          return new Response(bToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        }
+      }) as unknown as typeof fetch;
+
+      const result = await lintDomain('example.com', { followLinks: true }, impl);
+
+      expect(ruleIds(result)).toContain('currencies/circular-toml-pointer');
+      const err = result.diagnostics.find((d) => d.rule === 'currencies/circular-toml-pointer');
+      expect(err?.severity).toBe('error');
+      expect(err?.message).toContain('Circular currency reference');
+    });
+
+    it('does not report circular references when pointers are linear', async () => {
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://example.com/a.toml"'].join('\n');
+      const aToml = ['[[CURRENCIES]]', 'code="FOO"', 'issuer="invalid-account"'].join('\n');
+
+      const impl = (async (url: string | URL) => {
+        const target = String(url);
+        if (target.endsWith('stellar.toml')) {
+          return new Response(mainToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        }
+        return new Response(aToml, {
+          status: 200,
+          headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+        });
+      }) as unknown as typeof fetch;
+
+      const result = await lintDomain('example.com', { followLinks: true }, impl);
+
+      expect(ruleIds(result)).not.toContain('currencies/circular-toml-pointer');
+    });
+
+    it('normalizes pointer URLs when checking for cycles', async () => {
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://Example.COM/stellar.toml"'].join('\n');
+
+      const impl = (async () => {
+        return new Response(mainToml, {
+          status: 200,
+          headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+        });
+      }) as unknown as typeof fetch;
+
+      const result = await lintDomain('example.com', { followLinks: true }, impl);
+
+      expect(ruleIds(result)).toContain('currencies/circular-toml-pointer');
+    });
+  });
+});
+
+// ── the branding images wallets download ────────────────────────────────────
+
+/** `GOOD_TOML` plus `count` currency entries, each declaring an image. */
+function withCurrencyImages(count: number): string {
+  const entries = Array.from(
+    { length: count },
+    (_, i) => `[[CURRENCIES]]\ncode="C${i}"\nimage="https://example.com/coin${i}.png"`,
+  );
+  return [GOOD_TOML, ...entries].join('\n');
+}
+
+describe('image asset probes', () => {
+  it('probes ORG_LOGO with a HEAD request carrying an Origin', async () => {
+    const { impl, calls } = stubFetch();
+    await lintDomain('example.com', {}, impl);
+
+    const [logo] = imageCalls(calls);
+    expect(logo?.method).toBe('HEAD');
+    expect(logo?.headers.Origin).toBeTruthy();
+  });
+
+  it('reports an image that returns 404 as unreachable', async () => {
+    const { impl } = stubFetch({ image: { status: 404 } });
+    const result = await lintDomain('example.com', {}, impl);
+
+    const [d] = result.diagnostics.filter((x) => x.rule === 'network/image-unreachable');
+    expect(d?.severity).toBe('warning');
+    expect(d?.category).toBe('network');
+    expect(d?.message).toContain('HTTP 404');
+    expect(d?.path).toBe('DOCUMENTATION.ORG_LOGO');
+    expect(d?.suggestion).toBeTruthy();
+    // A warning: the file itself is fine, the branding is what is broken.
+    expect(result.ok).toBe(true);
+  });
+
+  it('reports an image that times out as unreachable', async () => {
+    const impl = (async (url: string | URL) => {
+      if (IMAGE_URL.test(String(url))) throw new Error('connect ETIMEDOUT');
+      return new Response(GOOD_TOML, {
+        status: 200,
+        headers: {
+          'content-type': 'text/plain',
+          'access-control-allow-origin': '*',
+        },
+      });
+    }) as unknown as typeof fetch;
+
+    const result = await lintDomain('example.com', {}, impl);
+    const [d] = result.diagnostics.filter((x) => x.rule === 'network/image-unreachable');
+    expect(d?.message).toContain('ETIMEDOUT');
+  });
+
+  it('reports an image served without CORS', async () => {
+    const { impl } = stubFetch({ image: { headers: { 'content-type': 'image/png' } } });
+    const result = await lintDomain('example.com', {}, impl);
+
+    const [d] = result.diagnostics.filter((x) => x.rule === 'network/image-cors');
+    expect(d?.severity).toBe('warning');
+    expect(d?.category).toBe('network');
+    expect(d?.message).toContain('Access-Control-Allow-Origin');
+    expect(ruleIds(result)).not.toContain('network/image-unreachable');
+  });
+
+  it('reports an image URL that is not served as an image', async () => {
+    const { impl } = stubFetch({
+      image: { headers: { 'access-control-allow-origin': '*', 'content-type': 'text/html' } },
+    });
+    const result = await lintDomain('example.com', {}, impl);
+
+    const [d] = result.diagnostics.filter((x) => x.rule === 'network/image-content-type');
+    expect(d?.severity).toBe('warning');
+    expect(d?.category).toBe('network');
+    expect(d?.message).toContain('text/html');
+    expect(d?.message).toContain('image/*');
+  });
+
+  it('reports an image URL served without any content type', async () => {
+    const { impl } = stubFetch({ image: { headers: { 'access-control-allow-origin': '*' } } });
+    const result = await lintDomain('example.com', {}, impl);
+
+    const [d] = result.diagnostics.filter((x) => x.rule === 'network/image-content-type');
+    expect(d?.message).toContain('Content-Type');
+  });
+
+  it('reports an image over 500KB', async () => {
+    const { impl } = stubFetch({
+      image: { headers: { ...HEALTHY_IMAGE_HEADERS, 'content-length': '1048576' } },
+    });
+    const result = await lintDomain('example.com', {}, impl);
+
+    const [d] = result.diagnostics.filter((x) => x.rule === 'network/image-max-size');
+    expect(d?.severity).toBe('warning');
+    expect(d?.category).toBe('network');
+    expect(d?.message).toContain('1048576');
+  });
+
+  it('falls back to GET when the server rejects HEAD', async () => {
+    const { impl, calls } = stubFetch({ image: { headStatus: 405 } });
+    const result = await lintDomain('example.com', {}, impl);
+
+    expect(imageCalls(calls).map((call) => call.method)).toEqual(['HEAD', 'GET']);
+    expect(ruleIds(result)).not.toContain('network/image-unreachable');
+  });
+
+  it('probes at most ten currency images', async () => {
+    const { impl, calls } = stubFetch({ body: withCurrencyImages(12) });
+    await lintDomain('example.com', {}, impl);
+
+    expect(imageCalls(calls).filter((call) => call.url.includes('/coin'))).toHaveLength(10);
+  });
+
+  it('honours a severity override on an image finding', async () => {
+    const { impl } = stubFetch({ image: { status: 404 } });
+    const result = await lintDomain(
+      'example.com',
+      { rules: { 'network/image-unreachable': 'error' } },
+      impl,
+    );
+
+    const [d] = result.diagnostics.filter((x) => x.rule === 'network/image-unreachable');
+    expect(d?.severity).toBe('error');
+    expect(result.ok).toBe(false);
+  });
+
+  it('sends no image requests when every image rule is switched off', async () => {
+    const { impl, calls } = stubFetch();
+    await lintDomain(
+      'example.com',
+      {
+        rules: {
+          'network/image-unreachable': 'off',
+          'network/image-cors': 'off',
+          'network/image-content-type': 'off',
+          'network/image-max-size': 'off',
+        },
+      },
+      impl,
+    );
+
+    expect(imageCalls(calls)).toEqual([]);
+  });
+
+  it('never probes images during an offline lint', () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const result = lint(withCurrencyImages(2));
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(ruleIds(result).filter((rule) => rule.startsWith('network/image-'))).toEqual([]);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });
 

@@ -53,7 +53,26 @@ export const securityRules: Rule[] = [
       });
     },
   },
+
+  {
+    id: 'security/jwt-rejected-by-transfer-server',
+    category: 'network',
+    severity: 'error',
+    description: 'Downstream anchor service must accept JWT issued by WEB_AUTH_ENDPOINT',
+    run() {},
+  },
+
+  {
+    id: 'security/jwt-domain-mismatch',
+    category: 'network',
+    severity: 'error',
+    description: 'JWT iss claim must match the anchor home domain',
+    run() {},
+  },
 ];
 
 /** Rule ids that require a live TLS session. Used to skip the probe when off. */
-export const securityRuleIds: readonly string[] = securityRules.map((rule) => rule.id);
+export const securityRuleIds: readonly string[] = [
+  'security/deprecated-tls-version',
+  'security/weak-cipher-suite',
+];
