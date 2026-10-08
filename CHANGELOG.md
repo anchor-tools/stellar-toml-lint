@@ -179,7 +179,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   diagnostic says so and points at the SEP-1 location; if the root probe also fails, behaviour is
   unchanged (`network/unreachable` only). At most one extra request, still through the injected
   `fetchImpl` (#3).
-- Interactive quick-fix code actions over LSP (#42): `stellar-toml-lint --lsp` runs a stdio Language
+- Interactive quick-fix code actfeat: autofix for mechanically safe rules (#9)ions over LSP (#42): `stellar-toml-lint --lsp` runs a stdio Language
   Server that publishes diagnostics and answers `textDocument/codeAction` with `WorkspaceEdit`
   replacements for mechanically safe rules — `general/trailing-slash-in-endpoint`,
   `network/passphrase` (near miss), `documentation/social-handles`, `principals/social-handles`,
@@ -197,6 +197,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `NO_COLOR` disables colour, an empty value counts as unset, and only an explicit `--color`
   overrides it. Covered by `test/no-color.test.ts` (#148).
 
+main
 - `--format junit` emits a JUnit XML test report for CI dashboards that chart test results (Jenkins,
   Bamboo, CircleCI, Azure DevOps). Error-severity findings are reported as `<failure>` elements and
   warnings as `<error>` elements, so a dashboard counting failures matches the exit code (#143).
