@@ -215,6 +215,8 @@ USAGE
                                          passes the pattern through instead of
                                          expanding it (or failing to)
   stellar-toml-lint --domain <domain>    Fetch and lint https://<domain>/.well-known/stellar.toml
+  stellar-toml-lint --diff <base> <target>
+                                         Compare two versions for breaking changes
   cat stellar.toml | stellar-toml-lint - Lint stdin
   stellar-toml-lint --format-file <file> Rewrite the file in canonical SEP-1 layout
 
@@ -1462,6 +1464,13 @@ function parseArgs(argv: string[]): Cli | 'handled' {
           );
         }
         cli.format = value;
+        break;
+      }
+
+      case '--diff': {
+        const base = requireValue(argv, ++i, arg);
+        const target = requireValue(argv, ++i, arg);
+        cli.diff = { base, target };
         break;
       }
 

@@ -756,6 +756,27 @@ if (result.ok) await writeFile(path, result.output);
 else console.error(result.error);
 ```
 
+### Diff mode for PR review
+
+A `stellar.toml` can be perfectly valid against SEP-1 and still break every wallet that already
+trusts its assets. `--diff` compares two versions and labels each change:
+
+| Label      | Meaning                                                                                                                             | Exit code |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `BREAKING` | Removed/changed issuer, contract, issuance rules, validator `PUBLIC_KEY`, `SIGNING_KEY`, removed SEP endpoint, live→non-live status | 1         |
+| `WARNING`  | Material but non-fatal edits (e.g. `ORG_DESCRIPTION`, endpoint URL change)                                                          | 0         |
+| `INFO`     | Purely additive (new currency, new validator, new endpoint)                                                                         | 0         |
+
+```bash
+# Fail the PR job if the proposed file would break existing integrations
+stellar-toml-lint --diff origin/main:public/.well-known/stellar.toml \
+                         public/.well-known/stellar.toml
+```
+
+Programmatic equivalent: `compareToml(baseSource, targetSource)` returns
+`TomlDifference[]` with `{ path, message, severity, breaking }`; `formatDiff` renders the
+same report the CLI prints.
+
 ## In CI
 
 ### GitHub Action
