@@ -25,6 +25,14 @@ import {
   formatGithub,
   formatHtml,
   formatJson,
+  formatJson,
+  formatJunit,
+  formatReadiness,
+  formatReadinessJson,
+  formatSarif,
+  formatText,
+} from './reporters.js';
+import { calculateReadiness } from './readiness.js';
   formatMarkdown,
   formatNdjson,
   formatJunit,
@@ -374,6 +382,9 @@ EXAMPLES
   stellar-toml-lint --preset validator public/.well-known/stellar.toml
   stellar-toml-lint -f summary "accounts/*/stellar.toml"
   stellar-toml-lint -f sarif > results.sarif
+  stellar-toml-lint public/.well-known/stellar.toml --readiness
+  stellar-toml-lint public/.well-known/stellar.toml --readiness -f json
+  stellar-toml-lint public/.well-known/stellar.toml --check-network \\\
   stellar-toml-lint --graph mermaid > diagram.mmd
   stellar-toml-lint --graph dot --graph-contracts > diagram.dot
   stellar-toml-lint --policy policy.yaml public/.well-known/stellar.toml
@@ -1015,6 +1026,30 @@ async function main(argv: string[]): Promise<number> {
         ...(cli.webhookDiscord !== undefined ? { discord: cli.webhookDiscord } : {}),
       });
 
+  // A dashboard written into a pipe or a file would corrupt the output it is
+  // meant to replace, so anything that is not a terminal keeps the text report.
+  // Readiness renders its own report too, so the dashboard steps aside for it.
+  const dashboard =
+    cli.interactive === true && cli.readiness !== true && supportsDashboard(process.stdout);
+
+  if (!cli.exportApConfig && dashboard) {
+    await runDashboard(
+      results,
+      { stdin: process.stdin, stdout: process.stdout },
+      { color, ...(cli.quiet ? { filter: 'error' as const } : {}) },
+    );
+  } else if (!cli.exportApConfig) {
+    for (const { name, result } of results) {
+      if (cli.readiness) {
+        process.stdout.write(renderReadiness(result, name, cli, color));
+        continue;
+      }
+
+      const filtered = cli.quiet
+        ? { ...result, diagnostics: result.diagnostics.filter((d) => d.severity === 'error') }
+        : result;
+
+      process.stdout.write(render(filtered, name, cli, color));
       for (const delivery of deliveries) {
         if (delivery.ok) continue;
         // The exit code stays tied to the diagnostics: a broken alert endpoint
@@ -1218,6 +1253,14 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
   }
 }
 
+/** Formats the wallet listing readiness report, in text or JSON. */
+function renderReadiness(result: LintResult, name: string, cli: Cli, color: boolean): string {
+  const report = calculateReadiness(result);
+  return cli.format === 'json'
+    ? formatReadinessJson(report, name)
+    : formatReadiness(report, { filename: name, color });
+}
+
 /** Combines per-file verdicts, including the `--max-warnings` threshold. */
 function verdict(
   results: { result: LintResult }[],
@@ -1354,6 +1397,9 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.strict = true;
         break;
 
+      case '--readiness':
+      case '--score':
+        cli.readiness = true;
       case '-w':
       case '--watch':
         cli.watch = true;
