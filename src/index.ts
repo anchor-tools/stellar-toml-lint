@@ -87,6 +87,7 @@ export type {
   formatPrComment,
 } from './reporters.js';
 export type { TextReporterOptions } from './reporters.js';
+export { fix, type TextEdit, type FixResult } from './fix.js';
 export { probeTls } from './tls.js';
 export type { TlsProbe } from './tls.js';
 export {

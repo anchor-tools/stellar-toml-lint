@@ -592,6 +592,13 @@ async function main(argv: string[]): Promise<number> {
               source = fixed;
             }
           }
+          const fixed = fix(source, fileResult.diagnostics);
+          if (fixed.edits.length > 0) {
+            await writeFile(path, fixed.source);
+            fixes.push({ name: path, edits: fixed.edits });
+            // Re-lint the corrected text so the report and exit code describe
+            // the file as it now is, not as it was before the fixes.
+            fileResult = await lintLocal(fixed.source, cli);
 
           let fileResult = lint(source, {
             strict: fileStrict,
@@ -1287,6 +1294,71 @@ function verdict(
   if (threshold === 'info' && totals.info > 0) return false;
   if (options.maxWarnings !== undefined && totals.warning > options.maxWarnings) return false;
   return true;
+}
+
+/**
+ * Lints a local source string, appending the network and contract checks when
+ * their flags are set. `--fix` re-lints with this same helper so the report and
+ * exit code after a rewrite are comparable to the original run.
+ */
+async function lintLocal(source: string, cli: Cli): Promise<LintResult> {
+  let fileResult = lint(source, {
+    strict: cli.strict,
+    rules: cli.rules,
+    checkNetwork: cli.checkNetwork,
+    ...(cli.domain ? { domain: cli.domain } : {}),
+  });
+
+  if (fileResult.parsed && (cli.checkNetwork || cli.checkContracts)) {
+    const networkDiagnostics: Diagnostic[] = [];
+
+    if (cli.checkNetwork) {
+      networkDiagnostics.push(
+        ...(await checkHorizon(fileResult.parsed, fetch, { rules: cli.rules })),
+        ...(await checkNetworkAccounts(fileResult.parsed)),
+        ...(await checkDisplayDecimals(fileResult.parsed, fetch, { rules: cli.rules })),
+        ...(await checkSep38(fileResult.parsed, fetch, { rules: cli.rules })),
+        ...(await checkRegulatedIssuerFlags(fileResult.parsed, fetch, {
+          rules: cli.rules,
+        })),
+      );
+    }
+
+    if (cli.checkContracts) {
+      networkDiagnostics.push(
+        ...(await checkContracts(fileResult.parsed, fetch, {
+          rules: cli.rules,
+          ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+        })),
+      );
+    }
+
+    if (networkDiagnostics.length > 0) {
+      fileResult = finalize(
+        [...fileResult.diagnostics, ...networkDiagnostics],
+        { strict: cli.strict },
+        fileResult.parsed,
+      );
+    }
+  }
+
+  return fileResult;
+}
+
+/** Human-readable list of the spans `--fix` rewrote, one line per edit. */
+function formatFixReport(fixed: { name: string; edits: TextEdit[] }[]): string {
+  return (
+    fixed
+      .map(
+        ({ name, edits }) =>
+          name +
+          '\n' +
+          edits
+            .map((e) => `  Fixed ${e.path}: "${e.old}" -> "${e.replacement}" (${e.rule})`)
+            .join('\n'),
+      )
+      .join('\n') + (fixed.length > 0 ? '\n' : '')
+  );
 }
 
 function parseArgs(argv: string[]): Cli | 'handled' {
