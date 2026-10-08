@@ -8,6 +8,7 @@ import type {
   Severity,
   TlsSession,
 } from './types.js';
+import { isSuppressed, parseSuppressions } from './comments.js';
 import { allRules } from './rules/index.js';
 import { securityRuleIds } from './rules/security.js';
 import {
@@ -144,7 +145,7 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
     }
   }
 
-  return finalize(diagnostics, options, parsed);
+  return finalize(diagnostics.filter(keep), options, parsed);
 }
 
 /**
