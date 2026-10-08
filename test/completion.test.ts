@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { allRules } from '../src/rules/index.js';
 import { COMPLETION_SHELLS, generateCompletion, isCompletionShell } from '../src/completion.js';
+import { PRESET_NAMES } from '../src/presets.js';
 
 /** A representative sample of the flags every script must advertise. */
 const LONG_FLAGS = [
@@ -8,11 +9,15 @@ const LONG_FLAGS = [
   '--format',
   '--strict',
   '--max-warnings',
+  '--fail-on',
   '--off',
   '--error',
   '--warn',
+  '--preset',
   '--check-network',
   '--check-contracts',
+  '--verify-overlay',
+  '--contract-graph',
   '--mock-fixtures',
   '--completion',
 ];
@@ -31,7 +36,7 @@ describe('generateCompletion', () => {
 
   it('offers the format choices, including the newer reporters', () => {
     const bash = generateCompletion('bash', allRules);
-    for (const format of ['text', 'json', 'sarif', 'checkstyle', 'markdown']) {
+    for (const format of ['text', 'summary', 'json', 'sarif', 'checkstyle', 'markdown']) {
       expect(bash).toContain(format);
     }
   });
@@ -68,6 +73,13 @@ describe('generateCompletion', () => {
       for (const flag of ['--off', '--error', '--warn']) {
         expect(script, `${shell} missing ${flag}`).toContain(flag.slice(2));
       }
+    }
+  });
+
+  it('lets --preset complete to the preset names in every shell', () => {
+    for (const shell of COMPLETION_SHELLS) {
+      const script = generateCompletion(shell, allRules);
+      for (const name of PRESET_NAMES) expect(script, `${shell} missing ${name}`).toContain(name);
     }
   });
 });

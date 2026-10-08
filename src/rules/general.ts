@@ -1,11 +1,5 @@
 import type { Rule } from '../types.js';
-import {
-  ACCOUNT_ID_FIELDS,
-  DEPRECATED_FIELDS,
-  HTTPS_ENDPOINT_FIELDS,
-  KNOWN_GLOBAL_FIELDS,
-  specUrl,
-} from '../spec.js';
+import { ACCOUNT_ID_FIELDS, HTTPS_ENDPOINT_FIELDS, KNOWN_GLOBAL_FIELDS, specUrl } from '../spec.js';
 import {
   KNOWN_PASSPHRASES,
   MAX_FILE_BYTES,
@@ -18,8 +12,11 @@ import {
 } from '../predicates.js';
 import { emptyStringValuesRule } from './empty-values.js';
 import { githubHandleRules } from './github-handle.js';
+import { twitterHandleRules } from './twitter-handle.js';
+import { telegramHandleRules } from './telegram-handle.js';
 import { trailingSlashRule } from './trailing-slash.js';
 import { uppercaseKeyRules } from './uppercase-keys.js';
+import { whitespaceRules } from './whitespace.js';
 
 /**
  * The `WEB_AUTH_CONTRACT_ID` when it is a valid C... id, with its file path,
@@ -36,6 +33,7 @@ export function webAuthContractIdOf(
 
 /** Rules covering file-level constraints and the global (untabled) fields. */
 export const generalRules: Rule[] = [
+  ...whitespaceRules,
   ...uppercaseKeyRules,
   trailingSlashRule,
   {
@@ -490,27 +488,6 @@ export const generalRules: Rule[] = [
   },
 
   {
-    id: 'general/deprecated-field',
-    category: 'general',
-    severity: 'warning',
-    description: 'Flags fields SEP-1 marks as deprecated',
-    run(ctx) {
-      for (const [field, note] of Object.entries(DEPRECATED_FIELDS)) {
-        if (ctx.doc[field] === undefined) continue;
-        ctx.report({
-          rule: 'general/deprecated-field',
-          category: 'general',
-          message: `${field} is deprecated: ${note}`,
-          path: field,
-          position: ctx.locate(field),
-          helpUri: specUrl('general-information'),
-          suggestion: `Remove ${field} unless a legacy client still depends on it.`,
-        });
-      }
-    },
-  },
-
-  {
     id: 'general/unknown-field',
     category: 'general',
     severity: 'info',
@@ -532,4 +509,6 @@ export const generalRules: Rule[] = [
   },
   emptyStringValuesRule,
   ...githubHandleRules,
+  ...twitterHandleRules,
+  ...telegramHandleRules,
 ];

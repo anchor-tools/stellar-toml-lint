@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { lint } from '../src/lint.js';
-import { checkRegulatedIssuerFlags, regulatedFlagRules } from '../src/rules/currencies.js';
+import { checkRegulatedIssuerFlags, regulatedFlagRules } from '../src/rules/regulated-flags.js';
 
 const NETWORK = 'Test SDF Network ; September 2015';
 const ISSUER = 'GAZ3V7WDE3TADF6UQWU3TAWQPVSW6ZV3NCCW6A7UN6HUDI5WXPMLQDFY';
@@ -43,7 +43,7 @@ function horizonFetch(
   return { fetchImpl, calls: () => calls, urls };
 }
 
-const AUTH_REQUIRED_RULE = 'currencies/regulated-missing-auth-required-flag';
+const AUTH_REQUIRED_RULE = 'currencies/regulated-asset-missing-auth-required';
 const AUTH_REVOCABLE_RULE = 'currencies/regulated-missing-auth-revocable-flag';
 const UNVERIFIABLE_RULE = 'currencies/regulated-issuer-flags-unverifiable';
 

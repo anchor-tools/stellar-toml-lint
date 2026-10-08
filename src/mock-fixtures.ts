@@ -199,12 +199,20 @@ function serializeBody(body: unknown): string {
 }
 
 /** Builds the `Response` a fixture describes. */
-function fixtureResponse(found: ResolvedFixture): Response {
-  const status = found.fixture.status ?? 200;
+function fixtureResponse(found: ResolvedFixture, method: string | undefined): Response {
+  const isOptions = method?.toUpperCase() === 'OPTIONS';
+  const status = isOptions ? 204 : (found.fixture.status ?? 200);
   // `Response` forbids a body on these statuses, and a fixture may use them.
   const body = status === 204 || status === 304 ? null : serializeBody(found.fixture.body);
   const headers = new Headers({
     'content-type': 'application/json',
+    ...(isOptions
+      ? {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'content-type, authorization',
+        }
+      : {}),
     ...(found.fixture.headers ?? {}),
     // Named last so a fixture cannot spoof which file answered the request.
     'x-mock-fixture': found.relative,
@@ -227,12 +235,12 @@ export function createFixtureFetch(fixturesDir: string): typeof fetch {
     );
   }
 
-  return async (input: FetchInput): Promise<Response> => {
+  return async (input: FetchInput, init?: RequestInit): Promise<Response> => {
     const url = toUrl(input);
     const found = resolveFixture(fixturesDir, url);
     if (found === undefined) {
       throw new MissingFixtureError(url.toString(), fixturesDir, fixtureCandidates(url));
     }
-    return fixtureResponse(found);
+    return fixtureResponse(found, init?.method);
   };
 }

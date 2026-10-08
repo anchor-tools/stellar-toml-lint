@@ -1,0 +1,239 @@
+{
+  "url": "https://stellarport.io/.well-known/stellar.toml",
+  "domain": "stellarport.io",
+  "sourceSha256": "fba2cbcd2c8e74f09fa3ffb5bb039abcee6d622b7425830c6b4902aa7699c2cf",
+  "ok": false,
+  "counts": {
+    "error": 6,
+    "warning": 9,
+    "info": 3
+  },
+  "diagnostics": [
+    {
+      "rule": "validators/alias",
+      "category": "validators",
+      "message": "VALIDATORS[0].ALIAS must match ^[a-z0-9-]{2,16}$",
+      "path": "VALIDATORS[0].ALIAS",
+      "position": {
+        "line": 19,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#validator-information",
+      "suggestion": "Try \"sp-ohio-1\".",
+      "severity": "error"
+    },
+    {
+      "rule": "validators/host",
+      "category": "validators",
+      "message": "VALIDATORS[0].HOST must be in host:port form",
+      "path": "VALIDATORS[0].HOST",
+      "position": {
+        "line": 22,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#validator-information",
+      "suggestion": "Include the peer port, e.g. \"core-au.example.com:11625\".",
+      "severity": "error"
+    },
+    {
+      "rule": "validators/invalid-history-url",
+      "category": "validators",
+      "message": "VALIDATORS[0].HISTORY is not an absolute URL",
+      "path": "VALIDATORS[0].HISTORY",
+      "position": {
+        "line": 23,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#validator-information",
+      "suggestion": "Point at the archive root, e.g. \"https://history.example.com/prd/core-live/core_live_001/\".",
+      "severity": "error"
+    },
+    {
+      "rule": "validators/alias",
+      "category": "validators",
+      "message": "VALIDATORS[1].ALIAS must match ^[a-z0-9-]{2,16}$",
+      "path": "VALIDATORS[1].ALIAS",
+      "position": {
+        "line": 26,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#validator-information",
+      "suggestion": "Try \"sp-ohio-2\".",
+      "severity": "error"
+    },
+    {
+      "rule": "validators/host",
+      "category": "validators",
+      "message": "VALIDATORS[1].HOST must be in host:port form",
+      "path": "VALIDATORS[1].HOST",
+      "position": {
+        "line": 29,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#validator-information",
+      "suggestion": "Include the peer port, e.g. \"core-au.example.com:11625\".",
+      "severity": "error"
+    },
+    {
+      "rule": "validators/invalid-history-url",
+      "category": "validators",
+      "message": "VALIDATORS[1].HISTORY is not an absolute URL",
+      "path": "VALIDATORS[1].HISTORY",
+      "position": {
+        "line": 30,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#validator-information",
+      "suggestion": "Point at the archive root, e.g. \"https://history.example.com/prd/core-live/core_live_001/\".",
+      "severity": "error"
+    },
+    {
+      "rule": "general/deprecated-field",
+      "category": "general",
+      "message": "ORG_NAME is deprecated at the top level",
+      "path": "ORG_NAME",
+      "position": {
+        "line": 14,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Move it under [DOCUMENTATION], for example: [DOCUMENTATION]\nORG_NAME = \"...\".",
+      "severity": "warning"
+    },
+    {
+      "rule": "general/deprecated-field",
+      "category": "general",
+      "message": "ORG_URL is deprecated at the top level",
+      "path": "ORG_URL",
+      "position": {
+        "line": 15,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Move it under [DOCUMENTATION], for example: [DOCUMENTATION]\nORG_URL = \"...\".",
+      "severity": "warning"
+    },
+    {
+      "rule": "general/deprecated-field",
+      "category": "general",
+      "message": "ORG_LOGO is deprecated at the top level",
+      "path": "ORG_LOGO",
+      "position": {
+        "line": 16,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Move it under [DOCUMENTATION], for example: [DOCUMENTATION]\nORG_LOGO = \"...\".",
+      "severity": "warning"
+    },
+    {
+      "rule": "currencies/anchored-asset-fields",
+      "category": "currencies",
+      "message": "CURRENCIES[0] is anchored but does not specify redemption_instructions",
+      "path": "CURRENCIES[0]",
+      "position": {
+        "line": 32,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Holders need to know what backs the token and how to redeem it.",
+      "severity": "warning"
+    },
+    {
+      "rule": "currencies/anchored-asset-fields",
+      "category": "currencies",
+      "message": "CURRENCIES[1] is anchored but does not specify redemption_instructions",
+      "path": "CURRENCIES[1]",
+      "position": {
+        "line": 45,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Holders need to know what backs the token and how to redeem it.",
+      "severity": "warning"
+    },
+    {
+      "rule": "currencies/anchored-asset-fields",
+      "category": "currencies",
+      "message": "CURRENCIES[2] is anchored but does not specify redemption_instructions",
+      "path": "CURRENCIES[2]",
+      "position": {
+        "line": 58,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Holders need to know what backs the token and how to redeem it.",
+      "severity": "warning"
+    },
+    {
+      "rule": "currencies/anchored-asset-fields",
+      "category": "currencies",
+      "message": "CURRENCIES[3] is anchored but does not specify redemption_instructions",
+      "path": "CURRENCIES[3]",
+      "position": {
+        "line": 71,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#currency-documentation",
+      "suggestion": "Holders need to know what backs the token and how to redeem it.",
+      "severity": "warning"
+    },
+    {
+      "rule": "documentation/present",
+      "category": "documentation",
+      "message": "No [DOCUMENTATION] table, which wallets and exchanges use to vet issuers",
+      "path": "DOCUMENTATION",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#organization-documentation",
+      "suggestion": "Add a [DOCUMENTATION] table with at least ORG_NAME, ORG_URL, and ORG_DESCRIPTION.",
+      "severity": "warning"
+    },
+    {
+      "rule": "network/passphrase",
+      "category": "network",
+      "severity": "warning",
+      "message": "NETWORK_PASSPHRASE is missing, so clients cannot tell which network you operate on",
+      "path": "NETWORK_PASSPHRASE",
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#general-information",
+      "suggestion": "Add NETWORK_PASSPHRASE=\"Public Global Stellar Network ; September 2015\" for mainnet."
+    },
+    {
+      "rule": "general/unknown-field",
+      "category": "general",
+      "message": "ORG_NAME is not a field defined by SEP-1",
+      "path": "ORG_NAME",
+      "position": {
+        "line": 14,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#general-information",
+      "suggestion": "Check the spelling and casing — SEP-1 global fields are UPPER_SNAKE_CASE.",
+      "severity": "info"
+    },
+    {
+      "rule": "general/unknown-field",
+      "category": "general",
+      "message": "ORG_URL is not a field defined by SEP-1",
+      "path": "ORG_URL",
+      "position": {
+        "line": 15,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#general-information",
+      "suggestion": "Check the spelling and casing — SEP-1 global fields are UPPER_SNAKE_CASE.",
+      "severity": "info"
+    },
+    {
+      "rule": "general/unknown-field",
+      "category": "general",
+      "message": "ORG_LOGO is not a field defined by SEP-1",
+      "path": "ORG_LOGO",
+      "position": {
+        "line": 16,
+        "column": 1
+      },
+      "helpUri": "https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md#general-information",
+      "suggestion": "Check the spelling and casing — SEP-1 global fields are UPPER_SNAKE_CASE.",
+      "severity": "info"
+    }
+  ]
+}

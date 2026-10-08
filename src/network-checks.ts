@@ -49,6 +49,80 @@ export async function checkIssuerFlags(
   }
 }
 
+export interface IssuerLockStatus {
+  masterKeyWeight: number;
+  medThreshold: number;
+  highThreshold: number;
+  activeSignerWeight: number;
+  locked: boolean;
+}
+
+/** Fetches the issuer's signing weights and reports whether it can still mint. */
+export async function checkIssuerLockStatus(
+  issuerId: string,
+  horizonUrl: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<IssuerLockStatus | undefined> {
+  try {
+    const response = await fetchImpl(`${horizonUrl}/accounts/${encodeURIComponent(issuerId)}`);
+    if (!response.ok) return undefined;
+
+    const body = (await response.json()) as Record<string, unknown>;
+    const thresholdData = body.thresholds;
+    const signers = body.signers;
+    if (
+      !Number.isInteger(body.master_key_weight) ||
+      (body.master_key_weight as number) < 0 ||
+      typeof thresholdData !== 'object' ||
+      thresholdData === null ||
+      Array.isArray(thresholdData) ||
+      !Array.isArray(signers)
+    ) {
+      return undefined;
+    }
+
+    const thresholds = thresholdData as Record<string, unknown>;
+    if (
+      !Number.isInteger(thresholds.med_threshold) ||
+      (thresholds.med_threshold as number) < 0 ||
+      !Number.isInteger(thresholds.high_threshold) ||
+      (thresholds.high_threshold as number) < 0
+    ) {
+      return undefined;
+    }
+
+    let activeSignerWeight = 0;
+    for (const signer of signers) {
+      if (typeof signer !== 'object' || signer === null || Array.isArray(signer)) return undefined;
+      const signerData = signer as Record<string, unknown>;
+      if (
+        typeof signerData.key !== 'string' ||
+        !Number.isInteger(signerData.weight) ||
+        (signerData.weight as number) < 0
+      ) {
+        return undefined;
+      }
+      if (signerData.key !== issuerId) activeSignerWeight += signerData.weight as number;
+    }
+
+    const masterKeyWeight = body.master_key_weight as number;
+    const medThreshold = thresholds.med_threshold as number;
+    const highThreshold = thresholds.high_threshold as number;
+    return {
+      masterKeyWeight,
+      medThreshold,
+      highThreshold,
+      activeSignerWeight,
+      locked:
+        masterKeyWeight === 0 &&
+        activeSignerWeight < medThreshold &&
+        activeSignerWeight < highThreshold,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 export async function checkNetworkAccounts(
   doc: Record<string, unknown>,
   fetchImpl: typeof fetch = fetch,

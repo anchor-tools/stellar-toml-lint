@@ -29,6 +29,12 @@ stellar-toml-lint:
     STELLAR_TOML_STRICT: 'false'
     # Fail when the warning count exceeds this number. Empty means no limit.
     STELLAR_TOML_MAX_WARNINGS: ''
+    # Run opt-in network checks.
+    STELLAR_TOML_CHECK_NETWORK: 'false'
+    # Discover validator overlay peers.
+    STELLAR_TOML_CRAWL_PEERS: 'false'
+    # Compare DNSSEC-validating DNS resolvers.
+    STELLAR_TOML_VERIFY_DNSSEC: 'false'
     # Output format: text, json, ndjson, sarif, github, junit, or checkstyle.
     STELLAR_TOML_FORMAT: text
     # Keep the npx download cache inside the project directory so the job
@@ -64,6 +70,18 @@ stellar-toml-lint:
 
       if [ -n "${STELLAR_TOML_MAX_WARNINGS:-}" ]; then
         set -- "$@" --max-warnings "$STELLAR_TOML_MAX_WARNINGS"
+      fi
+
+      if [ "${STELLAR_TOML_CHECK_NETWORK:-false}" = "true" ]; then
+        set -- "$@" --check-network
+      fi
+
+      if [ "${STELLAR_TOML_CRAWL_PEERS:-false}" = "true" ]; then
+        set -- "$@" --crawl-peers
+      fi
+
+      if [ "${STELLAR_TOML_VERIFY_DNSSEC:-false}" = "true" ]; then
+        set -- "$@" --verify-dnssec
       fi
 
       # The last command's exit code is the job's: 0 clean, 1 problems found,

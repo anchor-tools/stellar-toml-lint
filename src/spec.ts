@@ -16,6 +16,44 @@ export function specUrl(anchor?: string): string {
   return anchor ? `${SPEC_URL}#${anchor}` : SPEC_URL;
 }
 
+/**
+ * The Public (Mainnet) network passphrase.
+ *
+ * Transcribed as data rather than imported from `@stellar/stellar-base` so this
+ * module stays a plain table, and so every rule that gates on "is this document
+ * for production?" compares against one spelling instead of re-typing it.
+ */
+export const PUBLIC_NETWORK_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
+
+/**
+ * Contract IDs that exist only on Stellar Testnet, each with a human label.
+ *
+ * Anchor operators routinely copy their staging `stellar.toml` as a baseline
+ * and update only `NETWORK_PASSPHRASE`, leaving the Soroban addresses behind. A
+ * Testnet contract ID in a Mainnet file resolves to nothing on chain, so a
+ * wallet that trusts the file renders a broken token.
+ *
+ * The entries are the reference contracts an operator copies by hand, matched
+ * as exact strings so an unrelated Mainnet contract is never mislabelled:
+ *
+ *   - Testnet native XLM SAC — `stellar contract id asset --network testnet
+ *     --asset native`
+ *     (https://developers.stellar.org/docs/build/guides/tokens/stellar-asset-contract)
+ *   - Testnet USDC SAC — the Circle Testnet USDC asset (code `USDC`, issuer
+ *     `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`) hashed for
+ *     the Testnet network.
+ */
+export const KNOWN_TESTNET_CONTRACTS: ReadonlyMap<string, string> = new Map([
+  [
+    'CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC',
+    'the Testnet native asset (XLM) Stellar Asset Contract',
+  ],
+  [
+    'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+    'the Testnet USDC Stellar Asset Contract',
+  ],
+]);
+
 /** Global endpoint fields that SEP-1 requires to use `https://`. */
 export const HTTPS_ENDPOINT_FIELDS = [
   'FEDERATION_SERVER',
@@ -32,20 +70,52 @@ export const HTTPS_ENDPOINT_FIELDS = [
 /** Global fields holding a `G...` account ID. */
 export const ACCOUNT_ID_FIELDS = ['SIGNING_KEY', 'URI_REQUEST_SIGNING_KEY'] as const;
 
-/** Fields SEP-1 marks deprecated, with the SEP that replaced them. */
-export const DEPRECATED_FIELDS: Record<string, string> = {
-  AUTH_SERVER: 'SEP-3 (Compliance Protocol) is deprecated; SEP-10/SEP-12 replace it',
+export interface DeprecatedField {
+  message: string;
+  suggestion: string;
+}
+
+export const DEPRECATED_FIELDS: Record<string, DeprecatedField> = {
+  AUTH_SERVER: {
+    message: 'the SEP-3 Compliance Protocol is deprecated',
+    suggestion:
+      'Replace AUTH_SERVER with WEB_AUTH_ENDPOINT for SEP-10 authentication and KYC_SERVER for SEP-12 customer data.',
+  },
+  DEPOSIT_SERVER: {
+    message: 'the legacy SEP-6 deposit server field was replaced',
+    suggestion:
+      'Replace DEPOSIT_SERVER with TRANSFER_SERVER for SEP-6 or TRANSFER_SERVER_SEP0024 for SEP-24.',
+  },
 };
+
+/**
+ * Every global field, in the order SEP-1's "General Information" table lists
+ * them. The order matters to `--format-file`, which emits fields in spec order
+ * so two anchors' files line up when compared side by side.
+ */
+export const GLOBAL_FIELDS = [
+  'VERSION',
+  'NETWORK_PASSPHRASE',
+  'FEDERATION_SERVER',
+  'AUTH_SERVER',
+  'TRANSFER_SERVER',
+  'TRANSFER_SERVER_SEP0024',
+  'KYC_SERVER',
+  'WEB_AUTH_ENDPOINT',
+  'WEB_AUTH_FOR_CONTRACTS_ENDPOINT',
+  'WEB_AUTH_CONTRACT_ID',
+  'SIGNING_KEY',
+  'HORIZON_URL',
+  'ACCOUNTS',
+  'URI_REQUEST_SIGNING_KEY',
+  'DIRECT_PAYMENT_SERVER',
+  'ANCHOR_QUOTE_SERVER',
+] as const;
 
 /** Every field SEP-1 defines at the top level of the document. */
 export const KNOWN_GLOBAL_FIELDS = new Set<string>([
-  'VERSION',
-  'NETWORK_PASSPHRASE',
-  'HORIZON_URL',
-  'ACCOUNTS',
-  'WEB_AUTH_CONTRACT_ID',
-  ...HTTPS_ENDPOINT_FIELDS,
-  ...ACCOUNT_ID_FIELDS,
+  ...GLOBAL_FIELDS,
+  ...Object.keys(DEPRECATED_FIELDS),
   // Tables, handled by their own rule sets.
   'DOCUMENTATION',
   'PRINCIPALS',
@@ -53,8 +123,14 @@ export const KNOWN_GLOBAL_FIELDS = new Set<string>([
   'VALIDATORS',
 ]);
 
-/** Every field SEP-1 defines in `[DOCUMENTATION]`. */
-export const KNOWN_DOCUMENTATION_FIELDS = new Set<string>([
+/**
+ * SEP-1's tables and array-of-tables, in spec order. Sections outside this
+ * list sort after all of them, keeping their original relative order.
+ */
+export const TABLE_ORDER = ['DOCUMENTATION', 'PRINCIPALS', 'CURRENCIES', 'VALIDATORS'] as const;
+
+/** `[DOCUMENTATION]` fields, in spec order. */
+export const DOCUMENTATION_FIELDS = [
   'ORG_NAME',
   'ORG_DBA',
   'ORG_URL',
@@ -67,15 +143,18 @@ export const KNOWN_DOCUMENTATION_FIELDS = new Set<string>([
   'ORG_KEYBASE',
   'ORG_TWITTER',
   'ORG_GITHUB',
+  'ORG_TELEGRAM',
   'ORG_OFFICIAL_EMAIL',
   'ORG_SUPPORT_EMAIL',
   'ORG_LICENSING_AUTHORITY',
   'ORG_LICENSE_TYPE',
   'ORG_LICENSE_NUMBER',
-]);
+  'ORG_TERMS_OF_SERVICE',
+  'ORG_PRIVACY_POLICY',
+] as const;
 
-/** Every field SEP-1 defines in a `[[PRINCIPALS]]` entry. */
-export const KNOWN_PRINCIPAL_FIELDS = new Set<string>([
+/** `[[PRINCIPALS]]` fields, in spec order. */
+export const PRINCIPAL_FIELDS = [
   'name',
   'email',
   'keybase',
@@ -84,10 +163,10 @@ export const KNOWN_PRINCIPAL_FIELDS = new Set<string>([
   'github',
   'id_photo_hash',
   'verification_photo_hash',
-]);
+] as const;
 
-/** Every field SEP-1 defines in a `[[CURRENCIES]]` entry. */
-export const KNOWN_CURRENCY_FIELDS = new Set<string>([
+/** `[[CURRENCIES]]` fields, in spec order. */
+export const CURRENCY_FIELDS = [
   'code',
   'issuer',
   'contract',
@@ -113,16 +192,22 @@ export const KNOWN_CURRENCY_FIELDS = new Set<string>([
   'approval_server',
   'approval_criteria',
   'toml',
-]);
+] as const;
+
+/** `[[VALIDATORS]]` fields, in spec order. */
+export const VALIDATOR_FIELDS = ['ALIAS', 'DISPLAY_NAME', 'PUBLIC_KEY', 'HOST', 'HISTORY'] as const;
+
+/** Every field SEP-1 defines in `[DOCUMENTATION]`. */
+export const KNOWN_DOCUMENTATION_FIELDS = new Set<string>(DOCUMENTATION_FIELDS);
+
+/** Every field SEP-1 defines in a `[[PRINCIPALS]]` entry. */
+export const KNOWN_PRINCIPAL_FIELDS = new Set<string>(PRINCIPAL_FIELDS);
+
+/** Every field SEP-1 defines in a `[[CURRENCIES]]` entry. */
+export const KNOWN_CURRENCY_FIELDS = new Set<string>(CURRENCY_FIELDS);
 
 /** Every field SEP-1 defines in a `[[VALIDATORS]]` entry. */
-export const KNOWN_VALIDATOR_FIELDS = new Set<string>([
-  'ALIAS',
-  'DISPLAY_NAME',
-  'PUBLIC_KEY',
-  'HOST',
-  'HISTORY',
-]);
+export const KNOWN_VALIDATOR_FIELDS = new Set<string>(VALIDATOR_FIELDS);
 
 /**
  * stellar-core config keywords that cannot be reused as a `[[VALIDATORS]]` alias.
@@ -271,6 +356,14 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
     type: 'url (`https://`)',
     description:
       '(deprecated) The endpoint used for SEP-3 Compliance Protocol; SEP-10 and SEP-12 replace it.',
+    anchor: 'general-information',
+  },
+  {
+    section: '',
+    name: 'DEPOSIT_SERVER',
+    type: 'url (`https://`)',
+    description:
+      '(deprecated) The legacy SEP-6 deposit server field; use TRANSFER_SERVER for SEP-6 or TRANSFER_SERVER_SEP0024 for SEP-24.',
     anchor: 'general-information',
   },
   {
@@ -485,6 +578,13 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
   },
   {
     section: 'DOCUMENTATION',
+    name: 'ORG_TELEGRAM',
+    type: 'string',
+    description: "Your organization's Telegram community handle or link.",
+    anchor: 'organization-documentation',
+  },
+  {
+    section: 'DOCUMENTATION',
     name: 'ORG_OFFICIAL_EMAIL',
     type: 'email address',
     description:
@@ -521,6 +621,20 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
     type: 'string',
     description:
       'Official license, registration, or authorization number of your organization, if applicable.',
+    anchor: 'organization-documentation',
+  },
+  {
+    section: 'DOCUMENTATION',
+    name: 'ORG_TERMS_OF_SERVICE',
+    type: 'url (`https://`)',
+    description: "URL to your organization's terms of service.",
+    anchor: 'organization-documentation',
+  },
+  {
+    section: 'DOCUMENTATION',
+    name: 'ORG_PRIVACY_POLICY',
+    type: 'url (`https://`)',
+    description: "URL to your organization's privacy policy.",
     anchor: 'organization-documentation',
   },
 

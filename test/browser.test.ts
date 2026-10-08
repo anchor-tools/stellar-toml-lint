@@ -35,6 +35,29 @@ function goodResponse(body: string): Response {
   });
 }
 
+/** Image URLs the domain audit probes on top of the file itself. */
+const IMAGE_URL = /\.(?:png|jpe?g|webp|svg|gif)(?:$|[?#])/i;
+
+/** A response shaped like the one an anchor serves for a branding image. */
+function goodImage(): Response {
+  return new Response('', {
+    status: 200,
+    headers: {
+      'access-control-allow-origin': '*',
+      'content-type': 'image/png',
+    },
+  });
+}
+
+/**
+ * A `fetch` whose branding images answer like a healthy CDN's would, so the
+ * file-level behaviour under test is not diluted by image findings.
+ */
+function withHealthyImages(file: () => Response): typeof fetch {
+  return (async (url: string | URL) =>
+    IMAGE_URL.test(String(url)) ? goodImage() : file()) as unknown as typeof fetch;
+}
+
 // ── the browser entry point ────────────────────────────────────────────────
 
 describe('lintBrowser', () => {
@@ -107,24 +130,27 @@ describe('virtual file system', () => {
 describe('lintBrowserDomain', () => {
   it('reports nothing network-related for a correctly configured host', async () => {
     const result = await lintBrowserDomain('anchor.example', {
-      // The SEP-6 /info route advertises the currencies valid.toml declares;
-      // every other request (the file, the ORG_URL probe) gets the file.
+      // The SEP-6 /info route advertises the currencies valid.toml declares,
+      // branding images answer like a healthy CDN's, and every other request
+      // (the file, the ORG_URL probe) gets the file.
       fetchImpl: async (input) =>
-        String(input).endsWith('/info')
-          ? new Response(
-              JSON.stringify({
-                deposit: { USDX: { enabled: true }, EXPL: { enabled: true } },
-                withdraw: { USDX: { enabled: true } },
-              }),
-              {
-                status: 200,
-                headers: {
-                  'access-control-allow-origin': '*',
-                  'content-type': 'application/json',
+        IMAGE_URL.test(String(input))
+          ? goodImage()
+          : String(input).endsWith('/info')
+            ? new Response(
+                JSON.stringify({
+                  deposit: { USDX: { enabled: true }, EXPL: { enabled: true } },
+                  withdraw: { USDX: { enabled: true } },
+                }),
+                {
+                  status: 200,
+                  headers: {
+                    'access-control-allow-origin': '*',
+                    'content-type': 'application/json',
+                  },
                 },
-              },
-            )
-          : goodResponse(valid()),
+              )
+            : goodResponse(valid()),
     });
 
     const network = result.diagnostics.filter((d) => d.category === 'network');
@@ -133,8 +159,9 @@ describe('lintBrowserDomain', () => {
 
   it('keeps the CORS finding, which is the point of the browser path', async () => {
     const result = await lintBrowserDomain('anchor.example', {
-      fetchImpl: async () =>
-        new Response(valid(), { status: 200, headers: { 'content-type': 'text/plain' } }),
+      fetchImpl: withHealthyImages(
+        () => new Response(valid(), { status: 200, headers: { 'content-type': 'text/plain' } }),
+      ),
     });
 
     expect(result.diagnostics.map((d) => d.rule)).toContain('network/cors');
@@ -154,7 +181,7 @@ describe('lintBrowserDomain', () => {
 
   it('stays silent about TLS rather than guessing a session', async () => {
     const result = await lintBrowserDomain('anchor.example', {
-      fetchImpl: async () => goodResponse(valid()),
+      fetchImpl: withHealthyImages(() => goodResponse(valid())),
     });
 
     expect(result.diagnostics.filter((d) => d.rule.startsWith('security/'))).toEqual([]);

@@ -2,9 +2,10 @@
  * Native shell completion scripts for the CLI.
  *
  * `--completion <shell>` prints a script to stdout that teaches the named shell
- * how to complete `stellar-toml-lint`'s flags, its output formats, and the rule
- * ids accepted by `--off`/`--warn`/`--error`. The scripts are generated rather
- * than hand-maintained so the rule ids can never drift from `allRules`:
+ * how to complete `stellar-toml-lint`'s flags, its output formats, the rule
+ * ids accepted by `--off`/`--warn`/`--error`, and the `--preset` bundles. The
+ * scripts are generated rather than hand-maintained so those values can never
+ * drift from `allRules` and the preset registry:
  *
  * ```console
  * $ stellar-toml-lint --completion bash >> ~/.bashrc
@@ -13,6 +14,7 @@
  * ```
  */
 import type { Rule } from './types.js';
+import { PRESET_NAMES } from './presets.js';
 
 /** Shells `--completion` knows how to emit a script for. */
 export type CompletionShell = 'bash' | 'zsh' | 'fish';
@@ -28,6 +30,7 @@ export function isCompletionShell(value: string): value is CompletionShell {
 /** `--format` choices, kept in step with the `Format` union in `cli.ts`. */
 const FORMATS = [
   'text',
+  'summary',
   'json',
   'ndjson',
   'sarif',
@@ -36,10 +39,14 @@ const FORMATS = [
   'html',
   'checkstyle',
   'markdown',
+  'pr-comment',
 ] as const;
 
 /** `--graph` choices. */
 const GRAPH_FORMATS = ['mermaid', 'dot'] as const;
+
+/** `--contract-graph` choices. */
+const CONTRACT_GRAPH_FORMATS = ['json', 'mermaid'] as const;
 
 interface FlagSpec {
   /** Long form, e.g. `--format`. */
@@ -63,19 +70,45 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--format', short: '-f', description: 'Output format', values: FORMATS },
   { long: '--strict', description: 'Treat warnings as errors' },
   { long: '--max-warnings', description: 'Fail if warnings exceed n', takesValue: true },
+  {
+    long: '--fail-on',
+    description: 'Exit 1 at this severity or above',
+    values: ['error', 'warning', 'info'],
+  },
   { long: '--off', description: 'Disable a rule' },
   { long: '--error', description: 'Raise a rule to error' },
   { long: '--warn', description: 'Lower a rule to warning' },
+  { long: '--preset', description: 'Role-based rule bundle', values: PRESET_NAMES },
   { long: '--interactive', short: '-i', description: 'Full-screen dashboard of the findings' },
   { long: '--lsp', description: 'Run as a Language Server on stdio' },
   { long: '--quiet', short: '-q', description: 'Report errors only' },
+  { long: '--count', description: 'Print only problem count totals' },
+  { long: '--silent-success', description: 'Print nothing when a run has no diagnostics' },
+  { long: '--quiet-success', description: 'Alias for --silent-success' },
   { long: '--show-help-urls', description: 'Print the spec link for each finding' },
   { long: '--no-suggestions', description: 'Hide diagnostic suggestions' },
   { long: '--check-network', description: 'Verify accounts and endpoints online' },
+  { long: '--audit-quorum', description: 'Solve declared quorum sets for split-brain risk' },
+  { long: '--audit-diversity', description: 'Flag ASN/geographic validator concentration' },
   { long: '--verify-sep10', description: 'Verify SEP-10 nonce replay resistance' },
-  { long: '--check-contracts', description: 'Verify Soroban contract TTL liveliness' },
-  { long: '--soroban-rpc', description: 'Soroban RPC endpoint', takesValue: true },
+  { long: '--audit-security', description: 'Audit cross-server token binding' },
+  { long: '--verify-sep6', description: 'Run SEP-6 programmatic integration tester' },
+  { long: '--verify-sep31', description: 'Audit SEP-31 cross-border payment lifecycle' },
+  { long: '--verify-sep38', description: 'Audit SEP-38 quotes, spreads, and expirations' },
+  { long: '--crawl-peers', description: 'Discover and audit overlay peers' },
+  { long: '--verify-buckets', description: 'Hash- and XDR-verify published archive buckets' },
+  { long: '--verify-overlay', description: 'Handshake with each validator over the overlay' },
+  { long: '--verify-dnssec', description: 'Compare DNSSEC-validating DNS resolvers' },
+  { long: '--check-contracts', description: 'Verify Soroban contracts on chain' },
+  { long: '--rpc-url', description: 'Soroban RPC endpoint', takesValue: true },
+  { long: '--soroban-rpc', description: 'Soroban RPC endpoint (alias)', takesValue: true },
+  { long: '--simulate-soroban', description: 'Dry-run SEP-41 calls against Soroban RPC' },
+  {
+    long: '--soroban-rent-audit',
+    description: 'Audit Soroban contract storage footprint and rent',
+  },
   { long: '--mock-fixtures', description: 'Serve network checks from fixtures', takesValue: true },
+  { long: '--serve-mock', description: 'Run a local mock anchor server' },
   { long: '--webhook-slack', description: 'Slack webhook URL', takesValue: true },
   { long: '--webhook-discord', description: 'Discord webhook URL', takesValue: true },
   { long: '--badge-svg', description: 'Write an SVG compliance badge', takesValue: true },
@@ -84,6 +117,11 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--generate-openapi', description: 'Write an OpenAPI 3.1 spec', takesValue: true },
   { long: '--graph', description: 'Generate an architecture diagram', values: GRAPH_FORMATS },
   { long: '--graph-contracts', description: 'Include Soroban contracts in the diagram' },
+  {
+    long: '--contract-graph',
+    description: 'Print which declared contract calls which',
+    values: CONTRACT_GRAPH_FORMATS,
+  },
   { long: '--graph-validators', description: 'Include validators in the diagram' },
   { long: '--graph-color', description: 'Color diagram nodes by protocol type' },
   { long: '--policy', description: 'Evaluate an enterprise policy file', takesValue: true },
@@ -98,6 +136,8 @@ const FLAGS: readonly FlagSpec[] = [
   },
   { long: '--version', short: '-v', description: 'Print the version' },
   { long: '--help', short: '-h', description: 'Print usage' },
+  { long: '--fix', description: 'Apply safe autofixes to files' },
+  { long: '--dry-run', description: 'Preview autofix or migration diff without modifying files' },
 ];
 
 /** Rule-override flags, which complete to the registered rule ids. */
