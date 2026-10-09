@@ -501,6 +501,7 @@ the same report as JSON for a dashboard or score badge.
 Readiness is purely local — it scores the parsed document and the diagnostics already computed, so
 it adds no network traffic. The exit code still follows the diagnostics, so `--readiness` never
 changes whether a build fails.
+
 ### Shell completion
 
 `--completion <shell>` prints a script that teaches bash, zsh, or fish how to complete the linter's
@@ -1137,7 +1138,7 @@ const result = await lintDomain('example.com', {}, myFetch, async (host, port) =
 
 The listing readiness score is available programmatically too:
 
-```ts
+````ts
 import { calculateReadiness, formatReadiness, formatReadinessJson } from 'stellar-toml-lint';
 
 const report = calculateReadiness(result);
@@ -1153,7 +1154,7 @@ Tests and hermetic CI inject recorded responses with the same mechanism that bac
 import { createFixtureFetch } from 'stellar-toml-lint';
 
 const result = await lintDomain('example.com', {}, createFixtureFetch('./ci/fixtures'));
-```
+````
 
 The [rule presets](#rule-presets) are exported too, so an embedder can hand a role's bundle to
 `lint` the same way the CLI does:

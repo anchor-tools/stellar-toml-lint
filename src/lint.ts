@@ -88,6 +88,13 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
     source = source.slice(1);
   }
 
+  // `smol-toml` throws comments away, so suppression pragmas are recovered
+  // from the raw source before the rules run, and applied once here — after
+  // every rule has reported — so suppressed findings never reach the counts,
+  // any reporter, or the exit code.
+  const suppressions = parseSuppressions(source);
+  const keep = (d: Diagnostic): boolean => !isSuppressed(suppressions, d.position?.line, d.rule);
+
   // Parse into a lossless CST. A syntax error short-circuits the run exactly
   // as a thrown parser error used to: with no document there is nothing for
   // the semantic rules to inspect.
@@ -95,7 +102,7 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
   const syntaxError = firstError(document);
   if (syntaxError !== undefined) {
     diagnostics.push(parseDiagnostic(syntaxError));
-    return finalize(diagnostics, options, undefined);
+    return finalize(diagnostics.filter(keep), options, undefined);
   }
 
   // Building the value tree can itself surface problems TOML treats as fatal —
@@ -105,7 +112,7 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
   const valueError = evaluation.errors[0];
   if (valueError !== undefined) {
     diagnostics.push(parseDiagnostic(valueError));
-    return finalize(diagnostics, options, undefined);
+    return finalize(diagnostics.filter(keep), options, undefined);
   }
 
   const parsed: Record<string, unknown> = evaluation.value;

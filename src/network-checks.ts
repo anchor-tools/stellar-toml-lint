@@ -15,6 +15,10 @@ import { rpcUrlFor } from './rules/display-decimals-audit.js';
 const PUBLIC_PASSPHRASE = 'Public Global Stellar Network ; September 2015';
 const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015';
 
+const SEP41_TOKEN_RULE = 'currencies/sep41-token';
+const SEP41_UNVERIFIED_RULE = 'currencies/sep41-unverified';
+const CONTRACT_MISMATCH_RULE = 'currencies/display-decimals-contract-mismatch';
+
 /** The Horizon instance serving the network a passphrase names; mainnet by default. */
 export function horizonUrlFor(passphrase: string | undefined): string {
   return passphrase === TESTNET_PASSPHRASE

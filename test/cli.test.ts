@@ -7,12 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { XMLValidator } from 'fast-xml-parser';
 
+const run = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
 const CLI = join(here, '..', 'dist', 'cli.js');
 const fixture = (name: string): string => join(here, 'fixtures', name);
 
 /** Runs the built CLI, capturing the exit code instead of throwing. */
-function cli(
+async function cli(
   args: string[],
   input?: string,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -37,14 +38,11 @@ function cli(
     const { stdout, stderr } = await run('node', [CLI, ...args], {
       env: { ...process.env, NO_COLOR: '1' },
     });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (chunk) => (stdout += chunk));
-    child.stderr.on('data', (chunk) => (stderr += chunk));
-    child.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }));
-    if (input !== undefined) child.stdin.write(input);
-    child.stdin.end();
-  });
+    return { code: 0, stdout, stderr };
+  } catch (error) {
+    const e = error as { code?: number; stdout?: string; stderr?: string };
+    return { code: e.code ?? 1, stdout: e.stdout ?? '', stderr: e.stderr ?? '' };
+  }
 }
 
 // These exercise the built artifact, so they depend on `npm run build`.
@@ -265,6 +263,8 @@ describe('cli', () => {
     const { code, stderr } = await cli([fixture('valid.toml'), '--readiness', '-f', 'sarif']);
     expect(code).toBe(2);
     expect(stderr).toContain('--readiness supports');
+  });
+
   it('serves network checks from --mock-fixtures', async () => {
     const { code, stdout } = await cli([
       fixture('network/offline-anchor.toml'),

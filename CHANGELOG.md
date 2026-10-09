@@ -198,6 +198,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   overrides it. Covered by `test/no-color.test.ts` (#148).
 
 main
+
 - `--format junit` emits a JUnit XML test report for CI dashboards that chart test results (Jenkins,
   Bamboo, CircleCI, Azure DevOps). Error-severity findings are reported as `<failure>` elements and
   warnings as `<error>` elements, so a dashboard counting failures matches the exit code (#143).

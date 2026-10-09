@@ -11,6 +11,7 @@ import { watch } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
+import { compareToml, formatDiff, hasBreakingChanges } from './diff.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
@@ -25,23 +26,18 @@ import {
   formatGithub,
   formatHtml,
   formatJson,
-  formatJson,
   formatJunit,
-  formatReadiness,
-  formatReadinessJson,
-  formatSarif,
-  formatText,
-} from './reporters.js';
-import { calculateReadiness } from './readiness.js';
   formatMarkdown,
   formatNdjson,
-  formatJunit,
   formatPrComment,
+  formatReadiness,
+  formatReadinessJson,
   formatRunSummary,
   formatSarif,
   formatSummary,
   formatText,
 } from './reporters.js';
+import { calculateReadiness } from './readiness.js';
 import { expandGlob, hasMagic } from './glob.js';
 import { generateAnchorTestsConfig } from './integrations/anchor-tests.js';
 import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
@@ -203,6 +199,8 @@ interface Cli {
   dryRun?: boolean;
   fix?: boolean;
   serveMock?: number;
+  diff?: { base: string; target: string };
+  readiness?: boolean;
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -407,6 +405,14 @@ async function main(argv: string[]): Promise<number> {
 
   if (cli.formatFile) return formatFiles(cli);
 
+  // Readiness draws its own report, so it only has a text and a JSON form.
+  if (cli.readiness && cli.format !== 'text' && cli.format !== 'json') {
+    process.stderr.write(
+      `--readiness supports --format text or --format json; drop --format ${cli.format}.\n\nRun with --help for usage.\n`,
+    );
+    return 2;
+  }
+
   const color = cli.color ?? shouldUseColor();
 
   const runLint = async (cli: Cli, color: boolean): Promise<number> => {
@@ -428,6 +434,14 @@ async function main(argv: string[]): Promise<number> {
     const fetchImpl = cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
 
     try {
+      if (cli.diff) {
+        const baseSource = await readFile(cli.diff.base, 'utf8');
+        const targetSource = await readFile(cli.diff.target, 'utf8');
+        const differences = compareToml(baseSource, targetSource);
+        process.stdout.write(formatDiff(differences, cli.diff, { color }));
+        return hasBreakingChanges(differences) ? 1 : 0;
+      }
+
       if (cli.domain && cli.paths.length === 0) {
         const config = await loadConfig(process.cwd());
         strict = strict || config.strict;
@@ -594,13 +608,6 @@ async function main(argv: string[]): Promise<number> {
               source = fixed;
             }
           }
-          const fixed = fix(source, fileResult.diagnostics);
-          if (fixed.edits.length > 0) {
-            await writeFile(path, fixed.source);
-            fixes.push({ name: path, edits: fixed.edits });
-            // Re-lint the corrected text so the report and exit code describe
-            // the file as it now is, not as it was before the fixes.
-            fileResult = await lintLocal(fixed.source, cli);
 
           let fileResult = lint(source, {
             strict: fileStrict,
@@ -976,7 +983,12 @@ async function main(argv: string[]): Promise<number> {
 
     // A dashboard written into a pipe or a file would corrupt the output it is
     // meant to replace, so anything that is not a terminal keeps the text report.
-    const dashboard = cli.interactive === true && !cli.count && supportsDashboard(process.stdout);
+    // Readiness renders its own report too, so the dashboard steps aside for it.
+    const dashboard =
+      cli.interactive === true &&
+      cli.readiness !== true &&
+      !cli.count &&
+      supportsDashboard(process.stdout);
 
     if (!cli.exportApConfig && dashboard) {
       await runDashboard(
@@ -999,6 +1011,11 @@ async function main(argv: string[]): Promise<number> {
         process.stdout.write(formatCount(results, { color }));
       } else if (!silent) {
         for (const { name, result } of results) {
+          if (cli.readiness) {
+            process.stdout.write(renderReadiness(result, name, cli, color));
+            continue;
+          }
+
           const filtered = cli.quiet
             ? { ...result, diagnostics: result.diagnostics.filter((d) => d.severity === 'error') }
             : result;
@@ -1035,30 +1052,6 @@ async function main(argv: string[]): Promise<number> {
         ...(cli.webhookDiscord !== undefined ? { discord: cli.webhookDiscord } : {}),
       });
 
-  // A dashboard written into a pipe or a file would corrupt the output it is
-  // meant to replace, so anything that is not a terminal keeps the text report.
-  // Readiness renders its own report too, so the dashboard steps aside for it.
-  const dashboard =
-    cli.interactive === true && cli.readiness !== true && supportsDashboard(process.stdout);
-
-  if (!cli.exportApConfig && dashboard) {
-    await runDashboard(
-      results,
-      { stdin: process.stdin, stdout: process.stdout },
-      { color, ...(cli.quiet ? { filter: 'error' as const } : {}) },
-    );
-  } else if (!cli.exportApConfig) {
-    for (const { name, result } of results) {
-      if (cli.readiness) {
-        process.stdout.write(renderReadiness(result, name, cli, color));
-        continue;
-      }
-
-      const filtered = cli.quiet
-        ? { ...result, diagnostics: result.diagnostics.filter((d) => d.severity === 'error') }
-        : result;
-
-      process.stdout.write(render(filtered, name, cli, color));
       for (const delivery of deliveries) {
         if (delivery.ok) continue;
         // The exit code stays tied to the diagnostics: a broken alert endpoint
@@ -1298,71 +1291,6 @@ function verdict(
   return true;
 }
 
-/**
- * Lints a local source string, appending the network and contract checks when
- * their flags are set. `--fix` re-lints with this same helper so the report and
- * exit code after a rewrite are comparable to the original run.
- */
-async function lintLocal(source: string, cli: Cli): Promise<LintResult> {
-  let fileResult = lint(source, {
-    strict: cli.strict,
-    rules: cli.rules,
-    checkNetwork: cli.checkNetwork,
-    ...(cli.domain ? { domain: cli.domain } : {}),
-  });
-
-  if (fileResult.parsed && (cli.checkNetwork || cli.checkContracts)) {
-    const networkDiagnostics: Diagnostic[] = [];
-
-    if (cli.checkNetwork) {
-      networkDiagnostics.push(
-        ...(await checkHorizon(fileResult.parsed, fetch, { rules: cli.rules })),
-        ...(await checkNetworkAccounts(fileResult.parsed)),
-        ...(await checkDisplayDecimals(fileResult.parsed, fetch, { rules: cli.rules })),
-        ...(await checkSep38(fileResult.parsed, fetch, { rules: cli.rules })),
-        ...(await checkRegulatedIssuerFlags(fileResult.parsed, fetch, {
-          rules: cli.rules,
-        })),
-      );
-    }
-
-    if (cli.checkContracts) {
-      networkDiagnostics.push(
-        ...(await checkContracts(fileResult.parsed, fetch, {
-          rules: cli.rules,
-          ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
-        })),
-      );
-    }
-
-    if (networkDiagnostics.length > 0) {
-      fileResult = finalize(
-        [...fileResult.diagnostics, ...networkDiagnostics],
-        { strict: cli.strict },
-        fileResult.parsed,
-      );
-    }
-  }
-
-  return fileResult;
-}
-
-/** Human-readable list of the spans `--fix` rewrote, one line per edit. */
-function formatFixReport(fixed: { name: string; edits: TextEdit[] }[]): string {
-  return (
-    fixed
-      .map(
-        ({ name, edits }) =>
-          name +
-          '\n' +
-          edits
-            .map((e) => `  Fixed ${e.path}: "${e.old}" -> "${e.replacement}" (${e.rule})`)
-            .join('\n'),
-      )
-      .join('\n') + (fixed.length > 0 ? '\n' : '')
-  );
-}
-
 function parseArgs(argv: string[]): Cli | 'handled' {
   const cli: Cli = {
     paths: [],
@@ -1481,6 +1409,8 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--readiness':
       case '--score':
         cli.readiness = true;
+        break;
+
       case '-w':
       case '--watch':
         cli.watch = true;

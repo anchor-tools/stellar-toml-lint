@@ -528,6 +528,7 @@ export function formatReadinessJson(report: ReadinessReport, filename = 'stellar
     null,
     2,
   )}\n`;
+}
 /**
  * Checkstyle XML, the shape Jenkins (Warnings NG), SonarQube-adjacent
  * dashboards, and Java-adjacent CI pipelines read for static-analysis results.

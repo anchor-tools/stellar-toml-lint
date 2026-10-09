@@ -71,6 +71,10 @@ export {
   formatJunit,
   formatReadiness,
   formatReadinessJson,
+  formatHtml,
+  formatCheckstyle,
+  formatMarkdown,
+  formatPrComment,
 } from './reporters.js';
 export type { TextReporterOptions, ReadinessReporterOptions } from './reporters.js';
 export { calculateReadiness, gradeFor } from './readiness.js';
@@ -81,12 +85,6 @@ export type {
   ReadinessPillarId,
   ReadinessReport,
 } from './readiness.js';
-  formatHtml,
-  formatCheckstyle,
-  formatMarkdown,
-  formatPrComment,
-} from './reporters.js';
-export type { TextReporterOptions } from './reporters.js';
 export { fix, type TextEdit, type FixResult } from './fix.js';
 export { probeTls } from './tls.js';
 export type { TlsProbe } from './tls.js';
