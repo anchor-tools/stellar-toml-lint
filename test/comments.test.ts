@@ -16,6 +16,8 @@ const DOCS = [
   'ORG_DESCRIPTION="Example"',
   'ORG_LOGO="https://example.com/logo.png"',
   'ORG_OFFICIAL_EMAIL="ops@example.com"',
+  'ORG_PRIVACY_POLICY="https://example.com/privacy"',
+  'ORG_TERMS_OF_SERVICE="https://example.com/terms"',
 ];
 
 /** A valid file, to which callers prepend or append lines under test. */

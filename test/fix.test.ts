@@ -95,7 +95,7 @@ describe('fix', () => {
 
       expect(fixed.edits).toHaveLength(1);
       expect(fixed.edits[0]).toMatchObject({
-        rule: 'documentation/social-handles',
+        rule: 'general/invalid-twitter-handle',
         path: 'DOCUMENTATION.ORG_TWITTER',
         old: '@stellarOrg',
         replacement: 'stellarOrg',

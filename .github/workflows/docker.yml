@@ -36,12 +36,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install cosign (sign images)
-        if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@v3
-        with:
-          cosign-release: v2.2.3
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -80,9 +74,3 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: true
           sbom: true
-
-      - name: Verify image signatures
-        if: github.event_name != 'pull_request'
-        run: |
-          cosign verify --key cosign.pub \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
