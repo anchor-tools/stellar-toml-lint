@@ -278,6 +278,8 @@ failure.
 | `--check-network`           | Verify accounts, fixed-supply issuer locks, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, TLS certificate expiry, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online                                  |
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                                                                                                           |
 | `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                                                                                                          |
+| `--verify-sep8-webhook`     | Simulate SEP-8 regulated asset post-signing approval webhook with idempotency and co-signature verification (requires `--check-network`)                                                                    |
+| `--verify-ipfs`             | Verify IPFS CID pointers, multihash integrity, gateway reachability, and MIME type matching (requires `--check-network`)                                                                                  |
 | `--verify-sep30`            | Validate RECOVERY_SERVER /accounts endpoint and signer public keys (requires `--check-network`)                                                                                                             |
 | `--verify-sep38`            | Audit SEP-38 quote coverage, bid-ask spread, and quote expirations (requires `--check-network`)                                                                                                             |
 | `--verify-sep24`            | Audit SEP-24 hosted deposit/withdrawal flow: `/info` currency coverage, numeric fee schemas, and HTTPS interactive session URLs (requires `--check-network`)                                                |
@@ -295,6 +297,7 @@ failure.
 | `--rpc-url <url>`           | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`; `--soroban-rpc` is an alias)                                                                                              |
 | `--simulate-soroban`        | With `--check-network`: dry-run the SEP-41 read calls against the Soroban RPC without submitting a transaction                                                                                              |
 | `--soroban-rent-audit`      | With `--check-network`: audit contract instance storage footprint, TTL expiration, and projected ledger rent costs                                                                                          |
+| `--soroban-instance-storage-audit` | With `--check-network`: audit Soroban contract instance storage key-value integrity (admin address type, decimal matching display_decimals)                                                               |
 | `--serve-mock [port]`       | Serve the file and mock SEP-10/24/38 endpoints on localhost (default port `8080`); see [mock server](#local-mock-server-for-wallet-and-frontend-development)                                                |
 | `--mock-fixtures <dir>`     | Serve network checks from recorded JSON fixtures under `<dir>`, never the network                                                                                                                           |
 | `--webhook-slack <url>`     | POST a Slack Block Kit card with the run summary                                                                                                                                                            |
@@ -348,6 +351,8 @@ For every contract a file declares under `[[CURRENCIES]]`, on-chain audits run u
 | `soroban/high-storage-footprint`         | warning  | A contract's total storage footprint exceeds recommended limits             |
 | `soroban/missing-auth-parameter`         | error    | A state-mutating contract function lacks an Address authorization parameter |
 | `soroban/unsafe-unauthorized-mint`       | error    | An unparameterized or unauthorized mint function is exposed (SEP-42)        |
+| `soroban/corrupted-instance-storage-entry` | error  | Contract instance storage contains malformed SCVal (admin not Address, decimal not U32) |
+| `soroban/instance-storage-data-mismatch` | error    | Instance storage `decimal` disagrees with `display_decimals` in stellar.toml |
 
 The environment-metadata audit reads the `contractenvmetav0` custom section and compares the declared
 interface (`protocol`) version against the network's. The event audit reads the `contractspecv0`
@@ -367,6 +372,50 @@ spent. Every audit degrades to silence on an RPC or Horizon outage rather than f
 ```bash
 stellar-toml-lint stellar.toml --check-network --soroban-rent-audit --simulate-soroban --rpc-url https://my-rpc.example.com
 ```
+
+### IPFS CID verification
+
+When `--verify-ipfs` is passed with `--check-network`, the linter scans `DOCUMENTATION.ORG_LOGO`, currency `image` URLs, and contract `metadata` fields for IPFS gateway URLs (e.g., `https://ipfs.io/ipfs/Qm...`). Each CID (v0 Base58 `Qm...` or v1 Base32 `bafy...` / Base58 `z...`) is fetched through multiple public IPFS gateways. The downloaded content is cryptographically verified against the CID's multihash (SHA-256, SHA3-256, Blake2b-256, or SHA-512). MIME types are checked against the field context (image fields must return `image/*`, schema fields `application/json`). Gateway latency and partial reachability are reported.
+
+| Rule                          | Severity | Fires when                                                         |
+| ----------------------------- | -------- | ------------------------------------------------------------------ |
+| `ipfs/invalid-cid-format`     | error    | CID string is not valid CIDv0 or CIDv1                             |
+| `ipfs/cid-unreachable`        | error    | CID cannot be fetched from any configured gateway                  |
+| `ipfs/cid-hash-mismatch`      | error    | Downloaded content does not match the CID's multihash              |
+| `ipfs/cid-mime-mismatch`      | warning  | Content-Type does not match expected type for the field            |
+| `ipfs/cid-high-latency`       | warning  | Median gateway latency exceeds 10 seconds                          |
+| `ipfs/cid-partial-reachability`| warning | CID unreachable on some but not all gateways                       |
+
+```bash
+stellar-toml-lint stellar.toml --check-network --verify-ipfs
+```
+
+### SEP-8 post-signing approval webhook
+
+When `--verify-sep8-webhook` is passed with `--check-network`, the linter generates synthetic payment transaction envelopes for every regulated asset (those with `approval_server` or the global `APPROVAL_SERVER`). Each envelope is POSTed to the approval server with an idempotency key derived from the transaction hash. The response is validated against the SEP-8 schema: status must be one of `success`, `revised`, `pending`, `rejected`, or `action_required`. For `revised` and `success` responses containing a `tx` field, the returned transaction XDR is verified to preserve the original payment operation and include only legitimate additional signatures from the approval server. Idempotency is tested by submitting the same envelope twice and asserting identical responses. Latency is measured and flagged if the median exceeds 5 seconds.
+
+| Rule                           | Severity | Fires when                                                               |
+| ------------------------------ | -------- | ------------------------------------------------------------------------ |
+| `sep8/webhook-unresponsive`    | error    | Approval server is unreachable or returns non-200 HTTP                   |
+| `sep8/invalid-webhook-response`| error    | Response lacks valid JSON, status, or required status-specific fields    |
+| `sep8/invalid-co-signed-transaction` | error | Returned transaction XDR is malformed or does not preserve the original operation |
+| `sep8/idempotency-violation`   | error    | Duplicate submissions with same idempotency key return different responses |
+| `sep8/webhook-high-latency`    | warning  | Median response latency exceeds 5 seconds                                |
+
+```bash
+stellar-toml-lint stellar.toml --check-network --verify-sep8-webhook
+```
+
+### Horizon account data verification
+
+When `--check-network` is active, the linter fetches the `SIGNING_KEY` and `ACCOUNTS` entries from Horizon and decodes their `data` dictionaries. It verifies that `stellar_toml_hash` matches the SHA-256 of the live `stellar.toml`, and that `org_domain` matches the serving domain.
+
+| Rule                                      | Severity | Fires when                                                         |
+| ----------------------------------------- | -------- | ------------------------------------------------------------------ |
+| `security/on-chain-toml-hash-mismatch`    | error    | On-chain `stellar_toml_hash` or `org_domain` disagrees with file  |
+| `security/missing-on-chain-verification-proof` | warning | Account lacks `stellar_toml_hash` or `org_domain` data entry     |
+
+This check runs automatically under `--check-network`; no additional flag is needed.
 
 Every flag above takes precedence over the [configuration file](#configuration-file), and
 `--preset` — being a flag — takes precedence over it too. `--fail-on` names the exit-code threshold

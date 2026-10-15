@@ -58,8 +58,12 @@ import { adminAuditorRules } from '../soroban/admin-auditor.js';
 import { simulationRules } from '../soroban/simulation.js';
 import { storageFootprintRules } from '../soroban/storage-footprint.js';
 import { authAuditorRules } from '../soroban/auth-auditor.js';
+import { instanceStorageAuditorRules } from '../soroban/instance-storage-auditor.js';
 import { insecureHttpRule } from './insecure-http.js';
 import { multisigRules } from '../security/multisig.js';
+import { ipfsMetadataRules } from '../validators/ipfsMetadata.js';
+import { sep8WebhookRules } from '../sep8/webhookCoordinator.js';
+import { accountDataAuditorRules } from '../security/account-data-auditor.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -93,6 +97,7 @@ export const allRules: Rule[] = [
   ...simulationRules,
   ...storageFootprintRules,
   ...authAuditorRules,
+  ...instanceStorageAuditorRules,
   ...sorobanErrorRules,
   ...multiNetworkRules,
   ...dependencyGraphRules,
@@ -102,6 +107,7 @@ export const allRules: Rule[] = [
   ...sep6IntegrationRules,
   ...sep31Rules,
   ...sep8Rules,
+  ...sep8WebhookRules,
   ...sep38QuoteRules,
   ...sep24Rules,
   ...sep7Rules,
@@ -121,6 +127,8 @@ export const allRules: Rule[] = [
   ...docComplianceRules,
   ...networkPassphraseRules,
   ...testnetContractRules,
+  ...ipfsMetadataRules,
+  ...accountDataAuditorRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -182,5 +190,9 @@ export {
   simulationRules,
   storageFootprintRules,
   authAuditorRules,
+  instanceStorageAuditorRules,
   insecureHttpRule,
+  ipfsMetadataRules,
+  sep8WebhookRules,
+  accountDataAuditorRules,
 };

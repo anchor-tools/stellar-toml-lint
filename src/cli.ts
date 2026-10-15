@@ -71,7 +71,11 @@ import { checkTokenBinding } from './security/token-binding.js';
 import { verifySep6Integration } from './protocols/sep6.js';
 import { verifySep31 } from './protocols/sep31.js';
 import { verifySep8 } from './protocols/sep8.js';
+import { verifySep8Webhook, type Sep8WebhookOptions } from './sep8/webhookCoordinator.js';
 import { verifySep38 } from './protocols/sep38.js';
+import { validateIpfsMetadata, type IpfsMetadataValidatorOptions } from './validators/ipfsMetadata.js';
+import { auditTomlInstanceStorage, type InstanceStorageAuditorOptions } from './soroban/instance-storage-auditor.js';
+import { auditTomlAccountData, type AccountDataAuditorOptions } from './security/account-data-auditor.js';
 import { verifySep24 } from './protocols/sep24.js';
 import { verifySep12 } from './protocols/sep12.js';
 import { verifySep12Deletion } from './protocols/sep12-deletion.js';
@@ -175,6 +179,8 @@ interface Cli {
   verifySep30?: boolean;
   verifySep24QuoteLock?: boolean;
   verifyClawback?: boolean;
+  verifySep8Webhook?: boolean;
+  verifyIpfs?: boolean;
   crawlPeers: boolean;
   verifyDnssec: boolean;
   verifyOverlay: boolean;
@@ -190,6 +196,7 @@ interface Cli {
   sorobanRpc?: string;
   simulateSoroban?: boolean;
   sorobanRentAudit?: boolean;
+  sorobanInstanceStorageAudit?: boolean;
   graph?: GraphFormat;
   contractGraph?: 'json' | 'mermaid';
   graphIncludeContracts?: boolean;
@@ -286,6 +293,9 @@ OPTIONS
       --verify-sep24-quote-lock
                           Audit SEP-24 interactive deposit fee quote stability across session
       --verify-clawback   Verify asset clawback authority (CAP-35) via Horizon and Soroban RPC
+      --verify-sep8-webhook
+                           Simulate SEP-8 regulated asset post-signing approval webhook
+      --verify-ipfs       Verify IPFS CID pointers, multihash integrity, and gateway reachability
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-buckets    With --check-network: download a sample of the archive
                           buckets a validator publishes, verify each against the
@@ -305,6 +315,8 @@ OPTIONS
       --soroban-rent-audit
                           With --check-network: audit contract instance storage footprint,
                           TTL expiration, and projected ledger rent costs
+      --soroban-instance-storage-audit
+                          With --check-network: audit Soroban contract instance storage key-value integrity
       --mock-fixtures <dir>
                           Serve network checks from recorded JSON responses under
                           <dir> instead of the network. A URL with no fixture
@@ -524,6 +536,8 @@ async function main(argv: string[]): Promise<number> {
               ? await verifySep30(domainResult.parsed, fetchImpl, { rules })
               : []),
             ...(cli.verifySep8 ? await verifySep8(domainResult.parsed, fetchImpl, { rules }) : []),
+            ...(cli.verifySep8Webhook ? await verifySep8Webhook(domainResult.parsed, fetchImpl, { rules }) : []),
+            ...(cli.verifyIpfs ? await validateIpfsMetadata(domainResult.parsed, fetchImpl, { rules }) : []),
             ...(cli.verifySep38
               ? await verifySep38(domainResult.parsed, fetchImpl, { rules })
               : []),
@@ -587,7 +601,21 @@ async function main(argv: string[]): Promise<number> {
                   ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                 })
               : []),
+            ...(cli.sorobanInstanceStorageAudit
+              ? await auditTomlInstanceStorage(domainResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })
+              : []),
           ];
+          // Audit on-chain account data entries for SIGNING_KEY and ACCOUNTS (domain path)
+          const domainTomlSource = await (await fetchImpl(`https://${cli.domain}/.well-known/stellar.toml`)).text();
+          networkDiagnostics.push(
+            ...(await auditTomlAccountData(domainResult.parsed, domainTomlSource, fetchImpl, {
+              rules,
+              domain: cli.domain,
+            })),
+          );
           if (networkDiagnostics.length > 0) {
             domainResult = finalize(
               [...domainResult.diagnostics, ...networkDiagnostics],
@@ -715,6 +743,18 @@ async function main(argv: string[]): Promise<number> {
               );
             }
 
+            if (cli.verifySep8Webhook && cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await verifySep8Webhook(fileResult.parsed, fetchImpl, { rules })),
+              );
+            }
+
+            if (cli.verifyIpfs && cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await validateIpfsMetadata(fileResult.parsed, fetchImpl, { rules })),
+              );
+            }
+
             if (cli.verifySep38 && cli.checkNetwork) {
               networkDiagnostics.push(
                 ...(await verifySep38(fileResult.parsed, fetchImpl, { rules })),
@@ -834,6 +874,12 @@ async function main(argv: string[]): Promise<number> {
                       ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                     })
                   : []),
+                ...(cli.sorobanInstanceStorageAudit
+                  ? await auditTomlInstanceStorage(fileResult.parsed, fetchImpl, {
+                      rules,
+                      ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                    })
+                  : []),
                 ...(await checkNetworkConsistency(fileResult.parsed, fetchImpl, { rules })),
                 // Dials each peer directly, outside the fixture transport.
                 ...(cli.verifyOverlay && cli.mockFixtures === undefined
@@ -847,6 +893,17 @@ async function main(argv: string[]): Promise<number> {
                 ...(await checkCollateralGovernance(fileResult.parsed, {
                   rules,
                   fetchImpl,
+                })),
+              );
+            }
+
+            if (cli.checkNetwork && fileResult.parsed) {
+              // Audit on-chain account data entries for SIGNING_KEY and ACCOUNTS
+              const tomlSource = path === '-' ? await readStdin() : await readFile(path, 'utf8');
+              networkDiagnostics.push(
+                ...(await auditTomlAccountData(fileResult.parsed, tomlSource, fetchImpl, {
+                  rules,
+                  domain: cli.domain,
                 })),
               );
             }

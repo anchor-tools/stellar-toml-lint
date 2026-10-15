@@ -97,6 +97,19 @@ export {
   DEFAULT_PROBE_TIMEOUT_MS,
 } from './validators/net-probe.js';
 export type { TcpPortProbe } from './validators/net-probe.js';
+
+export {
+  validateCid,
+  validateIpfsMetadata,
+  parseCid,
+  extractCids,
+  fetchCidFromGateways,
+  verifyCidHash,
+  ipfsMetadataRules,
+  ipfsMetadataRuleIds,
+  DEFAULT_IPFS_GATEWAYS,
+} from './validators/ipfsMetadata.js';
+export type { IpfsMetadataValidatorOptions, ParsedCid, CidVerificationResult, GatewayResult } from './validators/ipfsMetadata.js';
 export { createFixtureFetch, fixtureCandidates, MissingFixtureError } from './mock-fixtures.js';
 export type { FixtureFile } from './mock-fixtures.js';
 export {
@@ -345,6 +358,21 @@ export {
 export type { Sep8Options } from './protocols/sep8.js';
 
 export {
+  verifySep8Webhook,
+  buildSyntheticSep8Transaction as buildSyntheticSep8WebhookTransaction,
+  isValidTransactionXdr as isValidSep8WebhookTransactionXdr,
+  verifyCoSignedTransaction,
+  sep8WebhookRules,
+  sep8WebhookRuleIds,
+  WEBHOOK_UNRESPONSIVE_RULE,
+  INVALID_WEBHOOK_RESPONSE_RULE,
+  INVALID_CO_SIGNED_TX_RULE,
+  IDEMPOTENCY_VIOLATION_RULE,
+  WEBHOOK_LATENCY_RULE,
+} from './sep8/webhookCoordinator.js';
+export type { Sep8WebhookOptions } from './sep8/webhookCoordinator.js';
+
+export {
   verifySep38,
   sep38QuoteRules,
   sep38QuoteRuleIds,
@@ -394,6 +422,16 @@ export {
   SEP41_MANDATORY_FUNCTIONS,
 } from './soroban/wasm-auditor.js';
 export type { WasmAuditorOptions } from './soroban/wasm-auditor.js';
+
+export {
+  auditContractInstanceStorage,
+  auditTomlInstanceStorage,
+  instanceStorageAuditorRules,
+  instanceStorageAuditorRuleIds,
+  CORRUPTED_ENTRY_RULE,
+  DATA_MISMATCH_RULE,
+} from './soroban/instance-storage-auditor.js';
+export type { InstanceStorageAuditorOptions } from './soroban/instance-storage-auditor.js';
 
 export {
   auditContractStorageFootprint,
@@ -542,3 +580,13 @@ export {
   SECURITY_UNRECOGNIZED_CA_IN_CT_LOGS,
 } from './security/ct-auditor.js';
 export type { CtCertificate, CtAuditOptions } from './security/ct-auditor.js';
+
+export {
+  auditAccountData,
+  auditTomlAccountData,
+  accountDataAuditorRules,
+  accountDataAuditorRuleIds,
+  HASH_MISMATCH_RULE,
+  MISSING_PROOF_RULE,
+} from './security/account-data-auditor.js';
+export type { AccountDataAuditorOptions } from './security/account-data-auditor.js';
