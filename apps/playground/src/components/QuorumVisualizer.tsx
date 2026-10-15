@@ -3,22 +3,33 @@ import type Cytoscape from 'cytoscape';
 import ReactCytoscape from 'react-cytoscapejs';
 import { Box, Typography } from '@mui/material';
 
-interface ValidatorNode {
-  group: string;
-  data: {
-    id: string;
-    label: string;
-    alias: string;
-    publicKey: string;
-    host: string;
-  };
+interface NodeData {
+  id: string;
+  label: string;
+  alias: string;
+  publicKey: string;
+  host: string;
+}
+
+interface EdgeData {
+  id: string;
+  source: string;
+  target: string;
+  weight: number;
+}
+
+type ElementData = NodeData | EdgeData;
+
+interface GraphElement {
+  group: 'nodes' | 'edges';
+  data: ElementData;
 }
 
 export default function QuorumVisualizer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Cytoscape.Core | null>(null);
 
-  const elements: ValidatorNode[] = [
+  const elements: GraphElement[] = [
     {
       group: 'nodes',
       data: {

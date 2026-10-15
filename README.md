@@ -714,6 +714,48 @@ worker.postMessage({ type: 'lint', content: tomlString });
 
 One capability does not survive the move: a page cannot observe a TLS session, so the `security/*` audit is skipped in the browser and reported as not observed rather than guessed. `browserCapabilities` says the same thing at runtime, for callers that branch on it.
 
+### Client-Side PDF Compliance Report Generator
+
+Generate multi-page PDF audit certificates directly in the browser with zero server dependencies. Works completely offline.
+
+```ts
+import { downloadCompliancePDF, generateCompliancePDF } from 'stellar-toml-lint/browser';
+
+const result = await lintBrowser(content, { files });
+
+await downloadCompliancePDF({
+  document: parsedToml,
+  diagnostics: result.diagnostics,
+  metadata: {
+    linterVersion: '0.1.0',
+    timestamp: new Date().toISOString(),
+    domain: 'example.com',
+  },
+}, 'stellar-toml-audit.pdf', {
+  includeExecutiveSummary: true,
+  includeAssetBreakdown: true,
+  includeValidatorDetails: true,
+  includeDiagnostics: true,
+  includeChecksum: true,
+  watermark: 'CONFIDENTIAL',
+});
+```
+
+Features:
+- **Executive summary** with compliance score (EXCELLENT/GOOD/FAIR/POOR)
+- **Asset breakdown** table with codes, issuers, types, and issuance policies
+- **Validator quorum set** with aliases, public keys, hosts, and history URLs
+- **Diagnostic findings** grouped by category with severity badges
+- **SHA-256 document checksum** for cryptographic verification
+- **Cryptographically signed** with SHA-256 of canonical JSON
+- Works **completely offline** — no server calls, uses pdfmake with embedded fonts
+
+Available exports from `stellar-toml-lint/browser`:
+- `generateCompliancePDF(data, options)` — returns `Promise<Blob>`
+- `downloadCompliancePDF(data, filename?, options)` — triggers browser download
+- `ComplianceReportData` interface — input data structure
+- `PDFExportOptions` interface — customization options
+
 Both entry points ship their own TypeScript declarations (`dist/browser.d.ts`, `dist/worker.d.ts`), and build tests verify static import boundaries and execution in browser sandbox environments.
 
 To build the browser bundles:
@@ -1589,6 +1631,19 @@ absurd quotation is caught before a wallet sizes an order from it (`sep38/abnorm
 future (`sep38/invalid-quote-expiration`, error). Endpoint liveness, 5xx, and malformed bodies stay with the plain
 `--check-network` probe above, so nothing is reported twice.
 
+**SEP-38 indicative pricing curve slippage validator** (with `--check-network --verify-sep38`) — Samples `GET /prices`
+across 10 logarithmic order sizes (10, 100, 1,000, 10,000, 100,000 base units) for every declared asset pair to
+verify price curve monotonicity and slippage boundaries. Detects inverted bid-ask spreads where the buy rate is less
+than the sell rate (`sep38/inverted-bid-ask-spread`, error), excessive slippage beyond 5% for standard order sizes
+(`sep38/excessive-slippage-detected`, warning), and non-monotonic price curves where larger orders receive better
+rates (`sep38/non-monotonic-price-curve`, warning).
+
+**WebSocket handshake and event stream auditor** (with `--check-network`) — Validates WebSocket upgrades (`ws://` /
+`wss://`) for streaming endpoints advertised in the file (e.g., SEP-24 `TRANSFER_SERVER` streaming, SEP-38 quote
+streaming, Horizon streaming). Performs HTTP 101 Switching Protocols handshake, sends ping frames and verifies pong
+response latency, and validates TLS certificates for `wss://` sessions. Emits `network/websocket-handshake-failed`
+(error) on failed upgrades and `network/websocket-ping-timeout` (warning) on heartbeat failures.
+
 **Soroban WASM bytecode disassembler and SEP-41 conformance auditor** (with `--check-network`) — Fetches compiled WebAssembly
 bytecode for Soroban smart contracts declared under `[[CURRENCIES]].contract`, `[[CONTRACTS]]`, or `WEB_AUTH_CONTRACT_ID`.
 Decompresses binary WASM payloads and inspects the `contractspecv0` custom section to disassemble the exported Soroban Contract Spec (SCS)
@@ -1802,6 +1857,7 @@ The **Stellar TOML Lint Playground** is an interactive web-based IDE built with 
 - **Quorum Visualizer** — interactive DAG rendered with Cytoscape.js showing validator quorum sets, thresholds, and quorum slices
 - **Live Network Probe** — test CORS, TLS, and Horizon state with real-time results
 - **Fix Actions** — one-click "Apply Autofix" button with a preview of suggested corrections
+- **WebRTC Peer-to-Peer Collaborative Editing** — real-time co-editing with Yjs CRDT synchronization, remote cursor/selection display with custom username colors, room ID in URL hash for sharing (`apps/playground/src/collab/webrtc-provider.ts`)
 
 ### Getting Started
 
@@ -1821,6 +1877,8 @@ The playground is a standalone Vite + React + TypeScript application located in 
 - `src/components/QuorumVisualizer.tsx` — Interactive quorum DAG visualizer using Cytoscape.js
 - `src/components/LiveNetworkProbe.tsx` — Network connectivity tester
 - `src/components/FixActions.tsx` — Automated fix suggestions and application
+- `src/collab/webrtc-provider.ts` — WebRTC collaborative editing provider using Yjs and y-webrtc
+- `src/collab/useCollaboration.ts` — React hook for collaboration state management
 
 ## Regression corpus
 
