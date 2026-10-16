@@ -589,4 +589,81 @@ export {
   HASH_MISMATCH_RULE,
   MISSING_PROOF_RULE,
 } from './security/account-data-auditor.js';
+
+export {
+  auditIpv6Reachability,
+  ipv6TargetsOf,
+  ipv6AuditorRules,
+  ipv6AuditorRuleIds,
+  MISSING_IPV6_AAAA_RULE,
+  IPV6_CONNECTION_TIMEOUT_RULE,
+  IPV6_CONNECTION_FAILED_RULE,
+} from './network/ipv6-auditor.js';
+export type {
+  Ipv6AuditorOptions,
+  Ipv6ConnectionResult,
+  Ipv6Connector,
+  Ipv6LookupResult,
+  Ipv6Resolver,
+} from './network/ipv6-auditor.js';
+
+export {
+  analyzeImmutability,
+  checkImmutabilityClaims,
+  fetchImmutabilityRecord,
+  immutabilityClaimsOf,
+  immutabilityAuditorRules,
+  immutabilityAuditorRuleIds,
+  FALSE_IMMUTABILITY_CLAIM_RULE,
+  IMMUTABILITY_UNVERIFIABLE_RULE,
+} from './security/immutability-auditor.js';
+export type {
+  HorizonAccountSigner,
+  ImmutabilityAccountRecord,
+  ImmutabilityAuditorOptions,
+  ImmutabilityClaim,
+  ImmutabilityVerdict,
+} from './security/immutability-auditor.js';
+
+export {
+  verifySep31Webhooks,
+  verifyWebhookSignature,
+  webhookPayloadProblem,
+  sep31WebhookRules,
+  sep31WebhookRuleIds,
+  SEP31_WEBHOOK_EVENT_TYPES,
+  DEFAULT_WEBHOOK_TIMEOUT_MS,
+  MISSING_WEBHOOK_SIGNATURE_RULE,
+  WEBHOOK_DELIVERY_TIMEOUT_RULE,
+  INVALID_WEBHOOK_PAYLOAD_RULE,
+} from './protocols/sep31-webhook-verifier.js';
+export type {
+  Sep31WebhookDelivery,
+  Sep31WebhookListener,
+  Sep31WebhookListenerFactory,
+  Sep31WebhookOptions,
+  SignatureValidation,
+} from './protocols/sep31-webhook-verifier.js';
+
+export {
+  AnchorDiscoveryValidator,
+  validateAnchorDiscovery,
+  parseDirectoryRecords,
+  declaredSepsOf,
+  advertisedSepsOf,
+  anchorDomainOf,
+  anchorDiscoveryRules,
+  anchorDiscoveryRuleIds,
+  DEFAULT_DIRECTORY_REGISTRIES,
+  TOML_SEP_ENDPOINTS,
+  REGISTRY_UNREACHABLE_RULE,
+  SCHEMA_INVALID_RULE,
+  PROFILE_OUT_OF_SYNC_RULE,
+  CAPABILITY_MISMATCH_RULE,
+} from './validators/anchorDiscovery.js';
+export type {
+  AnchorDiscoveryOptions,
+  DirectoryEntry,
+  DirectoryRegistry,
+} from './validators/anchorDiscovery.js';
 export type { AccountDataAuditorOptions } from './security/account-data-auditor.js';

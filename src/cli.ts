@@ -16,6 +16,7 @@ import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import { checkCertExpiry } from './network/cert-expiry.js';
+import { auditIpv6Reachability } from './network/ipv6-auditor.js';
 import { checkRateLimitResilience } from './network/rate-limit-tester.js';
 import { horizonUrlFor } from './network-checks.js';
 import { checkSignatureStateMachineFromDocument } from './security/signature-state-machine.js';
@@ -70,12 +71,13 @@ import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkTokenBinding } from './security/token-binding.js';
 import { verifySep6Integration } from './protocols/sep6.js';
 import { verifySep31 } from './protocols/sep31.js';
+import { verifySep31Webhooks } from './protocols/sep31-webhook-verifier.js';
 import { verifySep8 } from './protocols/sep8.js';
-import { verifySep8Webhook, type Sep8WebhookOptions } from './sep8/webhookCoordinator.js';
+import { verifySep8Webhook } from './sep8/webhookCoordinator.js';
 import { verifySep38 } from './protocols/sep38.js';
-import { validateIpfsMetadata, type IpfsMetadataValidatorOptions } from './validators/ipfsMetadata.js';
-import { auditTomlInstanceStorage, type InstanceStorageAuditorOptions } from './soroban/instance-storage-auditor.js';
-import { auditTomlAccountData, type AccountDataAuditorOptions } from './security/account-data-auditor.js';
+import { validateIpfsMetadata } from './validators/ipfsMetadata.js';
+import { auditTomlInstanceStorage } from './soroban/instance-storage-auditor.js';
+import { auditTomlAccountData } from './security/account-data-auditor.js';
 import { verifySep24 } from './protocols/sep24.js';
 import { verifySep12 } from './protocols/sep12.js';
 import { verifySep12Deletion } from './protocols/sep12-deletion.js';
@@ -92,10 +94,12 @@ import {
   simulateQuorumBft,
 } from './validators/quorum.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
+import { checkImmutabilityClaims } from './security/immutability-auditor.js';
 import { checkSigningKeyRevocation } from './security/key-revocation.js';
 import { checkSigningKeyMultisig } from './security/multisig.js';
 import { checkCertificateTransparencyFromDocument } from './security/ct-auditor.js';
 import { checkValidatorDiversityFromDocument } from './validators/geo-diversity.js';
+import { validateAnchorDiscovery } from './validators/anchorDiscovery.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { checkOverlayHandshake } from './overlay/handshake.js';
 import { allRules } from './rules/index.js';
@@ -164,6 +168,9 @@ interface Cli {
   maxWarnings?: number;
   failOn?: Severity;
   checkNetwork: boolean;
+  checkIpv6?: boolean;
+  verifyDirectorySync?: boolean;
+  directoryFeeds?: string[];
   auditQuorum: boolean;
   auditDiversity?: boolean;
   followLinks: boolean;
@@ -279,6 +286,18 @@ OPTIONS
       --audit-diversity   With --check-network: resolve validator hosts and flag
                           ASN or geographic concentration (>33% in one bucket).
                           Enrichment uses the JSON table in ANCHOR_GEO_LOOKUP
+      --check-ipv6        With --check-network: resolve AAAA records for the
+                          anchor domain and every service endpoint, and verify
+                          each IPv6 address accepts a TCP connection (for
+                          DNS64/NAT64 IPv6-only mobile networks)
+      --verify-directory-sync
+                          With --check-network: compare ecosystem directory
+                          listings with stellar.toml (ORG_NAME, ORG_URL,
+                          ACCOUNTS, and SEP-6/24/31/38 capability flags)
+      --directory-feed <url>
+                          Directory registry JSON endpoint to audit with
+                          --verify-directory-sync (repeatable; defaults to the
+                          Stellar Expert SEP-37 directory)
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --audit-security    Audit cross-server token binding (SEP-10 JWT against
                           TRANSFER_SERVER_SEP0024, KYC_SERVER, DIRECT_PAYMENT_SERVER)
@@ -505,6 +524,7 @@ async function main(argv: string[]): Promise<number> {
               : []),
             ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkSigningKeyMultisig(domainResult.parsed, { rules, fetchImpl })),
+            ...(await checkImmutabilityClaims(domainResult.parsed, fetchImpl, { rules })),
             ...(await checkCertificateTransparencyFromDocument(domainResult.parsed, {
               rules,
               fetchImpl,
@@ -531,6 +551,11 @@ async function main(argv: string[]): Promise<number> {
               : []),
             ...(cli.verifySep31
               ? await verifySep31(domainResult.parsed, fetchImpl, { rules })
+              : []),
+            // The webhook listener opens a local socket and waits for a real
+            // callback, so a hermetic fixture run skips it.
+            ...(cli.verifySep31 && cli.mockFixtures === undefined
+              ? await verifySep31Webhooks(domainResult.parsed, fetchImpl, { rules })
               : []),
             ...(cli.verifySep30 && domainResult.parsed?.RECOVERY_SERVER !== undefined
               ? await verifySep30(domainResult.parsed, fetchImpl, { rules })
@@ -572,6 +597,22 @@ async function main(argv: string[]): Promise<number> {
             // The peer-port probe dials raw TCP for the same reason.
             ...(cli.mockFixtures === undefined
               ? await checkPeerPortReachability(domainResult.parsed, { rules })
+              : []),
+            // DNS + raw IPv6 sockets, outside the fixture transport.
+            ...(cli.checkIpv6 && cli.mockFixtures === undefined
+              ? await auditIpv6Reachability(domainResult.parsed, { rules, domain: cli.domain })
+              : []),
+            ...(cli.verifyDirectorySync
+              ? await validateAnchorDiscovery(domainResult.parsed, {
+                  rules,
+                  fetchImpl,
+                  domain: cli.domain,
+                  ...(cli.directoryFeeds === undefined
+                    ? {}
+                    : {
+                        directories: cli.directoryFeeds.map((url) => ({ name: url, url })),
+                      }),
+                })
               : []),
             ...(await auditTomlContractEnvMeta(domainResult.parsed, fetchImpl, {
               rules,
@@ -724,6 +765,11 @@ async function main(argv: string[]): Promise<number> {
             if (cli.verifySep31 && cli.checkNetwork) {
               networkDiagnostics.push(
                 ...(await verifySep31(fileResult.parsed, fetchImpl, { rules })),
+                // Opens a loopback listener for the callback, so hermetic
+                // fixture runs skip it.
+                ...(cli.mockFixtures === undefined
+                  ? await verifySep31Webhooks(fileResult.parsed, fetchImpl, { rules })
+                  : []),
               );
             }
 
@@ -808,6 +854,7 @@ async function main(argv: string[]): Promise<number> {
                   rules,
                 })),
                 ...(await checkFixedSupplyIssuerLocks(fileResult.parsed, fetchImpl, { rules })),
+                ...(await checkImmutabilityClaims(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkCorsPreflight(fileResult.parsed, fetchImpl, { rules })),
                 // Opens its own sockets, outside the fixture transport.
                 ...(cli.mockFixtures === undefined
@@ -815,6 +862,25 @@ async function main(argv: string[]): Promise<number> {
                   : []),
                 ...(cli.mockFixtures === undefined
                   ? await checkPeerPortReachability(fileResult.parsed, { rules })
+                  : []),
+                // DNS + raw IPv6 sockets, outside the fixture transport.
+                ...(cli.checkIpv6 && cli.mockFixtures === undefined
+                  ? await auditIpv6Reachability(fileResult.parsed, {
+                      rules,
+                      ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                    })
+                  : []),
+                ...(cli.verifyDirectorySync
+                  ? await validateAnchorDiscovery(fileResult.parsed, {
+                      rules,
+                      fetchImpl,
+                      ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                      ...(cli.directoryFeeds === undefined
+                        ? {}
+                        : {
+                            directories: cli.directoryFeeds.map((url) => ({ name: url, url })),
+                          }),
+                    })
                   : []),
                 ...(await checkHistoryPublish(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkArchiveDiff(fileResult.parsed, fetchImpl, { rules })),
@@ -1534,6 +1600,24 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--check-network':
         cli.checkNetwork = true;
         break;
+
+      case '--check-ipv6':
+        cli.checkIpv6 = true;
+        break;
+
+      case '--verify-directory-sync':
+        cli.verifyDirectorySync = true;
+        break;
+
+      case '--directory-feed': {
+        const value = requireValue(argv, ++i, arg);
+        if (!isSupportedWebhookUrl(value)) {
+          throw new Error('--directory-feed expects an http or https URL.');
+        }
+        cli.directoryFeeds ??= [];
+        cli.directoryFeeds.push(value);
+        break;
+      }
 
       case '--audit-quorum':
         cli.auditQuorum = true;

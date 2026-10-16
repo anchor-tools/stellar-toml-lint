@@ -4,6 +4,7 @@ import { anchoredAssetRules } from './anchored-asset-rules.js';
 import { assetCodeFormatRules } from './asset-code-format.js';
 import { collateralSigFormatRules } from './collateral-sig-format.js';
 import { duplicateCurrencyRules } from './duplicate-currency.js';
+import { immutabilityAuditorRules } from '../security/immutability-auditor.js';
 import { verifyCollateralSignature } from '../crypto/collateral.js';
 import {
   ANCHOR_ASSET_TYPES,
@@ -277,6 +278,7 @@ export const currencyRules: Rule[] = [
   ...assetCodeFormatRules,
   ...collateralSigFormatRules,
   ...duplicateCurrencyRules,
+  ...immutabilityAuditorRules,
 
   {
     id: 'currencies/entries-are-tables',

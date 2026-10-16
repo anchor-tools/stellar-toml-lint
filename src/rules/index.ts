@@ -39,7 +39,9 @@ import { quorumSolverRules } from '../validators/quorum-solver.js';
 import { quorumAuditRules } from '../validators/quorum.js';
 import { dnsIntegrityRules } from '../security/dns-integrity.js';
 import { certExpiryRules } from '../network/cert-expiry.js';
+import { ipv6AuditorRules } from '../network/ipv6-auditor.js';
 import { peerPortRule } from '../validators/net-probe.js';
+import { anchorDiscoveryRules } from '../validators/anchorDiscovery.js';
 import { fixedSupplyLockRules } from './fixed-supply-audit.js';
 import { circularPointerRules } from './circular-pointers.js';
 import { docComplianceRules } from './doc-compliance.js';
@@ -48,6 +50,7 @@ import { testnetContractRules } from './testnet-contracts.js';
 import { sep7Rules } from '../protocols/sep7.js';
 import { sep6IntegrationRules } from '../protocols/sep6.js';
 import { sep31Rules } from '../protocols/sep31.js';
+import { sep31WebhookRules } from '../protocols/sep31-webhook-verifier.js';
 import { sep8Rules } from '../protocols/sep8.js';
 import { sep38QuoteRules } from '../protocols/sep38.js';
 import { sep24Rules } from '../protocols/sep24.js';
@@ -106,6 +109,7 @@ export const allRules: Rule[] = [
   ...sep6Rules,
   ...sep6IntegrationRules,
   ...sep31Rules,
+  ...sep31WebhookRules,
   ...sep8Rules,
   ...sep8WebhookRules,
   ...sep38QuoteRules,
@@ -122,6 +126,8 @@ export const allRules: Rule[] = [
   ...quorumAuditRules,
   ...dnsIntegrityRules,
   ...certExpiryRules,
+  ...ipv6AuditorRules,
+  ...anchorDiscoveryRules,
   peerPortRule,
   ...circularPointerRules,
   ...docComplianceRules,
@@ -172,6 +178,8 @@ export {
   quorumAuditRules,
   dnsIntegrityRules,
   certExpiryRules,
+  ipv6AuditorRules,
+  anchorDiscoveryRules,
   peerPortRule,
   circularPointerRules,
   docComplianceRules,
@@ -180,6 +188,7 @@ export {
   sep7Rules,
   sep6IntegrationRules,
   sep31Rules,
+  sep31WebhookRules,
   sep8Rules,
   sep38QuoteRules,
   sep24Rules,

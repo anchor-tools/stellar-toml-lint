@@ -185,7 +185,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                       |
 | `--audit-security`          | Audit cross-server token binding (SEP-10 JWT vs downstream endpoints) (requires `--check-network`)                      |
 | `--verify-sep6`             | Run end-to-end programmatic SEP-6 integration tester (requires `--check-network`)                                       |
-| `--verify-sep31`            | Audit SEP-31 cross-border payment lifecycle and schema (requires `--check-network`)                                     |
+| `--verify-sep31`            | Audit SEP-31 cross-border payment lifecycle, schema, and webhook delivery (requires `--check-network`)                 |
 | `--verify-sep30`            | Validate RECOVERY_SERVER /accounts endpoint and signer public keys (requires `--check-network`)                         |
 | `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                      |
 | `--verify-sep38`            | Audit SEP-38 quote coverage, bid-ask spread, and quote expirations (requires `--check-network`)                         |
@@ -277,6 +277,10 @@ failure.
 | `--fail-on <severity>`      | Exit `1` when any diagnostic meets or exceeds `error`, `warning`, or `info`; takes precedence over `--strict`                                                                                               |
 | `--check-network`           | Verify accounts, fixed-supply issuer locks, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, TLS certificate expiry, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online                                  |
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                                                                                                           |
+| `--check-ipv6`              | Resolve AAAA records for the anchor domain and every service endpoint, and verify each IPv6 address accepts a TCP connection (requires `--check-network`)                                                  |
+| `--verify-directory-sync`   | Compare ecosystem directory listings with `stellar.toml` (`ORG_NAME`, `ORG_URL`, `ACCOUNTS`, and SEP-6/24/31/38 capability flags) (requires `--check-network`)                                            |
+| `--directory-feed <url>`    | Directory registry JSON endpoint to audit with `--verify-directory-sync` (repeatable; defaults to the Stellar Expert SEP-37 directory)                                                                     |
+| `--verify-sep31`            | Audit SEP-31 cross-border payment lifecycle, schema, and webhook delivery (requires `--check-network`)                                                                                                      |
 | `--verify-sep8`             | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                                                                                                          |
 | `--verify-sep8-webhook`     | Simulate SEP-8 regulated asset post-signing approval webhook with idempotency and co-signature verification (requires `--check-network`)                                                                    |
 | `--verify-ipfs`             | Verify IPFS CID pointers, multihash integrity, gateway reachability, and MIME type matching (requires `--check-network`)                                                                                  |
@@ -1670,6 +1674,15 @@ rules (`sep6/fee-calculation-mismatch`, warning), and validates transaction stat
 KYC requirements (`sep31/missing-kyc-requirements`, error), and cross-references SEP-31 supported assets against
 `stellar.toml` `[[CURRENCIES]]` (`sep31/asset-unsupported`, warning).
 
+**SEP-31 webhook delivery and HMAC verifier** (with `--check-network --verify-sep31`) — Starts an ephemeral loopback
+webhook listener, creates a synthetic transaction against `DIRECT_PAYMENT_SERVER` pointing its callback at the
+listener, and waits for the anchor's asynchronous KYC/status callback. A callback that never arrives before the
+timeout emits `sep31/webhook-delivery-timeout` (warning), one without a well-formed HMAC-SHA256
+`X-Stellar-Signature` header emits `sep31/missing-webhook-signature` (error), and a body that is not JSON or
+carries no `type`/valid SEP-31 `status` emits `sep31/webhook-payload-invalid` (warning). Auth-gated anchors that
+never create the test transaction stay silent. Set a shared secret out of band to have the digest recomputed and
+compared in constant time instead of only shape-checked.
+
 **SEP-8 dynamic compliance approval server simulation engine** (with `--check-network --verify-sep8`) — Generates
 synthetic payment transaction envelopes for regulated assets declared with `approval_server` or `regulated = true`,
 submits the envelopes to the compliance server, and validates response schemas across all lifecycle statuses (`success`,
@@ -1701,6 +1714,31 @@ rates (`sep38/non-monotonic-price-curve`, warning).
 streaming, Horizon streaming). Performs HTTP 101 Switching Protocols handshake, sends ping frames and verifies pong
 response latency, and validates TLS certificates for `wss://` sessions. Emits `network/websocket-handshake-failed`
 (error) on failed upgrades and `network/websocket-ping-timeout` (warning) on heartbeat failures.
+
+**IPv6 dual-stack reachability auditor** (with `--check-network --check-ipv6`) — Resolves DNS AAAA records for the
+anchor domain and every declared service endpoint, then dials each resolved IPv6 address over TCP (explicitly
+restricted to the IPv6 family, so a dual-stack address cannot silently fall back to IPv4). A host with no AAAA
+record emits `network/missing-ipv6-aaaa-record` (warning) — it is invisible to DNS64/NAT64 IPv6-only mobile
+networks. An AAAA address that accepts no connection before the probe timeout emits
+`network/ipv6-connection-timeout` (error), and a refused or otherwise failed dial emits
+`network/ipv6-connection-failed` (warning). DNS failures that cannot distinguish a broken endpoint from a broken
+resolver degrade to silence.
+
+**Anchor discovery / directory sync validator** (with `--check-network --verify-directory-sync`) — Performs a reverse
+domain lookup against each configured directory registry (the Stellar Expert SEP-37 directory by default, or the
+endpoints named by repeatable `--directory-feed <url>` flags), cross-checks every listing entry that claims the
+anchor's domain against `DOCUMENTATION.ORG_NAME`, `DOCUMENTATION.ORG_URL`, and `ACCOUNTS`, and compares the SEP
+capability flags a registry advertises with the SEP-6/24/31/38 endpoints the file actually declares. A registry
+that times out or returns a non-200 emits `directory/registry-unreachable` (warning), an unrecognised feed shape
+emits `directory/schema-invalid` (warning), metadata drift emits `directory/profile-out-of-sync` (warning), and a
+capability that only one side advertises emits `directory/capability-mismatch` (warning).
+
+**Immutability / master-weight-zero auditor** (with `--check-network`) — Cross-references `[[CURRENCIES]]`
+documentation that claims a "fixed supply" or an "immutable" token with the issuer account Horizon reports: the
+master weight must be 0, no signer may retain a positive weight, and the combined signing weight must fall below
+the account's medium and high thresholds so future operations are mathematically impossible. A claimed-immutable
+asset whose issuer can still sign emits `security/false-immutability-claim` (error); a claim that Horizon cannot
+verify emits `security/immutability-unverifiable` (warning) instead of a false accusation.
 
 **Soroban WASM bytecode disassembler and SEP-41 conformance auditor** (with `--check-network`) — Fetches compiled WebAssembly
 bytecode for Soroban smart contracts declared under `[[CURRENCIES]].contract`, `[[CONTRACTS]]`, or `WEB_AUTH_CONTRACT_ID`.
@@ -2079,7 +2117,7 @@ stellar-toml-lint --json-schema > stellar-toml.schema.json
 
 ### Extended security & network checks
 
-Two additional auditors run automatically as part of `--check-network`:
+These auditors run automatically as part of `--check-network`:
 
 - **Signature state-machine validator** (`src/security/signature-state-machine.ts`,
   rules `security/insufficient-threshold-protection` and
@@ -2096,6 +2134,34 @@ Two additional auditors run automatically as part of `--check-network`:
   `X-RateLimit-Limit`/`X-RateLimit-Remaining`/`X-RateLimit-Reset` headers and
   verifies that HTTP 429 responses are returned as RFC 7807 problem details.
   Unreachable endpoints degrade to silence so offline runs never fail hard.
+- **Immutability / master-weight-zero auditor**
+  (`src/security/immutability-auditor.ts`, rules
+  `security/false-immutability-claim` and `security/immutability-unverifiable`)
+  cross-references "fixed supply" / "immutable" asset documentation with the
+  issuer account on Horizon: master weight 0, no active signers, and thresholds
+  no signature set can ever reach. See
+  [issue #390](https://github.com/anchor-tools/stellar-toml-lint/issues/390).
+- **IPv6 dual-stack reachability auditor** (`src/network/ipv6-auditor.ts`, rules
+  `network/missing-ipv6-aaaa-record`, `network/ipv6-connection-timeout`, and
+  `network/ipv6-connection-failed`) resolves AAAA records for the anchor domain
+  and every service endpoint and dials the IPv6 addresses over TCP. Enable with
+  `--check-network --check-ipv6`. See
+  [issue #383](https://github.com/anchor-tools/stellar-toml-lint/issues/383).
+- **SEP-31 webhook delivery verifier**
+  (`src/protocols/sep31-webhook-verifier.ts`, rules
+  `sep31/missing-webhook-signature`, `sep31/webhook-delivery-timeout`, and
+  `sep31/webhook-payload-invalid`) starts an ephemeral listener, triggers a
+  synthetic transfer, and validates the callback HMAC and schema. Enable with
+  `--check-network --verify-sep31`. See
+  [issue #391](https://github.com/anchor-tools/stellar-toml-lint/issues/391).
+- **Anchor discovery / directory sync validator**
+  (`src/validators/anchorDiscovery.ts`, rules `directory/registry-unreachable`,
+  `directory/schema-invalid`, `directory/profile-out-of-sync`, and
+  `directory/capability-mismatch`) compares ecosystem directory listings with
+  `stellar.toml`. Enable with
+  `--check-network --verify-directory-sync` and configure extra feeds with
+  `--directory-feed <url>`. See
+  [issue #397](https://github.com/anchor-tools/stellar-toml-lint/issues/397).
 
 ### Validator diversity & signing-key revocation
 
