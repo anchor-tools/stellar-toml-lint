@@ -22,8 +22,7 @@
 import { lint, lintDomain } from './lint.js';
 import { UNKNOWN_TLS_SESSION } from './tls.js';
 import type { LintOptions, LintResult } from './types.js';
-import { generateCompliancePDF, downloadCompliancePDF } from './browser/pdf-exporter.js';
-import type { ComplianceReportData, PDFExportOptions } from './browser/pdf-exporter.js';
+import './browser/pdf-exporter.js';
 export {
   WorkerPool,
   lintBrowserPool,
@@ -177,11 +176,14 @@ export async function lintBrowserDomain(
 export {
   generateCompliancePDF,
   downloadCompliancePDF,
-  validateZip,
   type ComplianceReportData,
   type PDFExportOptions,
+} from './browser/pdf-exporter.js';
+
+export {
+  validateZip,
   type BatchSummary,
   type CommonError,
   type ZipFileResult,
   type ZipValidatorOptions,
-};
+} from './browser/zip-validator.js';
