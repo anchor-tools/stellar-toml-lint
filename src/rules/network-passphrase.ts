@@ -1,5 +1,5 @@
 import type { Rule } from '../types.js';
-import { KNOWN_PASSPHRASES } from '../predicates.js';
+import { KNOWN_PASSPHRASES, normalizePassphraseSeparator } from '../predicates.js';
 
 const TYPO_RULE = 'general/network-passphrase-typo';
 const UNRECOGNIZED_RULE = 'general/unrecognized-network-passphrase';
@@ -73,7 +73,7 @@ export const networkPassphraseRules: Rule[] = [
       if (KNOWN_PASSPHRASES[passphrase]) return;
 
       // First try the whitespace-normalization shortcut the existing rule uses.
-      const normalized = passphrase.trim().replace(/\s*;\s*/, ' ; ');
+      const normalized = normalizePassphraseSeparator(passphrase.trim());
       if (KNOWN_PASSPHRASES[normalized]) return;
 
       const nearest = nearestPassphrase(passphrase);
@@ -103,7 +103,7 @@ export const networkPassphraseRules: Rule[] = [
       // If the whitespace-normalized form matches, the existing
       // network/passphrase rule already handles it — skip to avoid a
       // redundant diagnostic.
-      const normalized = passphrase.trim().replace(/\s*;\s*/, ' ; ');
+      const normalized = normalizePassphraseSeparator(passphrase.trim());
       if (KNOWN_PASSPHRASES[normalized]) return;
 
       // If it is close to a known passphrase, the typo rule handles it.

@@ -73,6 +73,7 @@ import { contractMetadataRules } from '../soroban/contractMetadata.js';
 import { historyArchiveRules } from '../validators/historyArchive.js';
 import { bridgeReserveRules } from '../validators/bridgeReserve.js';
 import { corridorRoutingRules } from '../corridors/routingVerifier.js';
+import { redosDetectorRules } from './redos-detector.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -149,6 +150,7 @@ export const allRules: Rule[] = [
   ...testnetContractRules,
   ...ipfsMetadataRules,
   ...accountDataAuditorRules,
+  ...redosDetectorRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -224,4 +226,5 @@ export {
   historyArchiveRules,
   bridgeReserveRules,
   corridorRoutingRules,
+  redosDetectorRules,
 };

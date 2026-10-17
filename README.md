@@ -2189,6 +2189,39 @@ digraph stellar_toml {
 }
 ```
 
+## Resilient network checks
+
+`--check-network` fans out across every host a file names: Horizon, Soroban RPC, each
+`CURRENCIES[].toml` pointer, each service endpoint, each validator history archive. With one raw
+`fetch` per endpoint the report is only as reliable as the flakiest host in it — a CDN that
+rate-limits the third request in a burst, or a load balancer that sheds one connection with a 503,
+turns into a lint _finding_ about the anchor's configuration. That is the worst failure mode this
+tool has: telling an operator their file is broken when the network hiccuped.
+
+Every network-bound rule now defaults to the adaptive client in
+[`src/network/adaptive-client.ts`](./src/network/adaptive-client.ts) instead of the bare `fetch`:
+
+- **Retries** on 408, 425, 429, 500, 502, 503, 504, and on transport timeouts, resets, refusals,
+  and transient resolver failures. A name that does not resolve or a certificate that does not
+  validate is _not_ retried — that is a finding about the endpoint, and retrying only makes the
+  report slower while reaching the same conclusion.
+- **Full-jitter backoff**: `sleep = random(0, min(cap, base × 2^attempt))`, with `base` 200ms and
+  `cap` 5s. Decorrelating the sleeps matters here specifically because a lint run issues its
+  requests in parallel bursts — undecorrelated backoff would retry all of them at the same instant
+  and re-trigger the same rate limit. A server's own `Retry-After` wins when it sends one, capped
+  so a mistaken header cannot hang CI.
+- **A per-origin circuit breaker**: after 5 consecutive failures an origin trips open and further
+  requests to it fail immediately for 30 seconds, then admit one probe. Without it, a hosting
+  provider that went down overnight would multiply its own latency by the number of endpoints the
+  file names. It is keyed by origin rather than URL because the thing that fails is a host, not a
+  path.
+- **A per-attempt deadline** of 10s, chained to the caller's own `AbortSignal`.
+
+A run that exhausts its retries still returns the last response, so a rule that asked for a 503
+reports the 503 rather than a synthetic error. The client is `fetch`-shaped, so every rule's
+`fetchImpl` parameter still takes a stub and every test stays hermetic — only the _default_
+changed.
+
 ## Enterprise Policy Enforcement
 
 Enforce custom organizational compliance rules beyond the public SEP-1 specification using policy files.
@@ -2261,10 +2294,73 @@ Rules use JSONPath expressions with optional object matching:
 | `allOf`       | All sub-conditions must match                                 |
 | `anyOf`       | At least one sub-condition must match                         |
 | `not`         | Negates a sub-condition                                       |
+| `regex`       | Pattern the selected string value must match (ReDoS-screened) |
+| `regexFlags`  | Flags for `regex`; `g` and `y` are stripped                   |
 
 Policy violations appear as diagnostics with the `policy/` prefix and include the custom message, severity, and suggestion from the policy.
 
 Sample policies are available in [`docs/policy/`](docs/policy/).
+
+### Regex matchers and ReDoS screening
+
+A rule may also match a selected value against a regular expression:
+
+```json
+{
+  "id": "org-name-shape",
+  "description": "ORG_NAME must look like a registered company name",
+  "severity": "error",
+  "match": { "jsonPath": "$.DOCUMENTATION.ORG_NAME", "regex": "^[A-Za-z0-9 .,-]{2,64}$" },
+  "message": "ORG_NAME does not match the required shape"
+}
+```
+
+`regexFlags` is accepted alongside it; `g` and `y` are stripped, because `RegExp.prototype.test`
+advances `lastIndex` with them set and the matcher would answer differently for the second node it
+saw.
+
+Because that pattern is written by a human, it is **screened for catastrophic backtracking before
+anything compiles it**. JavaScript's regex engine backtracks, so a pattern with nested or adjacent
+quantifiers over overlapping character sets does not merely run slowly on hostile input — `(a+)+$`
+against 28 `a`s and a `b` takes over a second, and each extra character doubles it. The linter is
+single-threaded and runs inside other people's CI, so one such matcher in one policy file is an
+availability bug for every pipeline that loads it.
+
+[`src/rules/redos-detector.ts`](./src/rules/redos-detector.ts) parses each pattern into an AST and
+looks for the two structures that make backtracking superlinear:
+
+- **Exponential, O(2ⁿ)** — a repetition whose body can match the same text more than one way:
+  `(a+)+`, `(a*)*`, `(a|a)*`, `(a|ab)+`, `(\w+\s?)*`.
+- **Polynomial, O(n²)** — two unbounded quantifiers in sequence over overlapping character sets,
+  with something after them that can fail: `\s*\s*$`, `.*.*=`.
+
+The analysis is deliberately conservative: it reports only when it can _show_ that two character
+sets overlap, so `a+b+` and `(\.[a-z]+)*` pass while `a+a+` and `(\w+\s?)*` do not. Two refinements
+keep it usable — a sequence is ambiguous only when an unbounded part can hand a character to the
+next iteration (which is why `(_?[0-9])*` is safe and `(\w+\s?)*` is not), and a trailing quantifier
+pair with nothing after it to fail is not reported, because the greedy first pass always succeeds.
+
+It is wired in at three points:
+
+- **`validatePolicy`** rejects a policy containing a vulnerable matcher, so `--policy` exits 2 and
+  the pattern never compiles.
+- **`evaluatePolicy`** refuses to evaluate such a rule even if validation was skipped, reporting
+  `security/redos-vulnerable-regex` in its place. The policy's other rules keep working.
+- **The rule test harness** screens every regex literal in `src/` on every CI run, so a URL or key
+  matcher added to a rule next year cannot introduce quadratic backtracking unnoticed — the test
+  fails on the commit that adds it.
+
+Embedders adding their own matchers can pass them as `customRegexes` on `LintOptions` and get the
+same two diagnostics through the ordinary reporter and exit-code machinery:
+
+| Rule                              | Severity | Fires when                                               |
+| --------------------------------- | -------- | -------------------------------------------------------- |
+| `security/redos-vulnerable-regex` | error    | The pattern can be driven into catastrophic backtracking |
+| `security/invalid-regex`          | error    | The pattern is not a valid regular expression            |
+
+A known limitation, asserted in the tests rather than left implicit: ambiguity driven through a
+lookahead capture (`(?:(?=(a+))a)+`) needs the engine's capture semantics modelled rather than the
+pattern's shape, and is not detected.
 
 ## Packaging
 
@@ -2374,6 +2470,126 @@ The playground is a standalone Vite + React + TypeScript application located in 
 - `src/components/FixActions.tsx` — Automated fix suggestions and application
 - `src/collab/webrtc-provider.ts` — WebRTC collaborative editing provider using Yjs and y-webrtc
 - `src/collab/useCollaboration.ts` — React hook for collaboration state management
+
+## Desktop app
+
+The **Stellar TOML Lint desktop app** ([`apps/desktop/`](./apps/desktop)) is a tray application for
+macOS, Windows, and Linux that watches a folder and raises a native OS notification when a change
+introduces an error.
+
+It is for the people who own `stellar.toml` but not a terminal: compliance officers and anchor
+operators who edit the file in a text editor, commit it, and find out it was wrong when a wallet
+stops resolving their asset. It runs the same `lint()` the CLI runs, so the desktop app and your
+pipeline cannot disagree about whether a file is valid.
+
+### Features
+
+- **Tray status indicator** — a green check when every watched file is clean, amber for warnings,
+  a red alert for errors, grey when nothing is being watched. The glyphs differ in shape as well as
+  colour, so the state is legible without colour vision, and the tooltip states it in words.
+- **Native notifications on _new_ errors** — a file that gains errors raises a notification; a file
+  whose errors are unchanged does not. A watcher that fires on every scan is one you mute within
+  the hour. A file that goes back to clean gets one "resolved" notice.
+- **Recursive folder watching** with change batching — an editor's atomic save is a write plus a
+  rename, so a 250ms quiet period collapses the burst into one lint instead of reporting a parse
+  error in a half-written file. `node_modules`, `.git`, and editor temporaries are skipped;
+  `.well-known/` is not.
+- **Lives in the background** — closing the window hides it and watching continues; quitting is an
+  explicit choice from the tray menu.
+
+```sh
+cd apps/desktop
+npm install
+npm start              # run from source
+
+npm run make:dmg       # macOS .dmg
+npm run make:msi       # Windows .msi (needs WiX Toolset v3)
+npm run make:appimage  # Linux .AppImage
+```
+
+Packaging is Electron Forge; installers land in `apps/desktop/out/make/`. Each maker runs only on
+its own platform, so a full release set needs a runner per platform.
+
+### Security
+
+The renderer is treated as a browser pointed at untrusted input, because it displays paths and
+counts derived from files the user did not write. `sandbox`, `contextIsolation`, and `webSecurity`
+are on; `nodeIntegration` is off in the renderer, in workers, and in subframes.
+
+Beyond the flags: no IPC channel accepts a filesystem path — the renderer refers to files by index
+into the snapshot the main process produced — the preload exposes named functions rather than
+`ipcRenderer` or a generic `invoke(channel, …)` passthrough, every handler validates its payload,
+and `shell.openExternal` is reached only for `http:` and `https:` URLs.
+
+Everything except `main.ts` and `preload.ts` is free of any `electron` import, so the behaviour is
+covered by [`test/desktop/`](./test/desktop) without launching a browser process. See
+[`apps/desktop/README.md`](./apps/desktop/README.md) for the full table and the layout.
+
+## Performance regression suite
+
+`npm run bench` measures the linter end to end, which answers _is the tool fast enough_ but not
+_which rule made it slower_. With 250+ rules sharing one pass, a rule that quietly acquires a
+quadratic regex or a synchronous `statSync` adds a few milliseconds to a total that is already tens
+of milliseconds — invisible in the aggregate, and paid by every pipeline that runs this tool on
+every push.
+
+`npm run bench:regression` benchmarks each rule **individually** against a synthetic document of
+1,000 `CURRENCIES`, `VALIDATORS`, and `PRINCIPALS` entries, using
+[tinybench](https://github.com/tinylibs/tinybench):
+
+```sh
+npm run bench:regression                  # measure, enforce, exit 1 on failure
+npm run bench:regression -- --update      # accept the current timings as the baseline
+npm run bench:regression -- --json        # machine-readable report
+npm run bench:regression -- --filter sep  # only rules whose id contains "sep"
+```
+
+Three checks, for three different failure modes:
+
+| Check                   | Catches                                                                  |
+| ----------------------- | ------------------------------------------------------------------------ |
+| **Latency budget**      | A rule that is slow from its first commit (no history needed)            |
+| **Baseline comparison** | An existing rule that got slower by more than 20%                        |
+| **Regex audit**         | A matcher that is fast on normal input and catastrophic on hostile input |
+
+### Latency budgets
+
+The budget is **0.5ms per rule** on the 1,000-node document. Eight rules that walk _every string in
+the document_ — the `http://` scan, the untrimmed-value scan, the three SEP-7 URI rules — have a
+documented allowance in `RULE_ALLOWANCES`, each with the reason it walks. Raising the global budget
+instead would lose the gate for the other 245 rules. Making a rule cheap enough to leave that list
+is always the better change.
+
+### Comparing against a baseline
+
+Raw milliseconds are not comparable between two runs, let alone between a laptop and a CI runner:
+measured here, the _same_ rule on the _same_ machine varies by 30–50% between consecutive runs as
+the CPU changes frequency and the JIT makes different inlining decisions. So every rule's time is
+divided by a fixed calibration workload benchmarked in the same run, and
+[`benchmarks/baselines/rule-latency.json`](./benchmarks/baselines/rule-latency.json) stores that
+ratio.
+
+Two further guards keep the gate from firing at random. A regression must clear the percentage
+tolerance **and** a 0.05ms absolute floor — most rules run in tens of nanoseconds, where a 20% swing
+is scheduler noise — and the tolerance is widened by the statistical error both measurements
+reported.
+
+[`.github/workflows/benchmarks.yml`](./.github/workflows/benchmarks.yml) goes further on pull
+requests: it re-records the baseline from the base commit **on the same runner**, so the comparison
+is PR-vs-base rather than PR-vs-someone's-laptop, and a flagged regression has to reproduce in a
+second run before the job fails.
+
+### Catastrophic backtracking
+
+The suite screens every regex literal in `src/` with the ReDoS detector (below), then _times_ the
+ones that validate URLs and keys against 20 KB of adversarial input — long runs of letters, digits,
+whitespace, and dotted tails, each followed by a byte that forces the match to fail.
+
+Both halves are needed. The static pass catches the structure whatever input exists; the timing
+pass catches a pattern whose blow-up comes from something the detector does not model. The timing
+pass is what found `/\s*;\s*/` in the network-passphrase rules — safe by shape, but 207ms on 20,000
+spaces, because `String.replace` retries the unanchored match at every offset. It is now
+`normalizePassphraseSeparator`, an `indexOf` away from the problem.
 
 ## Regression corpus
 

@@ -24,6 +24,7 @@
  */
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 import { hostOf, isAccountId, isHttpsUrl, isString } from '../predicates.js';
+import { adaptiveFetch } from '../network/adaptive-client.js';
 
 export const FEDERATION_FORWARD_RESOLUTION_FAILED = 'federation/forward-resolution-failed';
 export const FEDERATION_REVERSE_LOOKUP_MISMATCH = 'federation/reverse-lookup-mismatch';
@@ -118,7 +119,7 @@ export function addressDomain(address: string): string | undefined {
  */
 export async function lookupFederationRecord(
   url: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = adaptiveFetch,
 ): Promise<LookupOutcome> {
   let response: Response;
   try {
@@ -190,7 +191,7 @@ function finding(
  */
 export async function checkFederationBidirectional(
   doc: Record<string, unknown>,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = adaptiveFetch,
   options: FederationAuditOptions = {},
 ): Promise<Diagnostic[]> {
   const server = doc.FEDERATION_SERVER;

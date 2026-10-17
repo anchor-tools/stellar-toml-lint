@@ -1,6 +1,7 @@
 import type { Diagnostic, Rule, RuleOverrides, Severity } from '../types.js';
 import { specUrl } from '../spec.js';
 import { verifyHistoryArchive } from '../validators/history.js';
+import { adaptiveFetch } from '../network/adaptive-client.js';
 
 const INVALID_URL_RULE = 'validators/invalid-history-url';
 const UNREACHABLE_RULE = 'validators/history-archive-unreachable';
@@ -57,7 +58,7 @@ function historyUrlProblem(raw: string): string | undefined {
 /** Verify every declared history archive and return stable diagnostics. */
 export async function checkHistoryArchive(
   doc: Record<string, unknown>,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = adaptiveFetch,
   options: { rules?: RuleOverrides } = {},
 ): Promise<Diagnostic[]> {
   const unreachableSeverity = severityFor(UNREACHABLE_RULE, 'error', options.rules);

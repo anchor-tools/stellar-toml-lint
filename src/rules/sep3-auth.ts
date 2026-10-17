@@ -1,5 +1,6 @@
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 import { isString, isUrl } from '../predicates.js';
+import { adaptiveFetch } from '../network/adaptive-client.js';
 
 const AUTH_SERVER_UNREACHABLE_RULE = 'sep3/auth-server-unreachable';
 const MISSING_CORS_HEADERS_RULE = 'sep3/missing-cors-headers';
@@ -67,7 +68,7 @@ function hasCorsHeader(response: Response): boolean {
 
 export async function checkSep3Auth(
   doc: Record<string, unknown>,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = adaptiveFetch,
   options: AuditOptions = {},
 ): Promise<Diagnostic[]> {
   const authServer = doc.AUTH_SERVER;

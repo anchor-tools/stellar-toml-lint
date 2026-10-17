@@ -1260,9 +1260,12 @@ async function main(argv: string[]): Promise<number> {
       const source = sourcePath === '-' ? await readStdin() : await readFile(sourcePath, 'utf8');
       const policyDiagnostics = evaluatePolicy(policy, firstResult.parsed, source);
 
-      // Convert policy diagnostics to standard diagnostics
+      // Convert policy diagnostics to standard diagnostics. A policy rule id
+      // is namespaced under `policy/`, but the engine also emits built-in ids
+      // (`security/redos-vulnerable-regex`) for a matcher it refused to run;
+      // those are already namespaced and must keep the id `--off` expects.
       const convertedDiagnostics: Diagnostic[] = policyDiagnostics.map((pd) => ({
-        rule: `policy/${pd.rule}`,
+        rule: pd.rule.includes('/') ? pd.rule : `policy/${pd.rule}`,
         severity: pd.severity,
         category: 'policy',
         message: pd.message,

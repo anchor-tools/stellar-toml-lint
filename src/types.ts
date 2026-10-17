@@ -112,6 +112,28 @@ export type RuleOutcome = 'ok' | 'error';
  */
 export type RuleInstrumenter = (ruleId: string, run: () => RuleOutcome) => void;
 
+/**
+ * One regex matcher a caller configured, and where it came from.
+ *
+ * The enterprise policy engine and embedders that add their own rules both
+ * accept patterns typed by a human, and a backtracking pattern hangs the
+ * linter thread rather than merely reporting the wrong thing. Declaring them
+ * on the run means `security/redos-vulnerable-regex` can screen every one
+ * before anything compiles it; see `src/rules/redos-detector.ts`.
+ */
+export interface CustomRegexMatcher {
+  /** The pattern, without delimiters — what `RegExp.prototype.source` gives. */
+  pattern: string;
+  /** Flags, when known. They do not change whether a pattern backtracks. */
+  flags?: string;
+  /** Dotted path to the value holding it, e.g. `rules[2].match.regex`. */
+  path?: string;
+  /** Human-readable provenance, e.g. `policy "enterprise-compliance"`. */
+  origin?: string;
+  /** Position in the file that declared it, when known. */
+  position?: Position;
+}
+
 export interface LintOptions {
   /**
    * The domain the file is (or will be) served from, without scheme.
@@ -150,6 +172,14 @@ export interface LintOptions {
    * a rule's findings with an `internal/rule-error`.
    */
   instrumentRule?: RuleInstrumenter;
+  /**
+   * Custom regex matchers this run should screen for ReDoS.
+   *
+   * Populated by the policy engine from a `--policy` file, and by embedders
+   * that extend the rule set. Absent on an ordinary run, in which case the
+   * `security/redos-*` rules report nothing and cost one property read.
+   */
+  customRegexes?: readonly CustomRegexMatcher[];
 }
 
 export interface LintResult {

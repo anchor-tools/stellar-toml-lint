@@ -2,7 +2,21 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'coverage/**', 'docs/stellar-toml-lint.browser.js', 'node_modules/**'] },
+  {
+    ignores: [
+      'dist/**',
+      'coverage/**',
+      'docs/stellar-toml-lint.browser.js',
+      'node_modules/**',
+      // Build output of the editor extension and the desktop app. Both are
+      // gitignored, but they exist in a working tree that has been built, and
+      // linting generated code reports problems nobody can fix in a source
+      // file.
+      'editors/vscode/out/**',
+      'apps/desktop/out/**',
+      'apps/*/node_modules/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -36,6 +50,33 @@ export default tseslint.config(
     files: ['benchmarks/**/*.ts'],
     rules: {
       'no-console': 'off',
+    },
+  },
+  {
+    // Electron Forge loads its config with `require`, so this one file is
+    // CommonJS while the rest of the desktop app is ESM.
+    files: ['apps/desktop/forge.config.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        module: 'writable',
+        require: 'readonly',
+        process: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+      },
+    },
+  },
+  {
+    // The desktop renderer is plain browser JavaScript loaded by a <script>
+    // tag — no bundler, so no module globals, and `no-undef` needs to be told
+    // which globals the page actually has.
+    files: ['apps/desktop/renderer/**/*.js'],
+    languageOptions: {
+      globals: {
+        window: 'readonly',
+        document: 'readonly',
+      },
     },
   },
 );

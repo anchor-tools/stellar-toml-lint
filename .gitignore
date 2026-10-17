@@ -3,6 +3,10 @@ dist/
 docs/stellar-toml-lint.browser.js
 editors/vscode/out/
 *.vsix
+
+# Desktop app: compiled main process, bundled preload, and packaged installers.
+apps/desktop/out/
+apps/desktop/node_modules/
 coverage/
 *.tsbuildinfo
 

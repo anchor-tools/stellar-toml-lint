@@ -18,6 +18,30 @@ export const KNOWN_PASSPHRASES: Record<string, string> = {
   [Networks.FUTURENET]: 'Futurenet',
 };
 
+/**
+ * `value` with the whitespace around its first `;` collapsed to exactly ` ; `.
+ *
+ * Every network passphrase has the shape `<name> ; <month> <year>`, and
+ * whitespace typed around that separator is the classic hand-edited mistake —
+ * it breaks signature verification while looking identical in an editor. So
+ * three rules normalise the separator before deciding whether a passphrase is
+ * a known one spelled badly or an unknown one spelled fine.
+ *
+ * Written with `indexOf` rather than the obvious replace against a
+ * whitespace-semicolon-whitespace pattern, because that pattern is quadratic:
+ * with no `;` in the value, `String.replace`
+ * retries the unanchored match at every offset and each attempt rescans the
+ * whitespace run. `NETWORK_PASSPHRASE` is a document value, so its length is
+ * the file author's choice — 20,000 spaces cost 200ms per rule, measured.
+ * `benchmarks/regression-harness.ts` is what caught it and what keeps it from
+ * coming back.
+ */
+export function normalizePassphraseSeparator(value: string): string {
+  const semicolon = value.indexOf(';');
+  if (semicolon === -1) return value;
+  return `${value.slice(0, semicolon).trimEnd()} ; ${value.slice(semicolon + 1).trimStart()}`;
+}
+
 export function isString(v: unknown): v is string {
   return typeof v === 'string';
 }
