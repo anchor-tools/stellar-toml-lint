@@ -2,6 +2,7 @@ import type { Diagnostic, Rule, RuleOverrides, Severity } from '../types.js';
 import { checkIssuerFlags, horizonUrlFor } from '../network-checks.js';
 import { isAccountId, isString } from '../predicates.js';
 import { currenciesOf, isTomlPointer } from './currencies.js';
+import { adaptiveFetch } from '../network/adaptive-client.js';
 
 /**
  * The issuer-authorization audit behind `[[CURRENCIES]].regulated`.
@@ -106,7 +107,7 @@ function finding(
  */
 export async function checkRegulatedIssuerFlags(
   doc: Record<string, unknown>,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = adaptiveFetch,
   options: { rules?: RuleOverrides } = {},
 ): Promise<Diagnostic[]> {
   const horizonUrl = horizonUrlFor(

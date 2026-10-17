@@ -2,6 +2,7 @@ import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 import { isString, isUrl } from '../predicates.js';
 import { specUrl } from '../spec.js';
 import { documentationOf } from './documentation.js';
+import { adaptiveFetch } from '../network/adaptive-client.js';
 
 const MISSING_PRIVACY_POLICY_RULE = 'documentation/missing-privacy-policy';
 const MISSING_TERMS_OF_SERVICE_RULE = 'documentation/missing-terms-of-service';
@@ -66,7 +67,7 @@ async function probeLegalUrl(url: string, fetchImpl: typeof fetch): Promise<stri
  */
 export async function checkDocCompliance(
   doc: Record<string, unknown>,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = adaptiveFetch,
   options: AuditOptions = {},
 ): Promise<Diagnostic[]> {
   const diagnostics: Diagnostic[] = [];

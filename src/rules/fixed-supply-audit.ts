@@ -3,6 +3,7 @@ import { checkIssuerLockStatus, horizonUrlFor } from '../network-checks.js';
 import { isAccountId, isString } from '../predicates.js';
 import { specUrl } from '../spec.js';
 import { currenciesOf, isTomlPointer } from './currencies.js';
+import { adaptiveFetch } from '../network/adaptive-client.js';
 
 const ACCOUNT_NOT_LOCKED_RULE = 'currencies/fixed-supply-account-not-locked';
 const ACCOUNT_LOCK_UNVERIFIABLE_RULE = 'currencies/fixed-supply-account-lock-unverifiable';
@@ -63,7 +64,7 @@ function report(
 /** Audits whether fixed or capped classic assets can still be minted. */
 export async function checkFixedSupplyIssuerLocks(
   doc: Record<string, unknown>,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = adaptiveFetch,
   options: { rules?: RuleOverrides } = {},
 ): Promise<Diagnostic[]> {
   const horizonUrl = horizonUrlFor(

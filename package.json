@@ -74,7 +74,8 @@
     "corpus": "vite-node test/corpus/run.ts",
     "corpus:update": "vite-node test/corpus/run.ts --update",
     "prepublishOnly": "npm run build",
-    "bench": "npx tsx benchmarks/runner.ts"
+    "bench": "npx tsx benchmarks/runner.ts",
+    "bench:regression": "vite-node benchmarks/regression-suite.ts"
   },
   "dependencies": {
     "@noble/curves": "^1.9.7",
@@ -93,6 +94,7 @@
     "eslint": "^9.17.0",
     "fast-xml-parser": "^5.11.1",
     "prettier": "^3.4.2",
+    "tinybench": "^6.2.2",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.0",
     "vite-node": "^2.1.9",

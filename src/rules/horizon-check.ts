@@ -1,6 +1,7 @@
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 import { isInteger, isString, isUrl } from '../predicates.js';
 import { specUrl } from '../spec.js';
+import { adaptiveFetch } from '../network/adaptive-client.js';
 
 /**
  * Opt-in validation of the `HORIZON_URL` endpoint a SEP-1 file advertises.
@@ -62,7 +63,7 @@ function errorMessage(error: unknown): string {
  */
 export async function checkHorizon(
   doc: Record<string, unknown>,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = adaptiveFetch,
   options: AuditOptions = {},
 ): Promise<Diagnostic[]> {
   const horizonUrl = doc.HORIZON_URL;

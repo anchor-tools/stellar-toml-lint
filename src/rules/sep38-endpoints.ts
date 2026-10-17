@@ -1,5 +1,6 @@
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 import { isInteger, isString, isUrl } from '../predicates.js';
+import { adaptiveFetch } from '../network/adaptive-client.js';
 
 /**
  * Opt-in validation of the SEP-38 `ANCHOR_QUOTE_SERVER` endpoints.
@@ -339,7 +340,7 @@ async function checkQuote(
 /** Runs both SEP-38 endpoint audits against the advertised quote server. */
 export async function checkSep38(
   doc: Record<string, unknown>,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = adaptiveFetch,
   options: AuditOptions = {},
 ): Promise<Diagnostic[]> {
   const server = doc.ANCHOR_QUOTE_SERVER;

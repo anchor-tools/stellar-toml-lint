@@ -1,0 +1,30 @@
+{
+  // Mirrors the root tsconfig's strictness. The main process is Node ESM, so
+  // module resolution matches the rest of the repo and imports carry `.js`
+  // extensions. The preload is bundled separately to CommonJS by
+  // `scripts/build-preload.mjs`, because a sandboxed preload cannot be ESM.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+
+    "outDir": "out",
+    "rootDir": "src",
+    "declaration": false,
+    "sourceMap": true,
+
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src"],
+  "exclude": ["src/preload.ts"]
+}

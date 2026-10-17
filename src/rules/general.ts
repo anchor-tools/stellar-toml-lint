@@ -9,6 +9,7 @@ import {
   isMuxedAccountId,
   isString,
   isUrl,
+  normalizePassphraseSeparator,
 } from '../predicates.js';
 import { emptyStringValuesRule } from './empty-values.js';
 import { githubHandleRules } from './github-handle.js';
@@ -140,7 +141,7 @@ export const generalRules: Rule[] = [
 
       // Whitespace around the `;` is the classic hand-typed mistake, and it
       // breaks signature verification in a way that is painful to debug.
-      const normalized = passphrase.trim().replace(/\s*;\s*/, ' ; ');
+      const normalized = normalizePassphraseSeparator(passphrase.trim());
       const near = KNOWN_PASSPHRASES[normalized];
       ctx.report({
         rule: 'network/passphrase',

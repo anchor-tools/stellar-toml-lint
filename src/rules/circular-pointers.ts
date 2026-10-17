@@ -1,6 +1,7 @@
 import type { Diagnostic, LintOptions, Rule } from '../types.js';
 import { lint } from '../lint.js';
 import { specUrl } from '../spec.js';
+import { adaptiveFetch } from '../network/adaptive-client.js';
 
 export const CIRCULAR_TOML_POINTER_RULE = 'currencies/circular-toml-pointer';
 
@@ -42,7 +43,7 @@ function errorMessage(error: unknown): string {
 export async function followTomlPointers(
   doc: Record<string, unknown>,
   options: LintOptions,
-  fetchImpl: typeof fetch = globalThis.fetch,
+  fetchImpl: typeof fetch = adaptiveFetch,
   visited: Set<string> = new Set(),
 ): Promise<Diagnostic[]> {
   const diagnostics: Diagnostic[] = [];

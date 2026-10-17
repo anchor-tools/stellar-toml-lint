@@ -124,6 +124,17 @@ function runBenchmarks(): void {
   console.log('='.repeat(80));
   console.log('');
 
+  // Warm up before measuring anything. Without this the first configuration
+  // pays for V8's interpreter tier, the rule modules' first-call setup, and
+  // every regex's first compile — roughly 9ms of one-time cost that lands
+  // entirely on `small`, whose budget is 5ms. The result was a benchmark that
+  // reported a failure on an unchanged tree, which is worse than no benchmark:
+  // it trains everyone to ignore the job. A steady-state CI run lints many
+  // files per process and pays that cost once, so warming up first is also the
+  // more honest measurement.
+  const warmup = generateTOML(10);
+  for (let i = 0; i < 3; i++) lint(warmup);
+
   const results: BenchmarkResult[] = [];
 
   for (const config of configs) {

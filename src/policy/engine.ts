@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import type { StellarToml } from '../types.js';
+import type { CustomRegexMatcher, StellarToml } from '../types.js';
+import { analyzeRegex, auditRegexSources } from '../rules/redos-detector.js';
 
 export interface PolicyRule {
   id: string;
@@ -16,6 +17,18 @@ export interface PolicyMatch {
   allOf?: PolicyMatch[];
   anyOf?: PolicyMatch[];
   not?: PolicyMatch;
+  /**
+   * A regular expression the selected node's string value must match.
+   *
+   * The pattern is written by whoever wrote the policy, so it is screened for
+   * catastrophic backtracking before it is ever compiled — see
+   * {@link collectRegexMatchers} and `src/rules/redos-detector.ts`. A pattern
+   * that can hang is refused rather than evaluated: a policy engine that
+   * freezes the pipeline it was meant to guard is worse than one rule fewer.
+   */
+  regex?: string;
+  /** Flags for {@link PolicyMatch.regex}. `g` is ignored, as `test` is stateful with it. */
+  regexFlags?: string;
 }
 
 export interface Policy {
@@ -127,6 +140,57 @@ export async function loadPolicy(policyPath: string): Promise<Policy> {
   return JSON.parse(content) as Policy;
 }
 
+/**
+ * Every regex matcher a policy declares, with the path that reaches it.
+ *
+ * The CLI hands these to `lint()` as {@link LintOptions.customRegexes} so the
+ * `security/redos-*` rules report them through the ordinary diagnostic
+ * pipeline, and {@link validatePolicy} screens the same list so a dangerous
+ * matcher fails policy loading outright.
+ */
+export function collectRegexMatchers(policy: Policy): CustomRegexMatcher[] {
+  const matchers: CustomRegexMatcher[] = [];
+  const origin = `policy "${policy.name}"`;
+
+  const walk = (match: PolicyMatch | undefined, path: string): void => {
+    if (match === undefined) return;
+    if (typeof match.regex === 'string') {
+      matchers.push({
+        pattern: match.regex,
+        ...(match.regexFlags === undefined ? {} : { flags: match.regexFlags }),
+        path: `${path}.regex`,
+        origin,
+      });
+    }
+    match.allOf?.forEach((child, i) => walk(child, `${path}.allOf[${i}]`));
+    match.anyOf?.forEach((child, i) => walk(child, `${path}.anyOf[${i}]`));
+    walk(match.not, `${path}.not`);
+  };
+
+  (policy.rules ?? []).forEach((rule, index) => {
+    walk(rule.match, `rules[${index}].match`);
+  });
+
+  return matchers;
+}
+
+/**
+ * Diagnostics for every unsafe regex matcher in a policy.
+ *
+ * Separate from {@link evaluatePolicy} so a caller can refuse to load a policy
+ * before it runs, which is what the CLI does.
+ */
+export function auditPolicyRegexes(policy: Policy): PolicyDiagnostic[] {
+  return auditRegexSources(collectRegexMatchers(policy)).map((diagnostic) => ({
+    rule: diagnostic.rule,
+    severity: diagnostic.severity,
+    message: diagnostic.message,
+    ...(diagnostic.path === undefined ? {} : { path: diagnostic.path }),
+    ...(diagnostic.suggestion === undefined ? {} : { suggestion: diagnostic.suggestion }),
+    policyId: policy.name,
+  }));
+}
+
 export function validatePolicy(policy: Policy): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
@@ -152,6 +216,22 @@ export function validatePolicy(policy: Policy): { valid: boolean; errors: string
     }
   }
 
+  // A matcher that can hang the linter is a validation failure, not a finding
+  // about the document: the policy must be fixed before it is used at all.
+  for (const matcher of collectRegexMatchers(policy)) {
+    const report = analyzeRegex(matcher.pattern, matcher.flags ?? '');
+    if (report.parseError !== undefined) {
+      errors.push(`${matcher.path}: /${matcher.pattern}/ is not valid: ${report.parseError}`);
+      continue;
+    }
+    for (const finding of report.findings) {
+      errors.push(
+        `${matcher.path}: /${matcher.pattern}/ is vulnerable to ${finding.complexity} ` +
+          `backtracking (\`${finding.fragment}\`) — ${finding.detail}`,
+      );
+    }
+  }
+
   return { valid: errors.length === 0, errors };
 }
 
@@ -162,13 +242,30 @@ export function evaluatePolicy(
 ): PolicyDiagnostic[] {
   const diagnostics: PolicyDiagnostic[] = [];
 
-  for (const rule of policy.rules) {
+  // Screen every matcher once, up front. A rule whose pattern can hang is
+  // skipped and reported in its place, so one bad policy entry costs that one
+  // rule rather than the whole run.
+  const regexFindings = auditPolicyRegexes(policy);
+  const unsafe = new Set(
+    regexFindings
+      .map((diagnostic) => diagnostic.path)
+      .filter((path): path is string => path !== undefined),
+  );
+  diagnostics.push(...regexFindings);
+
+  for (const [index, rule] of policy.rules.entries()) {
+    if (hasUnsafeRegex(rule.match, `rules[${index}].match`, unsafe)) continue;
+
     const jsonPath = rule.match.jsonPath ?? '$';
     const matches = evaluateJsonPath(toml, jsonPath);
 
     for (const match of matches) {
       // Evaluate the match conditions against the matched node
       let shouldReport = true;
+
+      if (rule.match.regex !== undefined) {
+        shouldReport = shouldReport && matchRegex(match, rule.match);
+      }
 
       if (rule.match.objectMatch) {
         shouldReport = shouldReport && matchObject(match, rule.match.objectMatch);
@@ -204,7 +301,48 @@ export function evaluatePolicy(
   return diagnostics;
 }
 
+/** `true` when any regex under `match` was screened out as unsafe. */
+function hasUnsafeRegex(
+  match: PolicyMatch | undefined,
+  path: string,
+  unsafe: ReadonlySet<string>,
+): boolean {
+  if (match === undefined) return false;
+  if (match.regex !== undefined && unsafe.has(`${path}.regex`)) return true;
+  if (match.allOf?.some((child, i) => hasUnsafeRegex(child, `${path}.allOf[${i}]`, unsafe))) {
+    return true;
+  }
+  if (match.anyOf?.some((child, i) => hasUnsafeRegex(child, `${path}.anyOf[${i}]`, unsafe))) {
+    return true;
+  }
+  return hasUnsafeRegex(match.not, `${path}.not`, unsafe);
+}
+
+/**
+ * Tests a node's string value against a screened matcher.
+ *
+ * `g` is stripped: `RegExp.prototype.test` advances `lastIndex` with that flag
+ * set, which would make the same matcher answer differently on its second
+ * node. A pattern that will not compile (despite having parsed) matches
+ * nothing rather than throwing mid-evaluation.
+ */
+function matchRegex(node: unknown, match: PolicyMatch): boolean {
+  if (match.regex === undefined) return false;
+  const value =
+    typeof node === 'string' ? node : typeof node === 'number' ? String(node) : undefined;
+  if (value === undefined) return false;
+
+  try {
+    const flags = (match.regexFlags ?? '').replace(/[gy]/g, '');
+    return new RegExp(match.regex, flags).test(value);
+  } catch {
+    return false;
+  }
+}
+
 function evaluateMatchOnNode(node: unknown, match: PolicyMatch): boolean {
+  if (match.regex !== undefined) return matchRegex(node, match);
+
   if (match.jsonPath) {
     // For nested jsonPath, evaluate relative to the current node
     const results = evaluateJsonPath(node, match.jsonPath);
