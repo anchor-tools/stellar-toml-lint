@@ -31,6 +31,7 @@ describe('package metadata', () => {
       '@noble/hashes',
       '@stellar/stellar-base',
       '@yao-pkg/pkg',
+      'jszip',
       'pdfmake',
       'smol-toml',
     ]);

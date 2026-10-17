@@ -177,6 +177,11 @@ export async function lintBrowserDomain(
 export {
   generateCompliancePDF,
   downloadCompliancePDF,
+  validateZip,
   type ComplianceReportData,
   type PDFExportOptions,
+  type BatchSummary,
+  type CommonError,
+  type ZipFileResult,
+  type ZipValidatorOptions,
 };
