@@ -262,18 +262,20 @@ describe('tamper evidence (#372)', () => {
     }
   });
 
-  it('reads a real corrupt link as a corrupt link, not an empty message', async () => {
+  it('reads a real corrupt link as a corrupt link, with a reason worth reading', async () => {
     const link = await encodeShareLink({ source: 'VERSION = "2.7.0"\n' });
     const payload = link.hash.split('.')[2]!;
     const decoded = await decodeShareLink(
       `#${SHARE_STATE_KEY}=sd.00000000.${'A'.repeat(payload.length)}`,
     );
     expect(decoded.status).toBe('invalid');
-    // The notice the playground shows is `...corrupt: ${reason}` — an empty
-    // rejection message would leave it ending in a colon.
-    expect(decoded.status === 'invalid' && decoded.reason).toBe(
-      'could not inflate: the payload is not valid DEFLATE',
-    );
+    const reason = decoded.status === 'invalid' ? decoded.reason : '';
+    // V8's `DecompressionStream` rejects with an empty message on Node 22/24
+    // and with "unknown compression method" on Node 20, so the promise here is
+    // that the sentence is complete, not which engine's words appear in it —
+    // the playground notice interpolates this straight after a colon.
+    expect(reason).toMatch(/^could not inflate: \S/);
+    expect(reason.endsWith(': ')).toBe(false);
   });
 
   it('reads the state out of a full url, beside other hash parameters', async () => {
