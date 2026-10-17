@@ -9,6 +9,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Playground share links (#372): `encodeShareLink` / `decodeShareLink` in
+  `src/browser/share-state.ts` put the edited file, the rule overrides and `--strict` into the URL
+  fragment as a DEFLATE-compressed, base64url-encoded payload with a SHA-256 checksum, and the
+  playground decodes it on load, applies the flags and re-lints — no backend, no storage, and a
+  link edited in transit reports what changed instead of loading the wrong file. Copy link and Copy
+  markdown buttons live in `apps/playground/src/components/ShareControls.tsx`.
+
+- OpenTelemetry export (#375): `--otel-endpoint <url>` and `--otel-service-name <name>` send the
+  run to a collector as OTLP/HTTP JSON from `src/telemetry/otel-exporter.ts` — a root span for the
+  run, one span per rule with its outcome, one client span per network probe, and the
+  `stellar_toml_lint_errors_total`, `_warnings_total`, `_infos_total` and `_duration_seconds`
+  metrics. Built on the global `fetch` and `node:crypto`, with no OpenTelemetry dependency; a
+  collector that is down costs a warning on stderr and never the exit code.
+
 - Cross-border corridor routing under `--check-network` (#400): every ordered pair of classic assets
   declared in `[[CURRENCIES]]` is probed through Horizon's `/paths/strict-send` at the standard
   remittance amounts, emitting `corridors/no-route` (error), `corridors/illiquid`,

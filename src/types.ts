@@ -94,6 +94,24 @@ export interface TlsSession {
   cipherStandard?: string | null;
 }
 
+/**
+ * What one rule invocation did, reported to {@link LintOptions.instrumentRule}.
+ *
+ * `'error'` means the rule threw and the run recorded `internal/rule-error` in
+ * its place — the same outcome a caller sees in the diagnostics, without the
+ * caller having to re-scan them to work out which rule misbehaved.
+ */
+export type RuleOutcome = 'ok' | 'error';
+
+/**
+ * Called around every rule with the work as a thunk.
+ *
+ * Used for timing and spans. It receives a function to *call*, not a duration,
+ * so an instrumenter that measures can wrap the invocation rather than guess
+ * when it started.
+ */
+export type RuleInstrumenter = (ruleId: string, run: () => RuleOutcome) => void;
+
 export interface LintOptions {
   /**
    * The domain the file is (or will be) served from, without scheme.
@@ -123,6 +141,15 @@ export interface LintOptions {
    * exercised without opening a socket.
    */
   tls?: TlsSession;
+  /**
+   * Called around every rule invocation.
+   *
+   * Optional and called with a thunk, so an embedder that wants per-rule
+   * durations can wrap the run — and one that does not pass this pays nothing.
+   * The instrumenter must not throw: a broken observer would otherwise replace
+   * a rule's findings with an `internal/rule-error`.
+   */
+  instrumentRule?: RuleInstrumenter;
 }
 
 export interface LintResult {

@@ -482,6 +482,8 @@ export type {
   Rule,
   RuleCategory,
   RuleContext,
+  RuleInstrumenter,
+  RuleOutcome,
   RuleOverrides,
   Severity,
   TlsSession,
@@ -693,6 +695,38 @@ export type {
   TlsCertificateMetric,
   ValidatorStatusMetric,
 } from './telemetry/prometheus-server.js';
+
+export {
+  DEFAULT_OTEL_SERVICE_NAME,
+  DEFAULT_OTEL_TIMEOUT_MS,
+  DURATION_BUCKETS_SECONDS,
+  instrumentedFetch,
+  metricsFromRun,
+  durationMetric,
+  otlpEndpointFor,
+  OTelSpanKind,
+  OTelStatusCode,
+  OTLP_JSON_CONTENT_TYPE,
+  OTLP_METRICS_PATH,
+  OTLP_TRACES_PATH,
+  OtelExporter,
+  OtelTracer,
+  renderOtlpMetrics,
+  renderOtlpTraces,
+  ruleSpanRecorder,
+  severityMetrics,
+} from './telemetry/otel-exporter.js';
+export type {
+  OtelActiveSpan,
+  OtelAttributes,
+  OtelAttributeValue,
+  OtelExportResult,
+  OtelExporterOptions,
+  OtelMetric,
+  OtelSpanOptions,
+  OtelSpanRecord,
+  OtelTracerOptions,
+} from './telemetry/otel-exporter.js';
 
 export {
   auditHttpVersions,

@@ -118,6 +118,16 @@ const FLAGS: readonly FlagSpec[] = [
     takesValue: true,
   },
   {
+    long: '--otel-endpoint',
+    description: 'Export OTLP traces and metrics to an OpenTelemetry collector',
+    takesValue: true,
+  },
+  {
+    long: '--otel-service-name',
+    description: 'service.name reported to the OpenTelemetry collector',
+    takesValue: true,
+  },
+  {
     long: '--generate-jsonld',
     description: 'Generate Schema.org JSON-LD for search indexing',
     takesValue: true,
