@@ -1,0 +1,60 @@
+# A StellarInfoFile that passes SEP-1 validation. Apply after the CRD:
+#
+#   kubectl apply -f crds/stellarinfofile.yaml
+#   kubectl apply -f samples/stellarinfofile.yaml
+#
+# Watch the operator publish it:
+#
+#   kubectl get sif -w
+#   kubectl get configmap example-anchor-stellar-toml -o yaml
+apiVersion: stellar.anchor-tools.io/v1alpha1
+kind: StellarInfoFile
+metadata:
+  name: example-anchor
+spec:
+  domain: example.com
+  strict: false
+  toml: |
+    VERSION = "2.7.0"
+    NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"
+    HORIZON_URL = "https://horizon.example.com"
+    FEDERATION_SERVER = "https://api.example.com/federation"
+    TRANSFER_SERVER = "https://api.example.com/sep6"
+    TRANSFER_SERVER_SEP0024 = "https://api.example.com/sep24"
+    KYC_SERVER = "https://api.example.com/kyc"
+    WEB_AUTH_ENDPOINT = "https://api.example.com/auth"
+    SIGNING_KEY = "GCM5YCQPFIW4ICBPPSKACX56ZTGG6KZ7A53JGUWWAFRZW462YFIK4BZS"
+
+    [DOCUMENTATION]
+    ORG_NAME = "Example Anchor Ltd"
+    ORG_URL = "https://example.com"
+    ORG_DESCRIPTION = "A regulated on- and off-ramp between the Stellar network and local currency."
+    ORG_PHYSICAL_ADDRESS = "1 Example Street, Springfield, IL 62701, United States"
+    ORG_PHONE_NUMBER = "+14155552671"
+    ORG_OFFICIAL_EMAIL = "partners@example.com"
+    ORG_SUPPORT_EMAIL = "support@example.com"
+    ORG_TERMS_OF_SERVICE = "https://example.com/terms"
+    ORG_PRIVACY_POLICY = "https://example.com/privacy"
+
+    [[CURRENCIES]]
+    code = "USDX"
+    issuer = "GAZ3V7WDE3TADF6UQWU3TAWQPVSW6ZV3NCCW6A7UN6HUDI5WXPMLQDFY"
+    display_decimals = 2
+    name = "Example US Dollar"
+    desc = "One USDX is redeemable for one United States dollar held in reserve."
+    conditions = "Redemption requires a verified account under SEP-12."
+    is_unlimited = true
+    is_asset_anchored = true
+    anchor_asset_type = "fiat"
+    anchor_asset = "USD"
+    redemption_instructions = "Use SEP-24 withdraw, or contact support@example.com."
+    status = "live"
+  publish:
+    configMap:
+      key: stellar.toml
+    ingress:
+      host: example.com
+      path: /.well-known/stellar.toml
+      ingressClassName: nginx
+      serviceName: example-anchor-web
+      servicePort: 80

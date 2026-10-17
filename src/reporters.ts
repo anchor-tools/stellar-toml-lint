@@ -652,6 +652,93 @@ function escapeMarkdownCell(s: string): string {
   return s.replace(/\|/g, '\\|').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r?\n/g, ' ');
 }
 
+/**
+ * Severities understood by the SonarQube Generic Issue Data format.
+ */
+type SonarSeverity = 'INFO' | 'MINOR' | 'MAJOR' | 'CRITICAL' | 'BLOCKER';
+
+/**
+ * Issue types understood by the SonarQube Generic Issue Data format.
+ */
+type SonarIssueType = 'BUG' | 'VULNERABILITY' | 'CODE_SMELL' | 'SECURITY_HOTSPOT';
+
+function toSonarType(diagnostic: Diagnostic): SonarIssueType {
+  // Security rules surface potential exploits or breaches. The category type
+  // does not declare `security` (clawback rules cast it), so compare as a
+  // plain string and fall back to the rule id prefix.
+  const category = diagnostic.category as string;
+  if (category === 'security' || /^security\//.test(diagnostic.rule)) {
+    return 'VULNERABILITY';
+  }
+  // File and schema errors are defects in the file itself.
+  if (diagnostic.category === 'file') return 'BUG';
+  return 'CODE_SMELL';
+}
+
+function toSonarSeverity(severity: Severity): SonarSeverity {
+  if (severity === 'error') return 'BLOCKER';
+  if (severity === 'warning') return 'MAJOR';
+  return 'MINOR';
+}
+
+interface SonarTextRange {
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+}
+
+interface SonarPrimaryLocation {
+  filePath: string;
+  message: string;
+  textRange: SonarTextRange;
+}
+
+interface SonarIssue {
+  engineId: string;
+  ruleId: string;
+  type: SonarIssueType;
+  severity: SonarSeverity;
+  primaryLocation: SonarPrimaryLocation;
+}
+
+/**
+ * SonarQube Generic Issue Data, so enterprise security gates can ingest
+ * SEP-1 findings into SonarQube or SonarCloud (generic issue import format).
+ *
+ * ```bash
+ * stellar-toml-lint --format sonar stellar.toml > sonar-results.json
+ * ```
+ *
+ * Security rules map to `VULNERABILITY`, file and schema errors map to `BUG`,
+ * and everything else maps to `CODE_SMELL`. Severities map `error` →
+ * `BLOCKER`, `warning` → `MAJOR`, `info` → `MINOR`.
+ */
+export function formatSonar(result: LintResult, filename = 'stellar.toml'): string {
+  const issues: SonarIssue[] = result.diagnostics.map((diagnostic) => {
+    const position = diagnostic.position ?? { line: 1, column: 1 };
+    const startLine = Math.max(position.line, 1);
+    const startColumn = Math.max(position.column, 1);
+    return {
+      engineId: 'stellar-toml-lint',
+      ruleId: diagnostic.rule,
+      type: toSonarType(diagnostic),
+      severity: toSonarSeverity(diagnostic.severity),
+      primaryLocation: {
+        filePath: filename.replace(/\\/g, '/'),
+        message: diagnostic.message,
+        textRange: {
+          startLine,
+          startColumn,
+          endLine: startLine,
+          endColumn: startColumn,
+        },
+      },
+    };
+  });
+  return `${JSON.stringify({ issues }, null, 2)}\n`;
+}
+
 /** Newline-delimited JSON for streaming analysis. */
 export function formatNdjson(result: LintResult, filename = 'stellar.toml'): string {
   const lines: string[] = [];

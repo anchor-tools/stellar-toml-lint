@@ -42,6 +42,10 @@
       "types": "./dist/worker.d.ts",
       "import": "./dist/browser/worker.js",
       "default": "./dist/browser/stellar-toml-lint.worker.min.js"
+    },
+    "./edge": {
+      "types": "./dist/edge.d.ts",
+      "import": "./dist/edge.js"
     }
   },
   "files": [
@@ -58,6 +62,7 @@
     "build:docs": "node scripts/build-docs.js",
     "build:vscode": "tsc -p editors/vscode/tsconfig.json",
     "package:vscode": "npm run build:vscode && npx --prefix editors/vscode vsce package --out ../../stellar-toml-lint.vsix",
+    "build:edge": "node scripts/build-edge.mjs",
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",

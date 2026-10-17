@@ -4,6 +4,7 @@ import type {
   LintResult,
   Position,
   RuleContext,
+  RuleOutcome,
   RuleOverrides,
   Severity,
   TlsSession,
@@ -136,20 +137,31 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
       },
     };
 
-    try {
-      rule.run(ctx);
-    } catch (error) {
-      // A crashing rule must not take down the whole run — report it and move
-      // on, so the remaining rules still produce useful output.
-      diagnostics.push({
-        rule: 'internal/rule-error',
-        severity: 'warning',
-        category: 'file',
-        message: `Rule ${rule.id} failed to run: ${errorMessage(error)}`,
-        helpUri: 'https://github.com/anchor-tools/stellar-toml-lint/issues',
-        suggestion: 'Please report this file (with secrets removed) as a bug.',
-      });
-    }
+    // The rule body as a thunk, so an instrumented caller sees the invocation
+    // wrapped rather than a duration guessed at from the outside. Crashes are
+    // converted to `internal/rule-error` *inside* it, which keeps the reported
+    // outcome honest and the loop's behaviour identical either way.
+    const invoke = (): RuleOutcome => {
+      try {
+        rule.run(ctx);
+        return 'ok';
+      } catch (error) {
+        // A crashing rule must not take down the whole run — report it and move
+        // on, so the remaining rules still produce useful output.
+        diagnostics.push({
+          rule: 'internal/rule-error',
+          severity: 'warning',
+          category: 'file',
+          message: `Rule ${rule.id} failed to run: ${errorMessage(error)}`,
+          helpUri: 'https://github.com/anchor-tools/stellar-toml-lint/issues',
+          suggestion: 'Please report this file (with secrets removed) as a bug.',
+        });
+        return 'error';
+      }
+    };
+
+    if (options.instrumentRule === undefined) invoke();
+    else options.instrumentRule(rule.id, invoke);
   }
 
   return finalize(diagnostics.filter(keep), options, parsed);

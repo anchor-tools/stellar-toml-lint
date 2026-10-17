@@ -1,0 +1,211 @@
+# CustomResourceDefinition for StellarInfoFile — a cloud-native anchor's
+# stellar.toml declared as a native Kubernetes resource.
+#
+# Apply with:
+#   kubectl apply -f crds/stellarinfofile.yaml
+#
+# The schema is OpenAPI v3 (required by apiextensions.k8s.io/v1), so the
+# API server rejects structurally invalid specs before the controller ever
+# sees them; everything the schema cannot express — whether the TOML
+# actually parses, whether it satisfies SEP-1 — is left to the controller,
+# which records the verdict in status.conditions.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: stellarinfofiles.stellar.anchor-tools.io
+  labels:
+    app.kubernetes.io/part-of: stellar-toml-lint
+spec:
+  group: stellar.anchor-tools.io
+  scope: Namespaced
+  names:
+    plural: stellarinfofiles
+    singular: stellarinfofile
+    kind: StellarInfoFile
+    shortNames:
+      - sif
+      - stellar-toml
+    categories:
+      - all
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Domain
+          type: string
+          jsonPath: .spec.domain
+        - name: Valid
+          type: boolean
+          jsonPath: '.status.conditions[?(@.type=="Valid")].status'
+        - name: SyncError
+          type: boolean
+          jsonPath: '.status.conditions[?(@.type=="SyncError")].status'
+        - name: ConfigMap
+          type: string
+          jsonPath: .status.published.configMapName
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - toml
+              properties:
+                toml:
+                  type: string
+                  minLength: 1
+                  # Matches the linter's MAX_FILE_BYTES (100 KiB); the
+                  # controller re-checks in bytes, this just stops runaway
+                  # specs at the door.
+                  maxLength: 102400
+                  description: >-
+                    Raw stellar.toml (SEP-1 Stellar Info File) content. The
+                    controller lints it on every change and only mounts
+                    validated content into the published ConfigMap.
+                domain:
+                  type: string
+                  description: >-
+                    Domain the file is (or will be) served from, without
+                    scheme. Enables same-domain checks that SEP-1 requires
+                    but that cannot be verified from the file alone, e.g.
+                    ORG_URL matching the host domain.
+                strict:
+                  type: boolean
+                  default: false
+                  description: Treat warnings as errors when computing the Valid condition.
+                publish:
+                  type: object
+                  description: Controls what the controller publishes for this resource.
+                  properties:
+                    configMap:
+                      type: object
+                      description: Overrides for the ConfigMap that carries the validated TOML.
+                      properties:
+                        name:
+                          type: string
+                          description: >-
+                            ConfigMap name. Defaults to
+                            <resource-name>-stellar-toml.
+                        key:
+                          type: string
+                          default: stellar.toml
+                          description: ConfigMap data key the TOML is stored under.
+                        labels:
+                          type: object
+                          additionalProperties:
+                            type: string
+                          description: Extra labels added to the managed ConfigMap.
+                    ingress:
+                      type: object
+                      description: >-
+                        Optional Ingress routing a host/path to the Service
+                        that serves the managed ConfigMap. The Service itself
+                        is owned by the anchor's deployment, not by this
+                        controller.
+                      required:
+                        - host
+                        - serviceName
+                      properties:
+                        host:
+                          type: string
+                          description: Hostname the Ingress rule matches.
+                        path:
+                          type: string
+                          default: /.well-known/stellar.toml
+                          description: HTTP path routed to the backend Service.
+                        pathType:
+                          type: string
+                          enum:
+                            - Prefix
+                            - Exact
+                            - ImplementationSpecific
+                          default: Prefix
+                        ingressClassName:
+                          type: string
+                          description: Ingress class, e.g. nginx.
+                        serviceName:
+                          type: string
+                          description: Backend Service serving the mounted ConfigMap.
+                        servicePort:
+                          x-kubernetes-int-or-string: true
+                          default: 80
+                          description: Backend Service port.
+            status:
+              type: object
+              properties:
+                observedGeneration:
+                  type: integer
+                  format: int64
+                  description: >-
+                    Generation of .spec the current conditions and published
+                    artifacts were computed from.
+                conditions:
+                  type: array
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - type
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                      - reason
+                      - message
+                      - lastTransitionTime
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - Valid
+                          - SyncError
+                      status:
+                        type: string
+                        enum:
+                          - 'True'
+                          - 'False'
+                      reason:
+                        type: string
+                        maxLength: 1024
+                        pattern: '^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$'
+                      message:
+                        type: string
+                        maxLength: 32768
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                lint:
+                  type: object
+                  description: Diagnostic counts from the last validation run.
+                  properties:
+                    errors:
+                      type: integer
+                      minimum: 0
+                    warnings:
+                      type: integer
+                      minimum: 0
+                    infos:
+                      type: integer
+                      minimum: 0
+                published:
+                  type: object
+                  description: Artifacts the controller has published for this resource.
+                  properties:
+                    configMapName:
+                      type: string
+                    ingressName:
+                      type: string
+                    lastSyncedTime:
+                      type: string
+                      format: date-time

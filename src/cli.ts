@@ -36,6 +36,7 @@ import {
   formatReadinessJson,
   formatRunSummary,
   formatSarif,
+  formatSonar,
   formatSummary,
   formatText,
 } from './reporters.js';
@@ -132,6 +133,15 @@ import {
   DEFAULT_METRICS_PORT,
   PrometheusMetricsServer,
 } from './telemetry/prometheus-server.js';
+import {
+  durationMetric,
+  instrumentedFetch,
+  OtelExporter,
+  otlpEndpointFor,
+  ruleSpanRecorder,
+  severityMetrics,
+} from './telemetry/otel-exporter.js';
+import type { OtelMetric } from './telemetry/otel-exporter.js';
 import { createMockServer, DEFAULT_MOCK_PORT, formatRoutingTable } from './mock/server.js';
 import {
   runMigration,
@@ -158,6 +168,7 @@ type Format =
   | 'html'
   | 'checkstyle'
   | 'markdown'
+  | 'sonar'
   | 'pr-comment';
 
 interface Cli {
@@ -229,6 +240,8 @@ interface Cli {
   interval?: number;
   webhookUrl?: string;
   serveMetrics?: number;
+  otelEndpoint?: string;
+  otelServiceName?: string;
   slaStore?: string;
   generateJsonLd?: string;
   migrate?: string;
@@ -261,8 +274,8 @@ OPTIONS
   -f, --format <fmt>      text (default), summary (one line per file, for hooks
                           and monitoring), json, ndjson, sarif, github, junit,
                           html, checkstyle, markdown (for GitHub step
-                          summaries), or pr-comment (for the aggregate
-                          pull-request comment)
+                          summaries), sonar (SonarQube Generic Issue Data),
+                          or pr-comment (for the aggregate pull-request comment)
       --format-file       Rewrite files in place: SEP-1 field order, consistent
                           quoting, comments preserved. Distinct from --format
                           (a reporter).
@@ -409,6 +422,20 @@ OPTIONS
        --sla-store <file>  Record probe latency, status codes, and errors into
                            a JSON SLA database while --monitor runs, and flag
                            a 30-day availability below 99.5%
+       --otel-endpoint <url>
+                           Export OTLP/HTTP JSON traces and metrics to an
+                           OpenTelemetry collector after the run — the run
+                           duration, one span per rule, one client span per
+                           network probe, plus stellar_toml_lint_errors_total,
+                           _warnings_total, _infos_total and
+                           _duration_seconds. Give the collector's HTTP
+                           receiver (http://localhost:4318); a grpc:// URL is
+                           rejected. A collector that is down prints a warning
+                           and never changes the exit code
+       --otel-service-name <name>
+                           service.name reported to the collector (default
+                           stellar-toml-lint). Use your team or app name so the
+                           run is findable among the other jobs in the pipeline
        --serve-mock [port] Serve the file plus mock SEP-10 /auth, SEP-24 /info,
                            and SEP-38 /info and /prices endpoints on localhost
                            (default port 8080). Set
@@ -507,7 +534,25 @@ async function main(argv: string[]): Promise<number> {
     // Project defaults from .stellartomlrc.json, overridden by any CLI flag.
     let strict = cli.strict;
     let maxWarnings = cli.maxWarnings;
-    const fetchImpl = cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
+    const transport = cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
+    // OTel, when a collector is configured. One exporter and one tracer for the
+    // whole process: the rule spans, the HTTP spans and the metrics then share a
+    // trace id, which is the point of sending them at all.
+    const otel =
+      cli.otelEndpoint === undefined
+        ? undefined
+        : new OtelExporter({
+            endpoint: cli.otelEndpoint,
+            ...(cli.otelServiceName === undefined ? {} : { serviceName: cli.otelServiceName }),
+            scopeVersion: VERSION,
+          });
+    const otelTracer = otel?.tracer();
+    const fetchImpl =
+      otelTracer === undefined ? transport : instrumentedFetch(transport, otelTracer);
+    // Passed into `lint`/`lintDomain` as their rule hook, so per-rule durations
+    // come from the loop that actually runs the rules rather than a guess.
+    const otelRuleHook =
+      otelTracer === undefined ? {} : { instrumentRule: ruleSpanRecorder(otelTracer) };
 
     try {
       if (cli.diff) {
@@ -530,6 +575,7 @@ async function main(argv: string[]): Promise<number> {
             rules,
             checkNetwork: cli.checkNetwork,
             followLinks: true,
+            ...otelRuleHook,
           },
           fetchImpl,
         );
@@ -750,6 +796,7 @@ async function main(argv: string[]): Promise<number> {
             rules,
             checkNetwork: cli.checkNetwork,
             ...(cli.domain ? { domain: cli.domain } : {}),
+            ...otelRuleHook,
           });
 
           if (
@@ -1379,6 +1426,28 @@ async function main(argv: string[]): Promise<number> {
       }
     }
 
+    // OTLP export, last: the collector should see the run as the user saw it,
+    // counts included. Like the webhooks above, a failed export is a warning on
+    // stderr and never a changed exit code — an observability endpoint being
+    // down must not fail a build over a file that is fine.
+    if (otel !== undefined && otelTracer !== undefined) {
+      otelTracer.endRun();
+      const metrics: OtelMetric[] = [];
+      for (const { name, result } of results) {
+        metrics.push(...severityMetrics(result, name));
+      }
+      const duration = durationMetric(otelTracer);
+      if (duration !== undefined) metrics.push(duration);
+      for (const outcome of await otel.exportRun(otelTracer, metrics)) {
+        if (outcome.ok) continue;
+        process.stderr.write(
+          `Warning: OTLP ${outcome.signal} export to ${outcome.url} failed${
+            outcome.error === undefined ? '' : `: ${outcome.error}`
+          }\n`,
+        );
+      }
+    }
+
     return lintPassed && !healthCheckFailed ? 0 : 1;
   };
 
@@ -1496,6 +1565,8 @@ function render(result: LintResult, name: string, cli: Cli, color: boolean): str
       return formatMarkdown(result, name);
     case 'pr-comment':
       return formatPrComment(result, { filename: name });
+    case 'sonar':
+      return formatSonar(result, name);
     case 'text':
       return formatText(result, {
         filename: name,
@@ -1954,6 +2025,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.slaStore = requireValue(argv, ++i, arg);
         break;
 
+      case '--otel-endpoint':
+        cli.otelEndpoint = requireValue(argv, ++i, arg);
+        // Resolved now rather than at export time: pasting a collector's gRPC
+        // URL out of a compose file is the common mistake, and a long lint run
+        // should not end by discovering the endpoint was never going to work.
+        otlpEndpointFor(cli.otelEndpoint, 'traces');
+        break;
+
+      case '--otel-service-name':
+        cli.otelServiceName = requireValue(argv, ++i, arg);
+        break;
+
       case '--generate-jsonld': {
         // The output path is optional: a following `.json` argument is the
         // destination, anything else stays a positional input path and the
@@ -2205,6 +2288,7 @@ function isFormat(value: string): value is Format {
     value === 'html' ||
     value === 'checkstyle' ||
     value === 'markdown' ||
+    value === 'sonar' ||
     value === 'pr-comment'
   );
 }

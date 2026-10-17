@@ -1,0 +1,108 @@
+# Tekton Task: lint a Stellar Info File (stellar.toml) against SEP-1 with
+# stellar-toml-lint. Fits Red Hat OpenShift / Tekton Pipelines catalogs.
+#
+# Example TaskRun:
+#
+# apiVersion: tekton.dev/v1
+# kind: TaskRun
+# metadata:
+#   name: stellar-toml-lint-run
+# spec:
+#   taskSpec:
+#     $(copy of this file)
+#   workspaces:
+#     - name: source
+#       persistentVolumeClaim:
+#         claimName: repo-source
+#   params:
+#     - name: TOML_PATH
+#       value: public/.well-known/stellar.toml
+#     - name: FORMAT
+#       value: sarif
+#     - name: STRICT
+#       value: "true"
+#
+# Results PROBLEMS_COUNT and VERDICT are emitted for downstream steps.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: stellar-toml-lint
+  labels:
+    app.kubernetes.io/name: stellar-toml-lint
+    app.kubernetes.io/part-of: stellar-toml-lint
+    app.kubernetes.io/component: lint
+  annotations:
+    tekton.dev/categories: Linting
+    tekton.dev/displayName: 'stellar-toml-lint'
+    tekton.dev/tags: stellar,sep-1,anchor,toml,lint
+    tekton.dev/minVersion: '0.1.0'
+    tekton.dev/platforms: 'linux/amd64,linux/arm64'
+spec:
+  description: >
+    Lints a Stellar Info File (stellar.toml) against SEP-1 with
+    stellar-toml-lint and emits the problem count and the pass/fail verdict
+    as Task results (PROBLEMS_COUNT, VERDICT), so OpenShift/Tekton pipelines
+    can gate deployments on anchor info-file compliance.
+  params:
+    - name: TOML_PATH
+      type: string
+      description: Path to the stellar.toml file to lint, relative to the
+        source workspace root.
+      default: stellar.toml
+    - name: FORMAT
+      type: string
+      description: |
+        Output reporter format: text (default), summary, json, ndjson,
+        sarif, github, junit, html, checkstyle, markdown, sonar
+        (SonarQube Generic Issue Data), or pr-comment.
+      default: text
+    - name: STRICT
+      type: string
+      description: "Treat warnings as errors. Set to 'true' or 'false'."
+      default: 'false'
+  results:
+    - name: PROBLEMS_COUNT
+      description: Total number of problems found (errors + warnings).
+    - name: VERDICT
+      description: PASS when the lint run satisfies the exit-code contract, FAIL otherwise.
+  workspaces:
+    - name: source
+      description: Workspace holding the repository with the stellar.toml file.
+      mountPath: /workspace/source
+  steps:
+    - name: lint
+      image: ghcr.io/anchor-tools/stellar-toml-lint:latest
+      imagePullPolicy: IfNotPresent
+      command:
+        - sh
+      script: |
+        #!/usr/bin/env sh
+        set -eu
+
+        TARGET="$(workspaces.source.path)/$(params.TOML_PATH)"
+        STRICT_ARGS=""
+        [ "$(params.STRICT)" = "true" ] && STRICT_ARGS="--strict"
+
+        # Run the linter, capturing its output and exit code. A failing lint
+        # still writes its results so downstream steps can read the verdict.
+        set +e
+        stellar-toml-lint --format "$(params.FORMAT)" $STRICT_ARGS "$TARGET" \
+          > "$(results.PROBLEMS_COUNT.path).raw" 2>&1
+        CODE=$?
+        set -e
+
+        # Count problems with the dedicated count reporter, then record the
+        # results the Tekton contract expects.
+        PROBLEMS="$(stellar-toml-lint --count "$TARGET" 2>/dev/null | sed 's/[^0-9].*//')"
+        PROBLEMS="${PROBLEMS:-0}"
+        if [ "$CODE" = "0" ]; then
+          VERDICT="PASS"
+        else
+          VERDICT="FAIL"
+        fi
+        printf '%s' "$PROBLEMS" > "$(results.PROBLEMS_COUNT.path)"
+        printf '%s' "$VERDICT" > "$(results.VERDICT.path)"
+
+        # Propagate the linter's exit code so the step (and the task) fails
+        # exactly when the file does not comply.
+        exit "$CODE"

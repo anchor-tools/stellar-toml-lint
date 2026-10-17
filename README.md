@@ -134,7 +134,7 @@ it was before.
 | Flag                    | Effect                                                                          |
 | ----------------------- | ------------------------------------------------------------------------------- |
 | `-d, --domain <d>`      | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks           |
-| `-f, --format <fmt>`    | `text` (default), `summary`, `json`, `sarif`, `github`, `junit`                 |
+| `-f, --format <fmt>`    | `text` (default), `summary`, `json`, `sarif`, `github`, `junit`, `sonar`        |
 | `--format-file`         | Rewrite files in place in canonical SEP-1 layout                                |
 | `--strict`              | Treat warnings as errors                                                        |
 | `--max-warnings <n>`    | Fail if warnings exceed `n`                                                     |
@@ -154,7 +154,7 @@ it was before.
 | Flag                      | Effect                                                                          |
 | ------------------------- | ------------------------------------------------------------------------------- |
 | `-d, --domain <d>`        | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks           |
-| `-f, --format <fmt>`      | `text` (default), `summary`, `json`, `sarif`, `github`, `junit`                 |
+| `-f, --format <fmt>`      | `text` (default), `summary`, `json`, `sarif`, `github`, `junit`, `sonar`        |
 | `--strict`                | Treat warnings as errors                                                        |
 | `--max-warnings <n>`      | Fail if warnings exceed `n`                                                     |
 | `--check-network`         | Verify accounts, `HORIZON_URL`, `AUTH_SERVER`, and `ANCHOR_QUOTE_SERVER` online |
@@ -178,7 +178,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | Flag                        | Effect                                                                                                                  |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `-d, --domain <d>`          | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks                                                   |
-| `-f, --format <fmt>`        | `text` (default), `summary`, `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`             |
+| `-f, --format <fmt>`        | `text` (default), `summary`, `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`, `sonar`    |
 | `--strict`                  | Treat warnings as errors                                                                                                |
 | `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                             |
 | `--check-network`           | Verify accounts, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online                            |
@@ -229,7 +229,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | Flag                        | Effect                                                                                                                  |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `-d, --domain <d>`          | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks                                                   |
-| `-f, --format <fmt>`        | `text` (default), `summary`, `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`             |
+| `-f, --format <fmt>`        | `text` (default), `summary`, `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`, `sonar`    |
 | `--strict`                  | Treat warnings as errors                                                                                                |
 | `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                             |
 | `--check-network`           | Verify accounts, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online |
@@ -273,7 +273,7 @@ failure.
 | Flag                               | Effect                                                                                                                                                                                                          |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-d, --domain <d>`                 | Serving domain. Enables CORS, content-type, TLS, image-asset, and `ORG_URL` checks                                                                                                                              |
-| `-f, --format <fmt>`               | `text` (default), `summary`, `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`                                                                                                     |
+| `-f, --format <fmt>`               | `text` (default), `summary`, `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`, `sonar`                                                                                            |
 | `--strict`                         | Treat warnings as errors                                                                                                                                                                                        |
 | `--max-warnings <n>`               | Fail if warnings exceed `n`                                                                                                                                                                                     |
 | `--fail-on <severity>`             | Exit `1` when any diagnostic meets or exceeds `error`, `warning`, or `info`; takes precedence over `--strict`                                                                                                   |
@@ -307,6 +307,8 @@ failure.
 | `--serve-mock [port]`              | Serve the file and mock SEP-10/24/38 endpoints on localhost (default port `8080`); see [mock server](#local-mock-server-for-wallet-and-frontend-development)                                                    |
 | `--serve-metrics [port]`           | Serve Prometheus metrics on `GET /metrics` (default port `9464`); works with `--monitor` or standalone; see [Prometheus metrics exporter](#prometheus-metrics-exporter)                                         |
 | `--sla-store <file>`               | With `--monitor`: record every probe into a JSON SLA database and emit `monitor/sla-below-threshold` when the 30-day availability drops below 99.5%; see [SLA tracking](#sla-tracking-and-availability-metrics) |
+| `--otel-endpoint <url>`            | Export this run's OTLP/HTTP JSON traces and metrics to an OpenTelemetry collector; see [OpenTelemetry exporter](#opentelemetry-exporter)                                                                        |
+| `--otel-service-name <name>`       | `service.name` reported to the collector (default `stellar-toml-lint`)                                                                                                                                          |
 | `--generate-jsonld [out.json]`     | Generate Schema.org JSON-LD structured data (prints to stdout with no file); see [JSON-LD structured data](#schemaorg-json-ld-structured-data)                                                                  |
 | `--mock-fixtures <dir>`            | Serve network checks from recorded JSON fixtures under `<dir>`, never the network                                                                                                                               |
 | `--webhook-slack <url>`            | POST a Slack Block Kit card with the run summary                                                                                                                                                                |
@@ -706,6 +708,56 @@ often the certificate and validator probes run, and the exported score always ma
 lint of the monitored body. The port defaults to `9464`; `--serve-metrics 0` picks an ephemeral one.
 The endpoint also answers `HEAD` and rejects other paths with `404` / methods with `405`.
 
+### OpenTelemetry exporter
+
+`--otel-endpoint <url>` posts the run to an OpenTelemetry collector as **OTLP/HTTP JSON**
+(`application/json`) using nothing but the global `fetch` — no OpenTelemetry SDK to audit or
+to add to the dependency list:
+
+```console
+$ stellar-toml-lint --domain example.com --check-network --otel-endpoint http://127.0.0.1:4318
+# nothing on stdout that the lint report did not print anyway; a collector that is
+# not listening costs only a warning, and only on stderr:
+Warning: OTLP traces export to http://127.0.0.1:4318/v1/traces failed: fetch failed
+Warning: OTLP metrics export to http://127.0.0.1:4318/v1/metrics failed: fetch failed
+```
+
+| Metric                               | Type      | Attributes    | Meaning                                                             |
+| ------------------------------------ | --------- | ------------- | ------------------------------------------------------------------- |
+| `stellar_toml_lint_errors_total`     | counter   | `lint.target` | Findings at error severity in this run                              |
+| `stellar_toml_lint_warnings_total`   | counter   | `lint.target` | Findings at warning severity in this run                            |
+| `stellar_toml_lint_infos_total`      | counter   | `lint.target` | Findings at info severity in this run                               |
+| `stellar_toml_lint_duration_seconds` | histogram | —             | Wall-clock duration of the whole run, in `0.05`–`10` second buckets |
+
+`--otel-service-name <name>` sets `service.name` (default `stellar-toml-lint`) — worth setting
+to the team or app name, since that is the attribute every collector indexes its search on.
+
+The trace is one `stellar-toml-lint run` root span with a child per rule (`rule <id>`, carrying
+`stellar.toml.rule.id` and `lint.rule.outcome`) and a `SpanKind.CLIENT` span per HTTP request the
+linting made — the file, the federation, auth, transfer and quote servers, the branding images,
+each account lookup. On a `--check-network` run those request spans are usually where the
+ninety seconds went.
+
+Three things about this are worth stating before you wire it into a pipeline:
+
+- The endpoint is the collector's **HTTP** receiver (`4318` by default). Protobuf and gRPC are
+  not implemented, and a `grpc://` URL is refused at parse time with that advice rather than
+  silently exporting nothing.
+- Every point is exported with **delta** temporality: one run reports what that run found. A
+  dashboard wants a sum over the panel's interval rather than a cumulative series.
+- **A failed export never changes the exit code**, the same rule `--webhook-slack` follows. An
+  observability endpoint being down should not fail a build over a file that is fine.
+
+The JSON is what an `otlp` receiver expects, including the parts that look wrong at a glance:
+trace and span ids are **base64** (proto3 JSON maps `bytes` that way, not the hex a gRPC viewer
+shows), and nanosecond timestamps and bucket counts are **strings**, because a 64-bit count of
+nanoseconds does not fit exactly in a JSON number.
+
+Export happens at the end of a lint run. `--monitor` and `--serve-metrics` hand over to the polling
+daemon, which reports through Prometheus and `--sla-store` instead — a long-running daemon has no
+"run" for a delta export to describe, so pairing one OTLP request per poll with that collector is a
+separate design decision, not an oversight to work around with a flag.
+
 ### Local mock server for wallet and frontend development
 
 `--serve-mock [port]` turns a local `stellar.toml` into a mock anchor, so a wallet, frontend, or SDK
@@ -881,30 +933,62 @@ worker.onmessage = (e) => console.log('Lint result:', e.data.result);
 worker.postMessage({ type: 'lint', content: tomlString });
 ```
 
-### ZIP archive batch validation
+### Web Worker thread pool
 
-Auditors can drag-and-drop a ZIP archive (or folder) containing dozens of
-`stellar.toml` files into the web playground and view an aggregate batch
-compliance report entirely client-side — nothing is uploaded to a remote
-server. The archive is unpacked in memory with JSZip, every `*.toml` is linted
-through a bounded worker pool, and the result is a pass/fail summary plus the
-most common error patterns across the batch.
+A single worker lints one file at a time. For a playground that imports a ZIP of
+multi-tenant anchor files, or a monorepo holding many TOML configurations,
+`WorkerPool` spins up `N` dedicated workers (`navigator.hardwareConcurrency`
+by default) and batch-processes files off the main thread, so the UI never
+stutters while a large batch is linted:
 
 ```ts
-import { validateZip, type BatchSummary } from 'stellar-toml-lint/browser';
+import { WorkerPool } from 'stellar-toml-lint/browser';
 
-const buffer = await zipFile.arrayBuffer(); // <input type="file"> selection
-const report: BatchSummary = await validateZip(buffer, { concurrency: 4 });
-
-report.passed; // files with no errors
-report.failed; // files with at least one error
-report.passRate; // 0-100
-report.commonErrors; // [{ rule, count, files }] ranked by frequency
-report.results; // per-file lint results
+const pool = new WorkerPool();
+const entries = await pool.lintFiles(
+  [
+    { path: 'accounts/acme/stellar.toml', content: acmeToml },
+    { path: 'accounts/globex/stellar.toml', content: globexToml },
+  ],
+  {
+    onProgress: (progress) => console.log(`${progress.percent}%`),
+  },
+);
+// entries[i] matches files[i]: { path, result, error }
+pool.terminate();
 ```
 
-The playground exposes this through its **Batch Validator** tab, which accepts
-a `.zip` upload and renders the aggregate table and per-file results offline.
+Tasks are handed out round-robin, a worker that crashes is replaced so it
+cannot stall the batch, and every failure is reported per-file instead of
+failing the whole run. When Workers are unavailable the pool falls back to
+processing the queue on the current thread with the same API.
+
+### Share links
+
+`encodeShareLink` and `decodeShareLink` put a playground session — the file text, the rule
+overrides, and `--strict` — into the URL fragment, DEFLATE-compressed and base64url-encoded, so
+a broken `stellar.toml` can be pasted into a forum thread and reopened one click later with the
+same flags. Nothing is sent to a server, and no backend is involved:
+
+```ts
+import { encodeShareLink, decodeShareLink, toMarkdownLink } from 'stellar-toml-lint/browser';
+
+const link = await encodeShareLink({
+  source: 'VERSION = "2.7.0"\nNETWORK_PASSPHRASE = "Test SDF Network ; September 2015"\n',
+  rules: { 'general/version': 'off' },
+});
+// link.url ends in `#state=s.d.<checksum>.<payload>`; link.chars is the whole URL's length.
+
+const decoded = await decodeShareLink(window.location.hash);
+if (decoded.status === 'ok') console.log(decoded.state, decoded.verified);
+```
+
+A link is checksummed, not signed: `decodeShareLink` notices a payload that no longer matches the
+digest the link carries and reports `invalid` with the reason, which is the difference between a
+truncated paste and a file you can trust. `link.degraded` says so plainly when the encoder had to
+drop something to fit the URL budget, and a fragment is not a secret — use the domain mode for a
+file you would not want published. See [Share links](#share-links-1) for what the playground does
+with it.
 
 ### Capabilities & Typings
 
@@ -964,6 +1048,34 @@ To build the browser bundles:
 
 ```bash
 npm run build:browser
+```
+
+### On the edge (Cloudflare Workers, Vercel Edge, Fastly)
+
+The edge entry point (`@anchor-tools/stellar-toml-lint/edge`, `dist/edge.js`)
+lints a `stellar.toml` string with zero Node.js built-ins — no `node:fs`,
+`node:crypto`, or `node:http`. Transport is the runtime's `fetch` and hashing
+is the Web Cryptography API (`crypto.subtle`), so it loads in Cloudflare
+Workers, Vercel Edge, Fastly Compute@Edge, Deno, and any other
+WinterCG-compatible runtime:
+
+```ts
+import { lintEdge } from 'stellar-toml-lint/edge';
+
+const result = await lintEdge(tomlContent, {
+  domain: 'example.com',
+  strict: true,
+  expectedContentDigest: 'sha256-hex-...',
+});
+```
+
+`expectedContentDigest` is an optional integrity gate: when set, the run fails
+with an `edge/content-digest-mismatch` error unless the SHA-256 of the
+content matches — computed with `crypto.subtle`, so nothing in this entry
+point touches `node:crypto`. Build the bundle with:
+
+```bash
+npm run build:edge
 ```
 
 ## Formatting
@@ -1139,6 +1251,53 @@ Configure the run with pipeline variables, all optional:
 Both templates are validated by a YAML parser in `test/templates.test.ts`, exercised by the
 `test-templates.yml` workflow, so a broken copy-paste template fails CI before it can be merged.
 
+### Tekton Pipelines (OpenShift)
+
+Enterprise banks on Red Hat OpenShift can run the linter as a Tekton Catalog
+Task ([`integrations/tekton/task.yaml`](./integrations/tekton/task.yaml)). The
+task lints a `stellar.toml` from a Tekton workspace and emits two results:
+
+| Parameter   | Default        | Effect                                                |
+| ----------- | -------------- | ----------------------------------------------------- |
+| `TOML_PATH` | `stellar.toml` | File to lint, relative to the workspace root.         |
+| `FORMAT`    | `text`         | Output reporter format (text, json, sarif, sonar, …). |
+| `STRICT`    | `false`        | Treat warnings as errors (`true` or `false`).         |
+
+| Result           | Meaning                                      |
+| ---------------- | -------------------------------------------- |
+| `PROBLEMS_COUNT` | Total problems found (errors + warnings).    |
+| `VERDICT`        | `PASS` or `FAIL` per the exit-code contract. |
+
+The step image is `ghcr.io/anchor-tools/stellar-toml-lint:latest`, and the
+step's exit code is the linter's, so a failing file fails the task:
+
+```yaml
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: stellar-toml-lint
+spec:
+  params:
+    - name: TOML_PATH
+      value: public/.well-known/stellar.toml
+    - name: FORMAT
+      value: text
+    - name: STRICT
+      value: 'true'
+  workspaces:
+    - name: source
+  results:
+    - name: PROBLEMS_COUNT
+    - name: VERDICT
+  steps:
+    - name: lint
+      image: ghcr.io/anchor-tools/stellar-toml-lint:latest
+      script: |
+        #!/usr/bin/env sh
+        set -eu
+        stellar-toml-lint --format "$(params.FORMAT)" $( [ "$(params.STRICT)" = "true" ] && echo --strict ) "$(workspaces.source.path)/$(params.TOML_PATH)"
+```
+
 ### JUnit XML reports
 
 Jenkins, Bamboo, CircleCI, and Azure DevOps read JUnit XML to draw test pass/fail charts and suite
@@ -1186,6 +1345,47 @@ Each linted file becomes one `<file>` element and each diagnostic an `<error>` c
 `column`, `severity`, `message`, and `source` — the rule id, so a dashboard can group, baseline, or
 suppress findings the way it would a Checkstyle check. Severity maps straight across (`error`,
 `warning`, `info`). Lint one file per report, as with the other machine-readable formats.
+
+### SonarQube Generic Issue Data
+
+Enterprise code quality gates (SonarQube / SonarCloud) ingest findings through the
+[Generic Issue Data format](https://docs.sonarsource.com/sonarqube/cloud/external-issues/generic-issue-format/).
+`--format sonar` emits SEP-1 diagnostics as that JSON, one issue per diagnostic:
+
+```console
+$ stellar-toml-lint public/.well-known/stellar.toml --format sonar > sonar-results.json
+```
+
+```json
+{
+  "issues": [
+    {
+      "engineId": "stellar-toml-lint",
+      "ruleId": "currencies/issuer-or-contract",
+      "type": "CODE_SMELL",
+      "severity": "MAJOR",
+      "primaryLocation": {
+        "filePath": "public/.well-known/stellar.toml",
+        "message": "CURRENCIES[0].issuer is not a valid Stellar account ID",
+        "textRange": { "startLine": 31, "startColumn": 1, "endLine": 31, "endColumn": 1 }
+      }
+    }
+  ]
+}
+```
+
+Security rules map to `VULNERABILITY`, file and schema errors map to `BUG`, and
+everything else maps to `CODE_SMELL`. Severities map `error` → `BLOCKER`,
+`warning` → `MAJOR`, and `info` → `MINOR`. Programmatically, `formatSonar`
+from `stellar-toml-lint` produces the same document:
+
+```ts
+import { lint, formatSonar } from 'stellar-toml-lint';
+import { writeFile } from 'node:fs/promises';
+
+const result = lint(await readFile('stellar.toml', 'utf8'));
+await writeFile('sonar-results.json', formatSonar(result, 'stellar.toml'));
+```
 
 ### One-line status summaries
 
@@ -2128,6 +2328,31 @@ The **Stellar TOML Lint Playground** is an interactive web-based IDE built with 
 - **Live Network Probe** — test CORS, TLS, and Horizon state with real-time results
 - **Fix Actions** — one-click "Apply Autofix" button with a preview of suggested corrections
 - **WebRTC Peer-to-Peer Collaborative Editing** — real-time co-editing with Yjs CRDT synchronization, remote cursor/selection display with custom username colors, room ID in URL hash for sharing (`apps/playground/src/collab/webrtc-provider.ts`)
+- **Share links** — Copy link / Copy markdown put the file, the rule overrides, and `--strict` into the URL fragment itself, so a broken `stellar.toml` can be pasted into a forum thread and reopened one click later with the same flags (`src/browser/share-state.ts`)
+
+### Share links
+
+The state travels in the fragment, which no server ever receives: `#state=<mode><codec>.<checksum>.<payload>`,
+where the payload is the JSON envelope DEFLATE-compressed and base64url-encoded, the mode is `s` (the source
+text) or `u` (a domain to fetch), the codec is `d` (deflated) or `p` (stored), and the checksum is the first
+8 hex digits of the SHA-256 of the uncompressed payload.
+
+On load the playground decodes the fragment, applies the flags, and lints — a `u` link fetches
+`https://<domain>/.well-known/stellar.toml` first. A link edited in transit reports what is wrong
+("checksum mismatch: link says `1a2b3c4d`, payload is `…`") instead of quietly loading the wrong file.
+
+Three limits are worth knowing before you paste one into a thread:
+
+- **A URL fragment is not a secret.** Nothing here is encrypted; anyone with the link has the file. Use
+  the domain mode when the file is private.
+- **Browsers and paste targets cap URLs around 2,000 characters.** The encoder measures the whole URL
+  against that budget and degrades in a fixed order rather than truncating: it drops the rule overrides,
+  then falls back to a domain link, and says which it did. A large pasted file with no domain to point at
+  still produces a link, marked as over budget, that has to be shortened by hand or copied from the
+  markdown block.
+- **DEFLATE and SHA-256 are the browser's own** (`CompressionStream`, `crypto.subtle`). On a page served
+  over plain HTTP, `crypto.subtle` is absent, so the link is unsigned: `verified: false` on decode, with
+  the payload still intact.
 
 ### Getting Started
 
@@ -2221,6 +2446,33 @@ See [integrations/sublime/](integrations/sublime/) for details.
 Official Neovim LSP integration providing real-time SEP-1 linting diagnostics, code actions, hover documentation, and Tree-sitter syntax highlighting for `stellar.toml` files. Supports lazy.nvim, packer.nvim, and manual installation.
 
 See [integrations/neovim/](integrations/neovim/) for details.
+
+### Kubernetes operator
+
+Cloud-native anchors can declare a `stellar.toml` as a native Kubernetes
+resource (`StellarInfoFile`) and have the operator in
+[`integrations/k8s/`](./integrations/k8s/) reconcile it into a ConfigMap and
+Ingress, recording SEP-1 validation verdicts as `Valid`/`SyncError` status
+conditions.
+
+```bash
+kubectl apply -f integrations/k8s/crds/stellarinfofile.yaml
+kubectl apply -f integrations/k8s/samples/stellarinfofile.yaml
+kubectl get sif -w
+```
+
+The controller lints `spec.toml` offline on every change, mounts only
+validated content into the managed ConfigMap, and leaves the last good
+publish in place when a spec stops validating — a typo never takes down a
+running anchor's well-known file.
+
+```bash
+cd integrations/k8s
+npm install && npm run build && npm test
+node dist/main.js   # watches StellarInfoFiles and reconciles them
+```
+
+See [integrations/k8s/README.md](./integrations/k8s/README.md) for details.
 
 ### Performance Benchmarks
 

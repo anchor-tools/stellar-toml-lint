@@ -1,0 +1,18 @@
+# A StellarInfoFile whose TOML does not parse — an unquoted URL, a mistake
+# the linter catches but YAML's block scalar hides from review. The operator
+# must refuse to publish it and record Valid=False with the parser's message.
+#
+#   kubectl apply -f samples/stellarinfofile-invalid.yaml
+#   kubectl describe sif broken-anchor | sed -n '/Conditions/,$p'
+#
+# Expected: Valid=False, reason LintFailed, message containing
+# `file/parse: Invalid TOML`, and no ConfigMap published for this resource.
+apiVersion: stellar.anchor-tools.io/v1alpha1
+kind: StellarInfoFile
+metadata:
+  name: broken-anchor
+spec:
+  toml: |
+    VERSION = "2.7.0"
+    NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"
+    HORIZON_URL = https://horizon.example.com
