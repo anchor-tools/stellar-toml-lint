@@ -881,6 +881,31 @@ worker.onmessage = (e) => console.log('Lint result:', e.data.result);
 worker.postMessage({ type: 'lint', content: tomlString });
 ```
 
+### ZIP archive batch validation
+
+Auditors can drag-and-drop a ZIP archive (or folder) containing dozens of
+`stellar.toml` files into the web playground and view an aggregate batch
+compliance report entirely client-side — nothing is uploaded to a remote
+server. The archive is unpacked in memory with JSZip, every `*.toml` is linted
+through a bounded worker pool, and the result is a pass/fail summary plus the
+most common error patterns across the batch.
+
+```ts
+import { validateZip, type BatchSummary } from 'stellar-toml-lint/browser';
+
+const buffer = await zipFile.arrayBuffer(); // <input type="file"> selection
+const report: BatchSummary = await validateZip(buffer, { concurrency: 4 });
+
+report.passed; // files with no errors
+report.failed; // files with at least one error
+report.passRate; // 0-100
+report.commonErrors; // [{ rule, count, files }] ranked by frequency
+report.results; // per-file lint results
+```
+
+The playground exposes this through its **Batch Validator** tab, which accepts
+a `.zip` upload and renders the aggregate table and per-file results offline.
+
 ### Capabilities & Typings
 
 One capability does not survive the move: a page cannot observe a TLS session, so the `security/*` audit is skipped in the browser and reported as not observed rather than guessed. `browserCapabilities` says the same thing at runtime, for callers that branch on it.

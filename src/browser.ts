@@ -24,6 +24,13 @@ import { UNKNOWN_TLS_SESSION } from './tls.js';
 import type { LintOptions, LintResult } from './types.js';
 import { generateCompliancePDF, downloadCompliancePDF } from './browser/pdf-exporter.js';
 import type { ComplianceReportData, PDFExportOptions } from './browser/pdf-exporter.js';
+import {
+  validateZip,
+  type BatchSummary,
+  type CommonError,
+  type ZipFileResult,
+  type ZipValidatorOptions,
+} from './browser/zip-validator.js';
 
 /** What this entry point can and cannot do, for callers that branch on it. */
 export const browserCapabilities = {
@@ -147,6 +154,11 @@ export async function lintBrowserDomain(
 export {
   generateCompliancePDF,
   downloadCompliancePDF,
+  validateZip,
   type ComplianceReportData,
   type PDFExportOptions,
+  type BatchSummary,
+  type CommonError,
+  type ZipFileResult,
+  type ZipValidatorOptions,
 };

@@ -4,15 +4,17 @@ import Diagnostics from './components/Diagnostics';
 import QuorumVisualizer from './components/QuorumVisualizer';
 import LiveNetworkProbe from './components/LiveNetworkProbe';
 import FixActions from './components/FixActions';
+import BatchValidator from './components/BatchValidator';
 import type { Diagnostic } from './types';
 
-type TabId = 'diagnostics' | 'quorum' | 'network' | 'fix';
+type TabId = 'diagnostics' | 'quorum' | 'network' | 'fix' | 'batch';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'diagnostics', label: 'Diagnostics' },
   { id: 'quorum', label: 'Quorum Visualizer' },
   { id: 'network', label: 'Live Network Probe' },
   { id: 'fix', label: 'Fix Actions' },
+  { id: 'batch', label: 'Batch Validator' },
 ];
 
 export default function App() {
@@ -53,6 +55,7 @@ export default function App() {
             {activeTab === 'quorum' && <QuorumVisualizer />}
             {activeTab === 'network' && <LiveNetworkProbe />}
             {activeTab === 'fix' && <FixActions />}
+            {activeTab === 'batch' && <BatchValidator />}
           </div>
         </div>
       </div>
