@@ -19,6 +19,7 @@ export interface LspInitializeResult {
   capabilities: {
     textDocumentSync?: { openClose: boolean; change: number };
     codeActionProvider?: boolean | { codeActionKinds?: string[] };
+    completionProvider?: { resolveProvider: boolean; triggerCharacters?: string[] };
     hoverProvider?: boolean;
   };
   serverInfo?: { name: string; version: string };
@@ -58,6 +59,11 @@ export interface CodeActionParams {
 }
 
 export interface HoverParams {
+  textDocument: { uri: string };
+  position: { line: number; character: number };
+}
+
+export interface CompletionParams {
   textDocument: { uri: string };
   position: { line: number; character: number };
 }

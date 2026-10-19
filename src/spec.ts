@@ -116,6 +116,7 @@ export const GLOBAL_FIELDS = [
 export const KNOWN_GLOBAL_FIELDS = new Set<string>([
   ...GLOBAL_FIELDS,
   ...Object.keys(DEPRECATED_FIELDS),
+  'MPC_GOVERNANCE',
   // Tables, handled by their own rule sets.
   'DOCUMENTATION',
   'PRINCIPALS',
@@ -340,6 +341,13 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
     name: 'NETWORK_PASSPHRASE',
     type: 'string',
     description: 'The passphrase for the specific Stellar network this infrastructure operates on.',
+    anchor: 'general-information',
+  },
+  {
+    section: '',
+    name: 'MPC_GOVERNANCE',
+    type: 'table (extension)',
+    description: 'Optional MPC custody declaration used by the network governance audit.',
     anchor: 'general-information',
   },
   {

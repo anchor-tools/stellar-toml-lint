@@ -1016,6 +1016,22 @@
     "validators/unknown-field": {
       "units": 0.4636,
       "rmeFraction": 0.0033
+    },
+    "security/missing-corp-header": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "security/missing-opener-policy": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "security/missing-nosniff-header": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "security/insufficient-mpc-threshold": {
+      "units": 0,
+      "rmeFraction": 0
     }
   }
 }

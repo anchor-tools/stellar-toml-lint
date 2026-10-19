@@ -2656,7 +2656,7 @@ matter of appending one object to a list and one fixture to a test.
 ### VS Code extension
 
 Official VS Code client for `stellar.toml` files with live SEP-1 diagnostics,
-quick-fix code actions, hover documentation, SEP-1 syntax highlighting, a
+context-aware completions and starter snippets, quick-fix code actions, hover documentation, SEP-1 syntax highlighting, a
 `$(check)`/`$(error)` status bar item, and the `stellar-toml.lint`,
 `stellar-toml.format`, and `stellar-toml.readiness` commands. Activates for
 `stellar.toml` and `.well-known/` files and spawns `stellar-toml-lint --lsp`
@@ -2707,6 +2707,48 @@ resource (`StellarInfoFile`) and have the operator in
 [`integrations/k8s/`](./integrations/k8s/) reconcile it into a ConfigMap and
 Ingress, recording SEP-1 validation verdicts as `Valid`/`SyncError` status
 conditions.
+
+### Jenkins Shared Library
+
+The shared library runs the published container, publishes Checkstyle findings
+through Warnings Next Generation and JUnit results, and applies configurable
+error and warning limits.
+
+```groovy
+@Library('stellar-toml-lint') _
+
+pipeline {
+  agent any
+  stages {
+    stage('Lint stellar.toml') {
+      steps {
+        stellarTomlLint(file: 'public/.well-known/stellar.toml', maxErrors: 0, maxWarnings: 2)
+      }
+    }
+  }
+}
+```
+
+See [integrations/jenkins/](./integrations/jenkins/) for the shared-library step.
+
+### MPC custody declaration
+
+`--check-network` validates an optional MPC declaration against its provider
+JSON certification and the signers and thresholds reported by Horizon. The
+certification must include `provider`, `threshold`, and `participants`, and
+attest to values at least as strong as the declaration:
+
+```toml
+[MPC_GOVERNANCE]
+PROVIDER = "Example Custody"
+CERTIFICATION_URL = "https://custody.example/certification.json"
+THRESHOLD = 2
+PARTICIPANTS = 3
+SIGNER_KEYS = ["G...", "G...", "G..."]
+```
+
+The minimum accepted disclosure is 2-of-n. The account's declared keys must be
+active signers whose combined weight meets its medium and high thresholds.
 
 ```bash
 kubectl apply -f integrations/k8s/crds/stellarinfofile.yaml

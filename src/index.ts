@@ -579,6 +579,19 @@ export type {
 } from './security/multisig.js';
 
 export {
+  auditCorpHeaders,
+  corpHeaderRules,
+  SECURITY_MISSING_CORP_HEADER,
+  SECURITY_MISSING_NOSNIFF_HEADER,
+  SECURITY_MISSING_OPENER_POLICY,
+} from './security/corp-auditor.js';
+export {
+  checkMpcGovernance,
+  mpcGovernanceRules,
+  SECURITY_INSUFFICIENT_MPC_THRESHOLD,
+} from './security/mpc-governance.js';
+
+export {
   analyzeCtCertificates,
   checkCertificateTransparency,
   checkCertificateTransparencyFromDocument,

@@ -103,6 +103,7 @@ import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkImmutabilityClaims } from './security/immutability-auditor.js';
 import { checkSigningKeyRevocation } from './security/key-revocation.js';
 import { checkSigningKeyMultisig } from './security/multisig.js';
+import { checkMpcGovernance } from './security/mpc-governance.js';
 import { checkCertificateTransparencyFromDocument } from './security/ct-auditor.js';
 import { checkValidatorDiversityFromDocument } from './validators/geo-diversity.js';
 import { validateAnchorDiscovery } from './validators/anchorDiscovery.js';
@@ -616,6 +617,7 @@ async function main(argv: string[]): Promise<number> {
               : []),
             ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkSigningKeyMultisig(domainResult.parsed, { rules, fetchImpl })),
+            ...(await checkMpcGovernance(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkImmutabilityClaims(domainResult.parsed, fetchImpl, { rules })),
             ...(await checkCertificateTransparencyFromDocument(domainResult.parsed, {
               rules,
@@ -994,6 +996,7 @@ async function main(argv: string[]): Promise<number> {
                   : []),
                 ...(await checkHistoryPublish(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkArchiveDiff(fileResult.parsed, fetchImpl, { rules })),
+                ...(await checkMpcGovernance(fileResult.parsed, { rules, fetchImpl })),
                 ...(cli.verifyBuckets
                   ? await checkBucketIntegrity(fileResult.parsed, fetchImpl, { rules })
                   : []),

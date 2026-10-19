@@ -13,10 +13,12 @@ import { lint } from '../lint.js';
 import type { Diagnostic } from '../types.js';
 import { codeActionsFor, toLspDiagnostic } from './code-actions.js';
 import type { LspCodeAction } from './code-actions.js';
+import { getCompletionItems } from './completion-provider.js';
 import { getHoverInfo } from './hover.js';
 import type { Hover } from './hover.js';
 import type {
   CodeActionParams,
+  CompletionParams,
   DidChangeTextDocumentParams,
   DidCloseTextDocumentParams,
   DidOpenTextDocumentParams,
@@ -63,6 +65,7 @@ export async function runLspServer(
             capabilities: {
               textDocumentSync: { openClose: true, change: SYNC_FULL },
               codeActionProvider: { codeActionKinds: ['quickfix'] },
+              completionProvider: { resolveProvider: false, triggerCharacters: ['=', '.'] },
               hoverProvider: true,
             },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
@@ -90,6 +93,12 @@ export async function runLspServer(
           const source = documents.get(params.textDocument.uri);
           if (source === undefined) return { jsonrpc: '2.0', id, result: null };
           const result: Hover | null = getHoverInfo(source, params.position);
+          return { jsonrpc: '2.0', id, result };
+        }
+        case 'textDocument/completion': {
+          const params = message.params as CompletionParams;
+          const source = documents.get(params.textDocument.uri);
+          const result = getCompletionItems(source ?? '', params.position);
           return { jsonrpc: '2.0', id, result };
         }
         default:

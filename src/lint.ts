@@ -30,6 +30,7 @@ import { checkOrgUrl } from './rules/org-url-check.js';
 import { checkDocCompliance } from './rules/doc-compliance.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkHistoryArchive } from './rules/history-url-check.js';
+import { auditCorpHeaders } from './security/corp-auditor.js';
 
 /** Severity ordering used for sorting and for `--max-warnings` style counts. */
 const SEVERITY_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -201,7 +202,16 @@ export async function lintDomain(
     // one reports a CORS failure on correctly-configured hosts.
     response = await fetchImpl(url, {
       redirect: 'follow',
-      headers: { Origin: PROBE_ORIGIN },
+      headers: {
+        Origin: PROBE_ORIGIN,
+        ...(options.checkNetwork
+          ? {
+              'Sec-Fetch-Site': 'cross-site',
+              'Sec-Fetch-Mode': 'cors',
+              'Sec-Fetch-Dest': 'empty',
+            }
+          : {}),
+      },
     });
   } catch (error) {
     return finalize(
@@ -265,6 +275,9 @@ export async function lintDomain(
   // Anchors sign SEP-10 challenges over this same host, so deprecated protocol
   // versions and weak cipher suites matter even when the file is flawless.
   const tls = await observeTls(url, fetchImpl, tlsProbe, options.rules);
+  if (options.checkNetwork) {
+    diagnostics.push(...auditCorpHeaders(response.headers, options.rules));
+  }
 
   // CORS is the single most common deployment failure: the file is valid, but
   // browser-based wallets cannot read it.

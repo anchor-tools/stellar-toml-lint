@@ -74,6 +74,8 @@ import { historyArchiveRules } from '../validators/historyArchive.js';
 import { bridgeReserveRules } from '../validators/bridgeReserve.js';
 import { corridorRoutingRules } from '../corridors/routingVerifier.js';
 import { redosDetectorRules } from './redos-detector.js';
+import { corpHeaderRules } from '../security/corp-auditor.js';
+import { mpcGovernanceRules } from '../security/mpc-governance.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -92,6 +94,8 @@ export const allRules: Rule[] = [
   ...historyArchiveRules,
   ...securityRules,
   ...multisigRules,
+  ...corpHeaderRules,
+  ...mpcGovernanceRules,
 
   emailMxRule,
 

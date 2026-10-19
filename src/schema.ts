@@ -206,6 +206,24 @@ export function getTomlJsonSchema(): Record<string, unknown> {
       DIRECT_PAYMENT_SERVER: httpsUrlField('SEP-31 direct payment server endpoint.'),
       ANCHOR_QUOTE_SERVER: httpsUrlField('SEP-38 anchor quote server endpoint.'),
       SIGNING_KEY: accountIdField('Stellar account used for SEP-10 challenge signatures.'),
+      MPC_GOVERNANCE: {
+        type: 'object',
+        description: 'Optional MPC custody declaration audited under --check-network.',
+        additionalProperties: false,
+        properties: {
+          PROVIDER: stringField('MPC custody provider name.'),
+          CERTIFICATION_URL: httpsUrlField('URL to the provider custody certification.'),
+          THRESHOLD: { type: 'integer', minimum: 2, description: 'Required signatures (t).' },
+          PARTICIPANTS: { type: 'integer', minimum: 2, description: 'MPC participants (n).' },
+          SIGNER_KEYS: {
+            type: 'array',
+            minItems: 2,
+            uniqueItems: true,
+            items: accountIdField('Stellar account key controlled by an MPC participant.'),
+          },
+        },
+        required: ['PROVIDER', 'CERTIFICATION_URL', 'THRESHOLD', 'PARTICIPANTS', 'SIGNER_KEYS'],
+      },
       DOCUMENTATION: documentationSchema,
       PRINCIPALS: {
         type: 'array',
