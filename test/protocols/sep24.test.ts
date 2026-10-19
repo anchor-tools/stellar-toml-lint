@@ -7,6 +7,10 @@ import {
   INVALID_FEE_SCHEMA_RULE,
   INTERACTIVE_URL_INSECURE_RULE,
 } from '../../src/protocols/sep24.js';
+import {
+  BLOCKING_FRAME_ANCESTORS_RULE,
+  MISSING_CLICKJACKING_PROTECTION_RULE,
+} from '../../src/security/csp-frame-auditor.js';
 
 const TRANSFER_SERVER_SEP0024 = 'https://api.example.com/sep24';
 const ISSUER_A = 'GAZ3V7WDE3TADF6UQWU3TAWQPVSW6ZV3NCCW6A7UN6HUDI5WXPMLQDFY';
@@ -52,6 +56,7 @@ function validInteractive(): Response {
 interface Routes {
   info?: () => Response;
   interactive?: () => Response;
+  interactivePage?: () => Response;
 }
 
 /** A path-routed fetch stub standing in for the anchor's SEP-24 transfer server. */
@@ -66,6 +71,13 @@ function fetchServer(routes: Routes): typeof fetch {
 
     if (url.pathname.includes('/transactions/deposit/interactive')) {
       return (routes.interactive ?? validInteractive)();
+    }
+
+    if (url.pathname === '/deposit/itxn_sep24_001') {
+      return (
+        routes.interactivePage ??
+        (() => new Response(null, { headers: { 'content-security-policy': 'frame-ancestors https://wallet.example' } }))
+      )();
     }
 
     throw new Error(`unexpected request to ${url}`);
@@ -159,6 +171,35 @@ describe('SEP-24 hosted deposit and withdrawal flow validator', () => {
     expect(insecure[0]?.message).toContain('http://');
   });
 
+  it('flags an interactive page that blocks wallet iframe embedding', async () => {
+    const diagnostics = await verifySep24(
+      DOC,
+      fetchServer({
+        interactivePage: () =>
+          new Response(null, { headers: { 'content-security-policy': "frame-ancestors 'none'" } }),
+      }),
+    );
+    expect(diagnostics.some((item) => item.rule === BLOCKING_FRAME_ANCESTORS_RULE)).toBe(true);
+  });
+
+  it('flags legacy X-Frame-Options DENY on an interactive page', async () => {
+    const diagnostics = await verifySep24(
+      DOC,
+      fetchServer({
+        interactivePage: () => new Response(null, { headers: { 'x-frame-options': 'DENY' } }),
+      }),
+    );
+    expect(diagnostics.some((item) => item.rule === BLOCKING_FRAME_ANCESTORS_RULE)).toBe(true);
+  });
+
+  it('warns when an interactive page has no framing protection', async () => {
+    const diagnostics = await verifySep24(
+      DOC,
+      fetchServer({ interactivePage: () => new Response(null) }),
+    );
+    expect(diagnostics.some((item) => item.rule === MISSING_CLICKJACKING_PROTECTION_RULE)).toBe(true);
+  });
+
   it('asserts sep24/info-endpoint-unreachable as a warning when /info throws', async () => {
     const diagnostics = await verifySep24(
       DOC,
@@ -223,6 +264,8 @@ describe('sep24Rules', () => {
 
     expect([...byId.keys()].sort()).toEqual(
       [
+        BLOCKING_FRAME_ANCESTORS_RULE,
+        MISSING_CLICKJACKING_PROTECTION_RULE,
         INFO_ENDPOINT_UNREACHABLE_RULE,
         CURRENCY_NOT_SUPPORTED_IN_INFO_RULE,
         INVALID_FEE_SCHEMA_RULE,
@@ -233,6 +276,8 @@ describe('sep24Rules', () => {
     expect(byId.get(CURRENCY_NOT_SUPPORTED_IN_INFO_RULE)?.severity).toBe('warning');
     expect(byId.get(INVALID_FEE_SCHEMA_RULE)?.severity).toBe('error');
     expect(byId.get(INTERACTIVE_URL_INSECURE_RULE)?.severity).toBe('error');
+    expect(byId.get(BLOCKING_FRAME_ANCESTORS_RULE)?.severity).toBe('error');
+    expect(byId.get(MISSING_CLICKJACKING_PROTECTION_RULE)?.severity).toBe('warning');
     for (const rule of sep24Rules) expect(rule.category).toBe('network');
   });
 });

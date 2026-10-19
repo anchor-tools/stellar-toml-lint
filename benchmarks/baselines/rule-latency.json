@@ -537,6 +537,10 @@
       "units": 0.0001,
       "rmeFraction": 0.0032
     },
+    "security/blocking-frame-ancestors-directive": {
+      "units": 0,
+      "rmeFraction": 0.001
+    },
     "security/dns-resolver-divergence": {
       "units": 0,
       "rmeFraction": 0.0028
@@ -553,6 +557,10 @@
       "units": 0,
       "rmeFraction": 0.0019
     },
+    "security/insufficient-hsts-max-age": {
+      "units": 0,
+      "rmeFraction": 0.001
+    },
     "security/invalid-regex": {
       "units": 0,
       "rmeFraction": 0.0009
@@ -568,6 +576,14 @@
     "security/missing-on-chain-verification-proof": {
       "units": 0,
       "rmeFraction": 0.0037
+    },
+    "security/missing-clickjacking-protection": {
+      "units": 0,
+      "rmeFraction": 0.001
+    },
+    "security/missing-hsts-header": {
+      "units": 0,
+      "rmeFraction": 0.001
     },
     "security/on-chain-toml-hash-mismatch": {
       "units": 0,

@@ -309,6 +309,20 @@ export type {
   DnsResolverResult,
 } from './security/dns-integrity.js';
 export {
+  checkHsts,
+  hstsAuditorRules,
+  MISSING_HSTS_HEADER_RULE,
+  INSUFFICIENT_HSTS_MAX_AGE_RULE,
+} from './security/hsts-auditor.js';
+export type { HstsOptions } from './security/hsts-auditor.js';
+export {
+  auditCspFramePolicy,
+  cspFrameAuditorRules,
+  BLOCKING_FRAME_ANCESTORS_RULE,
+  MISSING_CLICKJACKING_PROTECTION_RULE,
+} from './security/csp-frame-auditor.js';
+export type { CspFrameOptions } from './security/csp-frame-auditor.js';
+export {
   parseSep7Uri,
   validateSep7Uri,
   verifySep7Signature,

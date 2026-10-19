@@ -20,6 +20,11 @@ export interface LspInitializeResult {
     textDocumentSync?: { openClose: boolean; change: number };
     codeActionProvider?: boolean | { codeActionKinds?: string[] };
     hoverProvider?: boolean;
+    diagnosticProvider?: {
+      identifier: string;
+      interFileDependencies: boolean;
+      workspaceDiagnostics: boolean;
+    };
   };
   serverInfo?: { name: string; version: string };
 }

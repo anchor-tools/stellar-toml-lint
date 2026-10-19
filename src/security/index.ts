@@ -11,3 +11,5 @@
 export * from './dns-integrity.js';
 export * from './collateral-governance.js';
 export * from './sct-proof-verifier.js';
+export * from './hsts-auditor.js';
+export * from './csp-frame-auditor.js';

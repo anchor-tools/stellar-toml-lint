@@ -9,6 +9,7 @@
  * runtime deps to two packages).
  */
 import process from 'node:process';
+import { createHash } from 'node:crypto';
 import { lint } from '../lint.js';
 import type { Diagnostic } from '../types.js';
 import { codeActionsFor, toLspDiagnostic } from './code-actions.js';
@@ -34,8 +35,12 @@ export async function runLspServer(
   input: NodeJS.ReadableStream = process.stdin,
   output: NodeJS.WritableStream = process.stdout,
 ): Promise<void> {
-  const documents = new Map<string, string>();
+  const documents = new Map<
+    string,
+    { text: string; resultId: string; diagnostics: Diagnostic[] }
+  >();
   let shuttingDown = false;
+  let clientSupportsDiagnosticPull = false;
 
   const send = (message: RpcMessage): void => {
     const body = Buffer.from(JSON.stringify(message), 'utf8');
@@ -54,16 +59,32 @@ export async function runLspServer(
     });
   };
 
+  const updateDocument = (uri: string, text: string): void => {
+    const diagnostics = lint(text).diagnostics;
+    const resultId = createHash('sha256').update(text).digest('hex');
+    documents.set(uri, { text, resultId, diagnostics });
+    if (!clientSupportsDiagnosticPull) publishDiagnostics(uri, diagnostics);
+  };
+
   const handleRequest = (message: RpcMessage): RpcMessage => {
     const id = message.id ?? null;
     try {
       switch (message.method) {
         case 'initialize': {
+          const params = message.params as {
+            capabilities?: { textDocument?: { diagnostic?: unknown } };
+          };
+          clientSupportsDiagnosticPull = params.capabilities?.textDocument?.diagnostic !== undefined;
           const result: LspInitializeResult = {
             capabilities: {
               textDocumentSync: { openClose: true, change: SYNC_FULL },
               codeActionProvider: { codeActionKinds: ['quickfix'] },
               hoverProvider: true,
+              diagnosticProvider: {
+                identifier: SERVER_NAME,
+                interFileDependencies: false,
+                workspaceDiagnostics: true,
+              },
             },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
           };
@@ -75,22 +96,64 @@ export async function runLspServer(
         }
         case 'textDocument/codeAction': {
           const params = message.params as CodeActionParams;
-          const source = documents.get(params.textDocument.uri);
-          if (source === undefined) return { jsonrpc: '2.0', id, result: [] };
+          const document = documents.get(params.textDocument.uri);
+          if (document === undefined) return { jsonrpc: '2.0', id, result: [] };
           const result: LspCodeAction[] = codeActionsFor(
-            source,
+            document.text,
             params.textDocument.uri,
-            lint(source).diagnostics,
+            document.diagnostics,
             params.range,
           );
           return { jsonrpc: '2.0', id, result };
         }
         case 'textDocument/hover': {
           const params = message.params as HoverParams;
-          const source = documents.get(params.textDocument.uri);
-          if (source === undefined) return { jsonrpc: '2.0', id, result: null };
-          const result: Hover | null = getHoverInfo(source, params.position);
+          const document = documents.get(params.textDocument.uri);
+          if (document === undefined) return { jsonrpc: '2.0', id, result: null };
+          const result: Hover | null = getHoverInfo(document.text, params.position);
           return { jsonrpc: '2.0', id, result };
+        }
+        case 'textDocument/diagnostic': {
+          const params = message.params as {
+            textDocument: { uri: string };
+            previousResultId?: string;
+          };
+          const document = documents.get(params.textDocument.uri);
+          if (document === undefined) {
+            return {
+              jsonrpc: '2.0',
+              id,
+              result: { kind: 'full', items: [], resultId: createHash('sha256').update('').digest('hex') },
+            };
+          }
+          const result =
+            params.previousResultId === document.resultId
+              ? { kind: 'unchanged', resultId: document.resultId }
+              : {
+                  kind: 'full',
+                  resultId: document.resultId,
+                  items: document.diagnostics.map(toLspDiagnostic),
+                };
+          return { jsonrpc: '2.0', id, result };
+        }
+        case 'workspace/diagnostic': {
+          const params = message.params as {
+            previousResultIds?: { uri: string; value: string }[];
+          };
+          const previous = new Map(
+            (params.previousResultIds ?? []).map(({ uri, value }) => [uri, value]),
+          );
+          const items = [...documents].map(([uri, document]) =>
+            previous.get(uri) === document.resultId
+              ? { uri, kind: 'unchanged', resultId: document.resultId }
+              : {
+                  uri,
+                  kind: 'full',
+                  resultId: document.resultId,
+                  items: document.diagnostics.map(toLspDiagnostic),
+                },
+          );
+          return { jsonrpc: '2.0', id, result: { items } };
         }
         default:
           if (message.id !== undefined && message.id !== null) {
@@ -124,16 +187,14 @@ export async function runLspServer(
         return true;
       case 'textDocument/didOpen': {
         const params = message.params as DidOpenTextDocumentParams;
-        documents.set(params.textDocument.uri, params.textDocument.text);
-        publishDiagnostics(params.textDocument.uri, lint(params.textDocument.text).diagnostics);
+        updateDocument(params.textDocument.uri, params.textDocument.text);
         return true;
       }
       case 'textDocument/didChange': {
         const params = message.params as DidChangeTextDocumentParams;
         const text = params.contentChanges[params.contentChanges.length - 1]?.text;
         if (text === undefined) return true;
-        documents.set(params.textDocument.uri, text);
-        publishDiagnostics(params.textDocument.uri, lint(text).diagnostics);
+        updateDocument(params.textDocument.uri, text);
         return true;
       }
       case 'textDocument/didClose': {

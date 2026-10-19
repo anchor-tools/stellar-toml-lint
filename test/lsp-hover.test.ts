@@ -279,7 +279,9 @@ describe('textDocument/hover over stdio', () => {
   it('advertises hover and answers a hover request with the field docs', async () => {
     const server = startServer();
     try {
-      const init = await server.request(1, 'initialize', { capabilities: {} });
+      const init = await server.request(1, 'initialize', {
+        capabilities: { textDocument: { diagnostic: {} } },
+      });
       const capabilities = (init.result as { capabilities: Record<string, unknown> }).capabilities;
       expect(capabilities.hoverProvider).toBe(true);
 
@@ -304,6 +306,57 @@ describe('textDocument/hover over stdio', () => {
         position: { line: blankLine, character: 0 },
       });
       expect(blank.result).toBeNull();
+    } finally {
+      server.close();
+    }
+  }, 20_000);
+});
+
+describe('diagnostic pull over stdio', () => {
+  it('returns full, unchanged, updated, and workspace diagnostic reports', async () => {
+    const server = startServer();
+    try {
+      const init = await server.request(1, 'initialize', {
+        capabilities: { textDocument: { diagnostic: {} } },
+      });
+      const capabilities = (init.result as { capabilities: Record<string, unknown> }).capabilities;
+      expect(capabilities.diagnosticProvider).toEqual({
+        identifier: 'stellar-toml-lint',
+        interFileDependencies: false,
+        workspaceDiagnostics: true,
+      });
+
+      const uri = 'file:///stellar.toml';
+      server.notify('textDocument/didOpen', {
+        textDocument: { uri, version: 1, text: DOC },
+      });
+      const first = await server.request(2, 'textDocument/diagnostic', {
+        textDocument: { uri },
+      });
+      const firstReport = first.result as { kind: string; resultId: string; items: unknown[] };
+      expect(firstReport.kind).toBe('full');
+      expect(firstReport.resultId).toBeTruthy();
+      expect(firstReport.items.length).toBeGreaterThan(0);
+
+      const unchanged = await server.request(3, 'textDocument/diagnostic', {
+        textDocument: { uri },
+        previousResultId: firstReport.resultId,
+      });
+      expect(unchanged.result).toEqual({ kind: 'unchanged', resultId: firstReport.resultId });
+
+      server.notify('textDocument/didChange', {
+        textDocument: { uri, version: 2 },
+        contentChanges: [{ text: DOC.replace('VERSION = "2.7.0"', 'VERSION = "2.8.0"') }],
+      });
+      const workspace = await server.request(4, 'workspace/diagnostic', {
+        previousResultIds: [{ uri, value: firstReport.resultId }],
+      });
+      const workspaceItems = (
+        workspace.result as { items: { kind: string; uri: string; resultId?: string }[] }
+      ).items;
+      expect(workspaceItems).toHaveLength(1);
+      expect(workspaceItems[0]).toMatchObject({ uri, kind: 'full' });
+      expect(workspaceItems[0]?.resultId).not.toBe(firstReport.resultId);
     } finally {
       server.close();
     }

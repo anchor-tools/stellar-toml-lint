@@ -21,6 +21,7 @@
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 import { isString, isUrl } from '../predicates.js';
 import { currenciesOf } from '../rules/currencies.js';
+import { auditCspFramePolicy, cspFrameAuditorRules } from '../security/csp-frame-auditor.js';
 
 export const INFO_ENDPOINT_UNREACHABLE_RULE = 'sep24/info-endpoint-unreachable';
 export const CURRENCY_NOT_SUPPORTED_IN_INFO_RULE = 'sep24/currency-not-supported-in-info';
@@ -318,7 +319,10 @@ async function checkInteractive(run: Run, doc: Record<string, unknown>): Promise
       `TRANSFER_SERVER_SEP0024 interactive deposit returned a non-HTTPS url "${url}"`,
       'Serve interactive sessions over HTTPS; browsers refuse to open insecure deposit flows.',
     );
+    return;
   }
+
+  run.diagnostics.push(...(await auditCspFramePolicy(url, run.fetchImpl, run.options)));
 }
 
 /**
@@ -360,6 +364,7 @@ export async function verifySep24(
 
 /** Registered so `--list-rules` and `--off`/`--warn`/`--error` know these ids. */
 export const sep24Rules: Rule[] = [
+  ...cspFrameAuditorRules,
   {
     id: INFO_ENDPOINT_UNREACHABLE_RULE,
     category: 'network',
