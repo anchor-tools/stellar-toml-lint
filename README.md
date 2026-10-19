@@ -183,7 +183,9 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                             |
 | `--check-network`           | Verify accounts, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online                            |
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                       |
-| `--audit-security`          | Audit cross-server token binding (SEP-10 JWT vs downstream endpoints) (requires `--check-network`)                      |
+| `--audit-routing`           | Compare host announcements with public RPKI route data (requires `--check-network`)                                     |
+| `--audit-security`          | Audit token binding and CAA endpoint policy (requires `--check-network`)                                                |
+| `--audit-routing`           | Compare host announcements with public RPKI route data (requires `--check-network`)                                     |
 | `--verify-sep6`             | Run end-to-end programmatic SEP-6 integration tester (requires `--check-network`)                                       |
 | `--verify-sep31`            | Audit SEP-31 cross-border payment lifecycle, schema, and webhook delivery (requires `--check-network`)                  |
 | `--verify-sep30`            | Validate RECOVERY_SERVER /accounts endpoint and signer public keys (requires `--check-network`)                         |
@@ -282,6 +284,8 @@ failure.
 | `--check-network`                  | Verify accounts, fixed-supply issuer locks, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, TLS certificate expiry, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online                                      |
 | `--verify-sep10`                   | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                                                                                                               |
 | `--check-ipv6`                     | Resolve AAAA records for the anchor domain and every service endpoint, and verify each IPv6 address accepts a TCP connection (requires `--check-network`)                                                       |
+| `--audit-routing`                  | Resolve host routes and check origin ASNs against public RPKI data (requires `--check-network`)                                                                                                                 |
+| `--audit-routing`                  | Resolve host routes and check origin ASNs against public RPKI data (requires `--check-network`)                                                                                                                 |
 | `--verify-directory-sync`          | Compare ecosystem directory listings with `stellar.toml` (`ORG_NAME`, `ORG_URL`, `ACCOUNTS`, and SEP-6/24/31/38 capability flags) (requires `--check-network`)                                                  |
 | `--directory-feed <url>`           | Directory registry JSON endpoint to audit with `--verify-directory-sync` (repeatable; defaults to the Stellar Expert SEP-37 directory)                                                                          |
 | `--verify-sep31`                   | Audit SEP-31 cross-border payment lifecycle, schema, and webhook delivery (requires `--check-network`)                                                                                                          |
@@ -2074,6 +2078,22 @@ verifies Ed25519 signatures in `signature` query parameters against `SIGNING_KEY
 to acquire a test JWT from `WEB_AUTH_ENDPOINT` and verifies that declared downstream endpoints (`TRANSFER_SERVER_SEP0024`,
 `KYC_SERVER`, and `DIRECT_PAYMENT_SERVER`) authenticate and accept the token (`security/jwt-rejected-by-transfer-server`, error).
 Validates domain binding between the JWT `iss` claim and the anchor host domain (`security/jwt-domain-mismatch`, error).
+
+**Email spoofing and certificate issuance auditors** — With `--check-network`, resolves root-domain SPF and DMARC TXT
+records. A non-strict SPF policy emits `security/weak-spf-policy` (warning), and a missing or non-enforcing DMARC
+policy emits `security/missing-dmarc-record` (warning). With `--check-network`, the TLS probe verifies key exchange
+and tests session resumption after ten minutes. Static key exchange emits `security/lacks-forward-secrecy` (error);
+a resumed session emits `security/session-resumption-insecure` (warning), prompting review of server-side key rotation
+and session lifetime settings. With `--check-network --audit-security`, the CAA auditor resolves records for the root
+domain and declared HTTPS endpoints and compares active certificate issuers with permitted CAs. Missing CAA policy
+emits `security/missing-caa-records` (warning); an unauthorized issuer emits
+`security/unauthorized-issuing-ca` (error).
+
+**BGP route and RPKI auditor** (with `--check-network --audit-routing`) — Resolves the anchor domain and declared
+service endpoint addresses, retrieves announced prefixes and origin ASNs from RIPEstat, and checks their ROA state.
+An invalid origin emits `network/rpki-invalid-route` (error); a missing or unknown ROA state emits
+`network/unverified-bgp-announcement` (warning). Unavailable DNS or RIPEstat data is treated as unobserved rather
+than as a route finding. Repeat `--expected-asn AS<number>` to flag origin ASNs not declared by the operator.
 
 **SEP-6 programmatic integration tester** (with `--check-network --verify-sep6`) — Performs end-to-end simulation of
 programmatic deposit and withdrawal flows against `TRANSFER_SERVER`. Validates GET `/deposit` and `/withdraw` parameter

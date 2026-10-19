@@ -332,6 +332,42 @@ export {
 export type { TokenBindingOptions } from './security/token-binding.js';
 
 export {
+  auditEmailDns,
+  DEFAULT_EMAIL_DNS_DOMAIN_SOURCE,
+  dmarcAuditorRules,
+  SECURITY_MISSING_DMARC_RULE,
+  SECURITY_WEAK_SPF_RULE,
+} from './security/dmarc-auditor.js';
+export type { DmarcAuditorOptions, TxtResolver } from './security/dmarc-auditor.js';
+
+export {
+  auditCaa,
+  isCaaIssuerAuthorized,
+  caaAuditorRules,
+  SECURITY_MISSING_CAA_RULE,
+  SECURITY_UNAUTHORIZED_CA_RULE,
+} from './security/caa-auditor.js';
+export type {
+  CaaAuditorOptions,
+  CaaRecord,
+  CaaResolver,
+  CertificateIssuerProbe,
+} from './security/caa-auditor.js';
+
+export {
+  auditTlsForwardSecrecy,
+  tlsPfsAuditorRules,
+  DEFAULT_TLS_SESSION_OBSERVATION_WINDOW_MS,
+  SECURITY_LACKS_FORWARD_SECRECY_RULE,
+  SECURITY_SESSION_RESUMPTION_RULE,
+} from './security/tls-pfs-auditor.js';
+export type {
+  TlsHandshakeObservation,
+  TlsPfsAuditorOptions,
+  TlsProbe as TlsPfsProbe,
+} from './security/tls-pfs-auditor.js';
+
+export {
   verifySep6Integration,
   sep6IntegrationRules,
   sep6IntegrationRuleIds,
@@ -749,6 +785,19 @@ export type {
   MultiplexingMeasurement,
   MultiplexingProbe,
 } from './network/http-version-auditor.js';
+
+export {
+  auditBgpRoutes,
+  bgpRouteDetectorRules,
+  DEFAULT_RIPESTAT_URL,
+  NETWORK_RPKI_INVALID_ROUTE_RULE,
+  NETWORK_UNVERIFIED_BGP_RULE,
+} from './network/bgp-route-detector.js';
+export type {
+  AddressResolver,
+  BgpRoute,
+  BgpRouteAuditorOptions,
+} from './network/bgp-route-detector.js';
 
 export {
   SlaCalculator,

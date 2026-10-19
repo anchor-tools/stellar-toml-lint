@@ -1016,6 +1016,38 @@
     "validators/unknown-field": {
       "units": 0.4636,
       "rmeFraction": 0.0033
+    },
+    "security/missing-dmarc-record": {
+      "units": 0,
+      "rmeFraction": 0.0369
+    },
+    "security/weak-spf-policy": {
+      "units": 0,
+      "rmeFraction": 0.0276
+    },
+    "security/missing-caa-records": {
+      "units": 0,
+      "rmeFraction": 0.0103
+    },
+    "security/unauthorized-issuing-ca": {
+      "units": 0,
+      "rmeFraction": 0.0193
+    },
+    "security/lacks-forward-secrecy": {
+      "units": 0,
+      "rmeFraction": 0.0345
+    },
+    "security/session-resumption-insecure": {
+      "units": 0,
+      "rmeFraction": 0.0199
+    },
+    "network/rpki-invalid-route": {
+      "units": 0,
+      "rmeFraction": 0.0061
+    },
+    "network/unverified-bgp-announcement": {
+      "units": 0,
+      "rmeFraction": 0.0131
     }
   }
 }

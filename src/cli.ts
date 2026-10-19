@@ -18,6 +18,7 @@ import { checkCorsPreflight } from './network/cors-preflight.js';
 import { checkCertExpiry } from './network/cert-expiry.js';
 import { auditIpv6Reachability } from './network/ipv6-auditor.js';
 import { auditHttpVersions } from './network/http-version-auditor.js';
+import { auditBgpRoutes } from './network/bgp-route-detector.js';
 import { checkRateLimitResilience } from './network/rate-limit-tester.js';
 import { horizonUrlFor } from './network-checks.js';
 import { checkSignatureStateMachineFromDocument } from './security/signature-state-machine.js';
@@ -104,6 +105,9 @@ import { checkImmutabilityClaims } from './security/immutability-auditor.js';
 import { checkSigningKeyRevocation } from './security/key-revocation.js';
 import { checkSigningKeyMultisig } from './security/multisig.js';
 import { checkCertificateTransparencyFromDocument } from './security/ct-auditor.js';
+import { auditEmailDns } from './security/dmarc-auditor.js';
+import { auditCaa } from './security/caa-auditor.js';
+import { auditTlsForwardSecrecy } from './security/tls-pfs-auditor.js';
 import { checkValidatorDiversityFromDocument } from './validators/geo-diversity.js';
 import { validateAnchorDiscovery } from './validators/anchorDiscovery.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
@@ -199,6 +203,8 @@ interface Cli {
   failOn?: Severity;
   checkNetwork: boolean;
   checkIpv6?: boolean;
+  auditRouting?: boolean;
+  expectedAsns?: string[];
   verifyDirectorySync?: boolean;
   directoryFeeds?: string[];
   auditQuorum: boolean;
@@ -329,6 +335,10 @@ OPTIONS
                           anchor domain and every service endpoint, and verify
                           each IPv6 address accepts a TCP connection (for
                           DNS64/NAT64 IPv6-only mobile networks)
+      --audit-routing     With --check-network: compare announced routes with
+                          public RPKI data from RIPEstat; repeat --expected-asn
+                          to flag unexpected origin ASNs
+      --expected-asn <asn> Expected BGP origin ASN for --audit-routing (repeatable)
       --verify-directory-sync
                           With --check-network: compare ecosystem directory
                           listings with stellar.toml (ORG_NAME, ORG_URL,
@@ -338,8 +348,8 @@ OPTIONS
                           --verify-directory-sync (repeatable; defaults to the
                           Stellar Expert SEP-37 directory)
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
-      --audit-security    Audit cross-server token binding (SEP-10 JWT against
-                          TRANSFER_SERVER_SEP0024, KYC_SERVER, DIRECT_PAYMENT_SERVER)
+      --audit-security    Audit token binding and CAA policy for declared
+              service endpoints
       --verify-sep6       Run end-to-end programmatic SEP-6 integration tester
       --verify-sep31      Audit SEP-31 cross-border payment lifecycle and schema
       --verify-sep8       Simulate SEP-8 regulated asset compliance approval server interaction
@@ -594,6 +604,9 @@ async function main(argv: string[]): Promise<number> {
         );
         if (domainResult.parsed && cli.checkNetwork) {
           const networkDiagnostics: Diagnostic[] = [
+            ...(cli.mockFixtures === undefined
+              ? await auditEmailDns(domainResult.parsed, { rules })
+              : []),
             ...(await checkHistoryPublish(domainResult.parsed, fetchImpl, { rules })),
             ...(await checkArchiveDiff(domainResult.parsed, fetchImpl, { rules })),
             ...(cli.verifyBuckets
@@ -613,6 +626,9 @@ async function main(argv: string[]): Promise<number> {
                   rules,
                   domain: cli.domain,
                 })
+              : []),
+            ...(cli.auditSecurity && cli.mockFixtures === undefined
+              ? await auditCaa(domainResult.parsed, { rules, domain: cli.domain })
               : []),
             ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkSigningKeyMultisig(domainResult.parsed, { rules, fetchImpl })),
@@ -694,6 +710,9 @@ async function main(argv: string[]): Promise<number> {
             ...(cli.mockFixtures === undefined
               ? await auditHttpVersions(domainResult.parsed, { rules, domain: cli.domain })
               : []),
+            ...(cli.mockFixtures === undefined
+              ? await auditTlsForwardSecrecy(domainResult.parsed, { rules, domain: cli.domain })
+              : []),
             // The peer-port probe dials raw TCP for the same reason.
             ...(cli.mockFixtures === undefined
               ? await checkPeerPortReachability(domainResult.parsed, { rules })
@@ -701,6 +720,14 @@ async function main(argv: string[]): Promise<number> {
             // DNS + raw IPv6 sockets, outside the fixture transport.
             ...(cli.checkIpv6 && cli.mockFixtures === undefined
               ? await auditIpv6Reachability(domainResult.parsed, { rules, domain: cli.domain })
+              : []),
+            ...(cli.auditRouting && cli.mockFixtures === undefined
+              ? await auditBgpRoutes(domainResult.parsed, {
+                  rules,
+                  domain: cli.domain,
+                  fetchImpl,
+                  expectedAsns: cli.expectedAsns,
+                })
               : []),
             ...(cli.verifyDirectorySync
               ? await validateAnchorDiscovery(domainResult.parsed, {
@@ -853,6 +880,12 @@ async function main(argv: string[]): Promise<number> {
                 })),
                 ...(await checkSigningKeyRevocation(fileResult.parsed, { rules, fetchImpl })),
                 ...(await checkSigningKeyMultisig(fileResult.parsed, { rules, fetchImpl })),
+                ...(cli.mockFixtures === undefined
+                  ? await auditCaa(fileResult.parsed, {
+                      rules,
+                      ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                    })
+                  : []),
                 ...(cli.auditDiversity && cli.mockFixtures === undefined
                   ? await checkValidatorDiversityFromDocument(fileResult.parsed, { rules })
                   : []),
@@ -944,6 +977,15 @@ async function main(argv: string[]): Promise<number> {
             }
             if (cli.checkNetwork) {
               networkDiagnostics.push(
+                ...(cli.mockFixtures === undefined
+                  ? await auditEmailDns(fileResult.parsed, { rules })
+                  : []),
+                ...(cli.mockFixtures === undefined
+                  ? await auditTlsForwardSecrecy(fileResult.parsed, {
+                      rules,
+                      ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                    })
+                  : []),
                 ...(await checkHorizon(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkNetworkAccounts(fileResult.parsed, fetchImpl)),
                 ...(await checkDisplayDecimals(fileResult.parsed, fetchImpl, { rules: cli.rules })),
@@ -978,6 +1020,14 @@ async function main(argv: string[]): Promise<number> {
                   ? await auditIpv6Reachability(fileResult.parsed, {
                       rules,
                       ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                    })
+                  : []),
+                ...(cli.auditRouting && cli.mockFixtures === undefined
+                  ? await auditBgpRoutes(fileResult.parsed, {
+                      rules,
+                      ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                      fetchImpl,
+                      expectedAsns: cli.expectedAsns,
                     })
                   : []),
                 ...(cli.verifyDirectorySync
@@ -1785,6 +1835,19 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--check-ipv6':
         cli.checkIpv6 = true;
         break;
+
+      case '--audit-routing':
+        cli.auditRouting = true;
+        break;
+
+      case '--expected-asn': {
+        const value = requireValue(argv, ++i, arg).replace(/^AS/i, '');
+        if (!/^\d+$/.test(value))
+          throw new Error('--expected-asn expects an AS number, e.g. AS12345.');
+        cli.expectedAsns ??= [];
+        cli.expectedAsns.push(value);
+        break;
+      }
 
       case '--verify-directory-sync':
         cli.verifyDirectorySync = true;
