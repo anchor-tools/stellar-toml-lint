@@ -40,4 +40,19 @@ describe('origin IP exposure auditor', () => {
       [ORIGIN_IP_EXPOSED_RULE, 'warning'],
     ]);
   });
+
+  it('probes declared anchor service paths on candidate origin IPs', async () => {
+    const diagnostics = await auditOriginExposure(
+      { ...document, TRANSFER_SERVER: 'https://api.anchor.example/sep24' },
+      {
+        resolve: async (host) => ({
+          addresses: host === 'mail.anchor.example' ? ['8.8.4.8'] : [],
+          mailHosts: host === 'anchor.example' ? ['mail.anchor.example'] : [],
+          textRecords: [],
+        }),
+        probe: async (_ip, _host, path) => path === '/sep24',
+      },
+    );
+    expect(diagnostics[0]?.rule).toBe(ORIGIN_IP_EXPOSED_RULE);
+  });
 });

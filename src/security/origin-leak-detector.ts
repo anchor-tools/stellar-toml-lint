@@ -23,7 +23,7 @@ export interface OriginDnsRecords {
 const EMPTY_RECORDS: OriginDnsRecords = { addresses: [], mailHosts: [], textRecords: [] };
 
 export type OriginResolver = (hostname: string) => Promise<OriginDnsRecords>;
-export type OriginProbe = (ip: string, hostname: string) => Promise<boolean>;
+export type OriginProbe = (ip: string, hostname: string, path: string) => Promise<boolean>;
 
 export interface OriginLeakOptions {
   domain?: string;
@@ -50,7 +50,7 @@ const systemResolver: OriginResolver = async (hostname) => {
   };
 };
 
-const httpsOriginProbe: OriginProbe = async (ip, hostname) => {
+const httpsOriginProbe: OriginProbe = async (ip, hostname, path) => {
   const https = await import('node:https');
   return new Promise((resolve) => {
     const request = https.request(
@@ -58,7 +58,7 @@ const httpsOriginProbe: OriginProbe = async (ip, hostname) => {
         hostname: ip,
         servername: hostname,
         port: 443,
-        path: '/.well-known/stellar.toml',
+        path,
         method: 'GET',
         headers: { host: hostname },
         timeout: 3500,
@@ -73,8 +73,10 @@ const httpsOriginProbe: OriginProbe = async (ip, hostname) => {
         });
         response.on('end', () => {
           const body = Buffer.concat(chunks).toString('utf8');
+          const isStellarToml = /^\s*(?:VERSION|NETWORK_PASSPHRASE)\s*=/m.test(body);
           resolve(
-            response.statusCode === 200 && /^\s*(?:VERSION|NETWORK_PASSPHRASE)\s*=/m.test(body),
+            response.statusCode === 200 &&
+              (path === '/.well-known/stellar.toml' ? isStellarToml : body.length > 0),
           );
         });
         response.on('error', () => resolve(false));
@@ -162,12 +164,25 @@ export async function auditOriginExposure(
 
   const resolve = options.resolve ?? systemResolver;
   const probe = options.probe ?? httpsOriginProbe;
-  const endpointHosts = new Set<string>();
+  const endpointPaths = new Map<string, Set<string>>();
+  const addEndpoint = (host: string, path: string): void => {
+    const paths = endpointPaths.get(host) ?? new Set<string>();
+    paths.add(path);
+    endpointPaths.set(host, paths);
+  };
   for (const field of [...HTTPS_ENDPOINT_FIELDS, 'HORIZON_URL']) {
-    const host = hostOf(doc[field]);
-    if (host !== undefined) endpointHosts.add(host.toLowerCase());
+    const value = doc[field];
+    const host = hostOf(value);
+    if (host === undefined || typeof value !== 'string') continue;
+    try {
+      const url = new URL(value);
+      addEndpoint(host.toLowerCase(), url.pathname || '/');
+    } catch {
+      addEndpoint(host.toLowerCase(), '/');
+    }
   }
-  endpointHosts.add(domain);
+  addEndpoint(domain, '/.well-known/stellar.toml');
+  const endpointHosts = new Set(endpointPaths.keys());
 
   const [endpointRecords, rootRecords] = await Promise.all([
     Promise.all([...endpointHosts].map((host) => resolve(host).catch(() => EMPTY_RECORDS))),
@@ -202,10 +217,13 @@ export async function auditOriginExposure(
   for (const ip of ips) {
     if (edgeAddresses.has(ip)) continue;
     for (const hostname of endpointHosts) {
-      if (await probe(ip, hostname)) {
-        exposed.push(ip);
-        break;
+      for (const path of endpointPaths.get(hostname) ?? []) {
+        if (await probe(ip, hostname, path)) {
+          exposed.push(ip);
+          break;
+        }
       }
+      if (exposed.includes(ip)) break;
     }
   }
   if (exposed.length === 0) return [];
