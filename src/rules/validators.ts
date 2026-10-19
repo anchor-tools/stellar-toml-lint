@@ -3,6 +3,7 @@ import { KNOWN_VALIDATOR_FIELDS, RESERVED_VALIDATOR_ALIASES, specUrl } from '../
 import { isAccountId, isHostPort, isString } from '../predicates.js';
 import { historyUrlRules } from './history-url-check.js';
 import { dnsDiscoveryRules } from '../validators/dns-discovery.js';
+import { splitBrainRules } from '../validators/split-brain-solver.js';
 
 /** Reads `[[VALIDATORS]]` as a list of tables, ignoring malformed entries. */
 function validatorsOf(doc: Record<string, unknown>): Record<string, unknown>[] {
@@ -251,8 +252,14 @@ export const validatorRules: Rule[] = [
   },
 
   ...dnsDiscoveryRules,
+
+  // Quorum graph partitioning (issue #310): these run as part of the opt-in
+  // `--check-network --audit-quorum` audit, and are registered here so
+  // `--list-rules`, `--off`, `--warn`, and SARIF know their ids.
+  ...splitBrainRules,
 ];
 
 export { checkValidatorNetwork } from '../validators/check-validator.js';
 export { checkPeerPortReachability } from '../validators/net-probe.js';
 export { auditQuorumSets } from '../validators/quorum.js';
+export { checkSplitBrain } from '../validators/split-brain-solver.js';

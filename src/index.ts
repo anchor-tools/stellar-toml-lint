@@ -326,6 +326,26 @@ export {
 } from './validators/quorum-solver.js';
 export type { QuorumSet, QuorumSolverOptions, RawQuorumSet } from './validators/quorum-solver.js';
 export {
+  checkSplitBrain,
+  buildTrustGraph,
+  findBridgeNodes,
+  findOrganizationChokePoints,
+  flattenMembers,
+  minimumNodeCut,
+  analyzeQuorumSets,
+  splitBrainRules,
+  splitBrainRuleIds,
+  PARTITION_VULNERABILITY_RULE,
+  CRITICAL_BRIDGE_NODE_RULE,
+} from './validators/split-brain-solver.js';
+export type {
+  SplitBrainOptions,
+  QuorumAnalysis,
+  TrustGraph,
+  BridgeNode,
+  ChokePoint,
+} from './validators/split-brain-solver.js';
+export {
   checkDnsIntegrity,
   checkDnsIntegrityForDomain,
   checkDnssecIntegrity,

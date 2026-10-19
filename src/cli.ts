@@ -100,6 +100,7 @@ import {
   formatQuorumSummaryTable,
   simulateQuorumBft,
 } from './validators/quorum.js';
+import { checkSplitBrain } from './validators/split-brain-solver.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkImmutabilityClaims } from './security/immutability-auditor.js';
 import { checkSigningKeyRevocation } from './security/key-revocation.js';
@@ -129,6 +130,7 @@ import { generateDiagram, type GraphFormat } from './generators/diagram.js';
 import { deliverWebhooks, isSupportedWebhookUrl } from './reporters/webhook.js';
 import { runHealthCheck, formatHealthCheckTable } from './health-check.js';
 import { runDashboard, supportsDashboard } from './ui/dashboard.js';
+import { runRuleExplorerCli } from './ui/rule-explorer.js';
 import { loadPolicy, validatePolicy, evaluatePolicy } from './policy/engine.js';
 import { createFixtureFetch } from './mock-fixtures.js';
 import { runLspServer } from './lsp/server.js';
@@ -242,6 +244,7 @@ interface Cli {
   webhookSlack?: string;
   webhookDiscord?: string;
   interactive?: boolean;
+  exploreRules?: boolean;
   checkContracts: boolean;
   sorobanRpc?: string;
   evmRpc?: string;
@@ -313,6 +316,9 @@ OPTIONS
                           or issuer (see PRESETS)
   -i, --interactive       Full-screen dashboard to walk the findings. Needs a TTY;
                           without one the text reporter is used instead
+      --explore-rules     Fuzzy-search every rule, read its description and spec
+                          link, and preview --off/--warn/--error overrides. In
+                          a non-terminal it prints the rule catalogue and exits
       --lsp               Run as a Language Server on stdio (diagnostics,
                           quick-fix code actions, and SEP-1 hover docs)
   -q, --quiet             Report errors only
@@ -544,6 +550,12 @@ async function main(argv: string[]): Promise<number> {
 
   if (cli.formatFile) return formatFiles(cli);
 
+  // The explorer is about rules, not about a file, so it runs before any path
+  // is read and needs no file argument.
+  if (cli.exploreRules) {
+    return runRuleExplorerCli(allRules, { stdin: process.stdin, stdout: process.stdout });
+  }
+
   // Readiness draws its own report, so it only has a text and a JSON form.
   if (cli.readiness && cli.format !== 'text' && cli.format !== 'json') {
     process.stderr.write(
@@ -627,6 +639,9 @@ async function main(argv: string[]): Promise<number> {
               : []),
             ...(cli.auditQuorum || cli.auditSecurity
               ? await auditQuorumSets(domainResult.parsed, fetchImpl, { rules })
+              : []),
+            ...(cli.auditQuorum
+              ? await checkSplitBrain(domainResult.parsed, fetchImpl, { rules })
               : []),
             ...(cli.verifyDnssec
               ? await checkDnsIntegrity(domainResult.parsed, fetchImpl, {
@@ -1080,6 +1095,9 @@ async function main(argv: string[]): Promise<number> {
                   : []),
                 ...(cli.auditQuorum || cli.auditSecurity
                   ? await auditQuorumSets(fileResult.parsed, fetchImpl, { rules })
+                  : []),
+                ...(cli.auditQuorum
+                  ? await checkSplitBrain(fileResult.parsed, fetchImpl, { rules })
                   : []),
                 ...(cli.verifyDnssec
                   ? await checkDnsIntegrity(fileResult.parsed, fetchImpl, {
@@ -1858,6 +1876,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '-i':
       case '--interactive':
         cli.interactive = true;
+        break;
+
+      case '--explore-rules':
+        cli.exploreRules = true;
         break;
 
       case '--no-suggestions':

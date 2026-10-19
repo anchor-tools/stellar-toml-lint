@@ -1080,6 +1080,14 @@
     "overlay/disconnected-peer-component": {
       "units": 0,
       "rmeFraction": 0
+    },
+    "validators/partition-vulnerability": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "validators/critical-bridge-node": {
+      "units": 0,
+      "rmeFraction": 0
     }
   }
 }
