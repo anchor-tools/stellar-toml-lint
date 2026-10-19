@@ -139,13 +139,16 @@ it was before.
 | `--strict`              | Treat warnings as errors                                                        |
 | `--max-warnings <n>`    | Fail if warnings exceed `n`                                                     |
 | `--check-network`       | Verify accounts, `HORIZON_URL`, `AUTH_SERVER`, and `ANCHOR_QUOTE_SERVER` online |
+| `--verify-dnssec-chain` | Cryptographically verify DNSKEY, DS, and RRSIG chain to root anchors (requires `--check-network`) |
+| `--audit-security`      | Includes direct-origin IP exposure probes (requires `--check-network`)         |
+| `--report-pr-review`    | Post safe-fix inline suggestions from GitHub Actions                            |
 | `--off <rule>`          | Disable a rule (repeatable)                                                     |
 | `--error <rule>`        | Raise a rule to error (repeatable)                                              |
 | `--warn <rule>`         | Lower a rule to warning (repeatable)                                            |
 | `-q, --quiet`           | Show errors only                                                                |
 | `--count`               | Print only problem count totals                                                 |
 | `--silent-success`      | Print nothing on stdout when a run has no diagnostics                           |
-| `--export-anchor-tests` | Generate a JSON configuration for `@stellar/anchor-tests`                       |
+| `--export-anchor-tests` | Generate a JSON configuration for `@stellar/anchor-tests`                      |
 | `--show-help-urls`      | Print the spec link for each finding                                            |
 | `--list-rules`          | Print every rule and exit                                                       |
 | `--no-suggestions`      | Hide diagnostic suggestions in the output                                       |
@@ -2687,6 +2690,29 @@ Official GitHub App for automated `stellar.toml` linting in pull requests.
 Creates interactive Check Runs with inline code suggestions.
 
 See [integrations/github-app/](integrations/github-app/) for details.
+
+### GitHub Actions review suggestions
+
+Pass `--report-pr-review` in a pull-request workflow with `GITHUB_TOKEN` granted
+`pull-requests: write`. Diagnostics with safe autofixes are submitted as inline
+GitHub suggestion blocks; diagnostics without a mechanical fix are not posted.
+The existing exit code remains based on lint findings if GitHub review delivery
+fails.
+
+### GitOps admission webhook
+
+The Kubernetes webhook validates AdmissionReview requests before anchor
+configuration is applied. It is suitable for an Argo CD PreSync validation Job
+or as an API-server validating webhook protecting Flux-managed ConfigMaps.
+Deployment and certificate registration examples are in
+[`integrations/gitops/`](./integrations/gitops/).
+
+The origin exposure check is included with `--check-network --audit-security`.
+It checks MX/SPF and common sibling hostnames, then warns only when a candidate
+IP directly serves recognizable `stellar.toml` content outside the service
+DNS. The optional DNSSEC check retrieves DNS wire responses over HTTPS and
+independently verifies signatures and DS links against IANA root trust anchors.
+Expired RRSIGs receive a distinct error rule.
 
 ### Sublime Text LSP Package
 

@@ -12,6 +12,15 @@
 export { lint, lintDomain } from './lint.js';
 export { formatToml } from './format-file.js';
 export type { FormatResult } from './format-file.js';
+export { auditOriginExposure, ORIGIN_IP_EXPOSED_RULE } from './security/origin-leak-detector.js';
+export { verifyDnssecChain, verifyDnssecDomain } from './security/dnssec-chain-node.js';
+export { BROKEN_DNSSEC_CHAIN_RULE, EXPIRED_RRSIG_RULE } from './security/dnssec-chain.js';
+export {
+  evaluateGitOpsAdmission,
+  createGitOpsWebhookServer,
+  createGitOpsWebhookHttpsServer,
+} from './integrations/gitops/webhook.js';
+export { buildPullRequestReviewPayload, submitPullRequestReview } from './reporters/pr-reviewer.js';
 export { lspMain } from './lsp.js';
 export {
   parseCst,

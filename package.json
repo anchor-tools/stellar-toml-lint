@@ -80,8 +80,10 @@
   "dependencies": {
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.8.0",
+    "@relaycorp/dnssec": "^1.12.1",
     "@stellar/stellar-base": "^15.0.0",
     "@yao-pkg/pkg": "^5.16.1",
+    "dohdec": "^8.0.0",
     "jszip": "^3.10.1",
     "pdfmake": "^0.3.11",
     "smol-toml": "^1.7.1"

@@ -100,6 +100,9 @@ import {
   simulateQuorumBft,
 } from './validators/quorum.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
+import { auditOriginExposure } from './security/origin-leak-detector.js';
+import { verifyDnssecChain } from './security/dnssec-chain-node.js';
+import { submitPullRequestReview, type PullRequestReviewSource } from './reporters/pr-reviewer.js';
 import { checkImmutabilityClaims } from './security/immutability-auditor.js';
 import { checkSigningKeyRevocation } from './security/key-revocation.js';
 import { checkSigningKeyMultisig } from './security/multisig.js';
@@ -220,6 +223,8 @@ interface Cli {
   verifyIpfs?: boolean;
   crawlPeers: boolean;
   verifyDnssec: boolean;
+  verifyDnssecChain?: boolean;
+  reportPrReview?: boolean;
   verifyOverlay: boolean;
   verifyBuckets: boolean;
   badgeSvg?: string;
@@ -362,6 +367,9 @@ OPTIONS
                           with each [[VALIDATORS]] HOST and check its network,
                           node ID, and protocol version
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
+      --verify-dnssec-chain
+              Check DNSKEY, DS, and RRSIG evidence through a validating DoH resolver
+      --report-pr-review  Post fix-backed inline suggestions to the GitHub Actions pull request
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
                           (implied by --domain)
       --check-contracts   Verify that Soroban contracts are deployed on chain, that
@@ -542,6 +550,7 @@ async function main(argv: string[]): Promise<number> {
     }
 
     const results: { name: string; result: LintResult }[] = [];
+    const reviewSources: PullRequestReviewSource[] = [];
     // Each linted file's contract error catalogues, kept for the text report.
     const catalogues: ContractErrorCatalogue[] = [];
     // Project defaults from .stellartomlrc.json, overridden by any CLI flag.
@@ -608,11 +617,21 @@ async function main(argv: string[]): Promise<number> {
                   domain: cli.domain,
                 })
               : []),
+            ...(cli.verifyDnssecChain
+              ? await verifyDnssecChain(domainResult.parsed, {
+                  rules,
+                  domain: cli.domain,
+                  fetchImpl,
+                })
+              : []),
             ...(cli.auditSecurity
               ? await checkTokenBinding(domainResult.parsed, fetchImpl, {
                   rules,
                   domain: cli.domain,
                 })
+              : []),
+            ...(cli.auditSecurity && cli.mockFixtures === undefined
+              ? await auditOriginExposure(domainResult.parsed, { rules, domain: cli.domain })
               : []),
             ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkSigningKeyMultisig(domainResult.parsed, { rules, fetchImpl })),
@@ -856,6 +875,12 @@ async function main(argv: string[]): Promise<number> {
                 ...(cli.auditDiversity && cli.mockFixtures === undefined
                   ? await checkValidatorDiversityFromDocument(fileResult.parsed, { rules })
                   : []),
+                ...(cli.mockFixtures === undefined
+                  ? await auditOriginExposure(fileResult.parsed, {
+                      rules,
+                      ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                    })
+                  : []),
               );
             }
 
@@ -1006,6 +1031,13 @@ async function main(argv: string[]): Promise<number> {
                       ...(cli.domain === undefined ? {} : { domain: cli.domain }),
                     })
                   : []),
+                ...(cli.verifyDnssecChain
+                  ? await verifyDnssecChain(fileResult.parsed, {
+                      rules,
+                      fetchImpl,
+                      ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                    })
+                  : []),
                 // Offline signer/threshold analysis (see the domain path above).
                 ...checkSignatureStateMachineFromDocument(fileResult.parsed, { rules }),
                 ...(cli.mockFixtures === undefined
@@ -1151,6 +1183,13 @@ async function main(argv: string[]): Promise<number> {
             name: path === '-' ? 'stdin' : path,
             result: fileResult,
           });
+          if (path !== '-') {
+            reviewSources.push({
+              filename: path,
+              source,
+              diagnostics: fileResult.diagnostics,
+            });
+          }
         }
       }
     } catch (error) {
@@ -1388,6 +1427,15 @@ async function main(argv: string[]): Promise<number> {
           `Warning: ${delivery.channel} webhook failed after ${delivery.attempts} attempt(s)${
             delivery.error === undefined ? '' : `: ${delivery.error}`
           }\n`,
+        );
+      }
+    }
+
+    if (cli.reportPrReview) {
+      const review = await submitPullRequestReview(reviewSources, { fetchImpl });
+      if (!review.ok) {
+        process.stderr.write(
+          `Warning: GitHub PR review was not posted${review.reason ? `: ${review.reason}` : ''}\n`,
         );
       }
     }
@@ -1870,6 +1918,14 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-dnssec':
         cli.verifyDnssec = true;
+        break;
+
+      case '--verify-dnssec-chain':
+        cli.verifyDnssecChain = true;
+        break;
+
+      case '--report-pr-review':
+        cli.reportPrReview = true;
         break;
 
       case '--follow-links':

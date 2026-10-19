@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: stellar-toml-admission
+  namespace: stellar-system
+spec:
+  selector:
+    app: stellar-toml-admission
+  ports:
+    - name: https
+      port: 443
+      targetPort: 8443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stellar-toml-admission
+  namespace: stellar-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: stellar-toml-admission
+  template:
+    metadata:
+      labels:
+        app: stellar-toml-admission
+    spec:
+      containers:
+        - name: webhook
+          image: ghcr.io/anchor-tools/stellar-toml-lint:latest
+          command: ['node', 'dist/integrations/gitops/server.js']
+          env:
+            - name: PORT
+              value: '8443'
+            - name: TLS_KEY_FILE
+              value: /var/run/webhook-tls/tls.key
+            - name: TLS_CERT_FILE
+              value: /var/run/webhook-tls/tls.crt
+          ports:
+            - name: https
+              containerPort: 8443
+          volumeMounts:
+            - name: tls
+              mountPath: /var/run/webhook-tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: stellar-toml-admission-tls
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: stellar-toml-admission
+webhooks:
+  - name: stellar-toml.anchor-tools.io
+    admissionReviewVersions: ['v1']
+    sideEffects: None
+    failurePolicy: Fail
+    matchPolicy: Equivalent
+    clientConfig:
+      service:
+        namespace: stellar-system
+        name: stellar-toml-admission
+        path: /validate
+        port: 443
+      caBundle: REPLACE_WITH_BASE64_CA_BUNDLE
+    rules:
+      - apiGroups: ['']
+        apiVersions: ['v1']
+        operations: ['CREATE', 'UPDATE']
+        resources: ['configmaps']
+        scope: Namespaced
+    objectSelector:
+      matchLabels:
+        validate-stellar-toml: 'true'

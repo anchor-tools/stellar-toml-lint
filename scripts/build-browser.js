@@ -24,6 +24,16 @@ const NODE_BUILTINS = [
     exports: ['connect'],
   },
   {
+    module: /^node:https$/,
+    message: 'Direct origin HTTPS probes are not supported in browser environments.',
+    exports: ['request'],
+  },
+  {
+    module: /^node:dns\/promises$/,
+    message: 'DNS lookups are not supported in browser environments.',
+    exports: ['resolve4', 'resolveMx', 'resolveTxt'],
+  },
+  {
     module: /^node:net$/,
     message: 'Overlay TCP connections are not supported in browser environments.',
     exports: ['connect', 'createConnection', 'Socket'],
@@ -65,10 +75,13 @@ function shimFor(message, names) {
 const nodeShimPlugin = {
   name: 'node-builtins-shim',
   setup(build) {
-    build.onResolve({ filter: /^node:(tls|net|crypto|buffer|zlib|fs|path|process)$/ }, (args) => ({
-      path: args.path,
-      namespace: 'node-shim',
-    }));
+    build.onResolve(
+      { filter: /^node:(tls|https|dns\/promises|net|crypto|buffer|zlib|fs|path|process)$/ },
+      (args) => ({
+        path: args.path,
+        namespace: 'node-shim',
+      }),
+    );
     build.onLoad({ filter: /.*/, namespace: 'node-shim' }, (args) => {
       // Archive reads need a working inflate, so this one is a real passthrough
       // rather than a stub: a browser bundle gets the bytes it was given.
