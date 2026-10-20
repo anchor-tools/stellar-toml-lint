@@ -75,6 +75,7 @@ import { adminAuditorRules } from '../soroban/admin-auditor.js';
 import { simulationRules } from '../soroban/simulation.js';
 import { storageFootprintRules } from '../soroban/storage-footprint.js';
 import { authAuditorRules } from '../soroban/auth-auditor.js';
+import { authTreeSimulatorRules } from '../soroban/auth-tree-simulator.js';
 import { instanceStorageAuditorRules } from '../soroban/instance-storage-auditor.js';
 import { insecureHttpRule } from './insecure-http.js';
 import { multisigRules } from '../security/multisig.js';
@@ -128,6 +129,7 @@ export const allRules: Rule[] = [
   ...simulationRules,
   ...storageFootprintRules,
   ...authAuditorRules,
+  ...authTreeSimulatorRules,
   ...instanceStorageAuditorRules,
   ...sorobanErrorRules,
   ...multiNetworkRules,

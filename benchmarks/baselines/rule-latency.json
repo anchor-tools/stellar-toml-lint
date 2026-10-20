@@ -1184,6 +1184,14 @@
     "sep31/missing-sender-kyc-declaration": {
       "units": 0,
       "rmeFraction": 0
+    },
+    "soroban/unauthorized-cross-contract-call": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "soroban/unbounded-auth-grant": {
+      "units": 0,
+      "rmeFraction": 0
     }
   }
 }
