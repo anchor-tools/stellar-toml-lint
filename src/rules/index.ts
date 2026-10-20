@@ -38,7 +38,9 @@ import { bucketAuditorRules } from '../history/bucket-auditor.js';
 import { quorumSolverRules } from '../validators/quorum-solver.js';
 import { quorumAuditRules } from '../validators/quorum.js';
 import { dnsIntegrityRules } from '../security/dns-integrity.js';
+import { dmarcAuditorRules, caaAuditorRules, tlsPfsAuditorRules } from '../security/index.js';
 import { certExpiryRules } from '../network/cert-expiry.js';
+import { bgpRouteDetectorRules } from '../network/bgp-route-detector.js';
 import { ipv6AuditorRules } from '../network/ipv6-auditor.js';
 import { httpVersionAuditorRules } from '../network/http-version-auditor.js';
 import { slaCalculatorRules } from '../monitor/sla-calculator.js';
@@ -74,8 +76,8 @@ import { historyArchiveRules } from '../validators/historyArchive.js';
 import { bridgeReserveRules } from '../validators/bridgeReserve.js';
 import { corridorRoutingRules } from '../corridors/routingVerifier.js';
 import { redosDetectorRules } from './redos-detector.js';
-import { corpHeaderRules } from '../security/corp-auditor.js';
-import { mpcGovernanceRules } from '../security/mpc-governance.js';
+import { overlayDosRules } from '../overlay/dos-tester.js';
+import { topologyAnalyzerRules } from '../overlay/topology-analyzer.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -133,6 +135,8 @@ export const allRules: Rule[] = [
   ...corsPreflightRules,
   ...overlayCrawlerRules,
   ...overlayHandshakeRules,
+  ...overlayDosRules,
+  ...topologyAnalyzerRules,
   ...cryptoAuditorRules,
   ...historyPublishRules,
   ...archiveDiffRules,
@@ -140,6 +144,10 @@ export const allRules: Rule[] = [
   ...quorumSolverRules,
   ...quorumAuditRules,
   ...dnsIntegrityRules,
+  ...dmarcAuditorRules,
+  ...caaAuditorRules,
+  ...tlsPfsAuditorRules,
+  ...bgpRouteDetectorRules,
   ...certExpiryRules,
   ...ipv6AuditorRules,
   // `httpVersionAuditorRules` is folded into `generalRules` (see

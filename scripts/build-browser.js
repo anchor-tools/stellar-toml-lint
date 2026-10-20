@@ -29,6 +29,11 @@ const NODE_BUILTINS = [
     exports: ['connect', 'createConnection', 'Socket'],
   },
   {
+    module: /^node:dns\/promises$/,
+    message: 'System DNS resolution is not supported in browser environments.',
+    exports: ['resolveSrv', 'resolveTxt', 'resolveMx', 'lookup'],
+  },
+  {
     module: /^node:crypto$/,
     message: 'Node crypto is not supported in browser environments.',
     exports: [
@@ -65,10 +70,13 @@ function shimFor(message, names) {
 const nodeShimPlugin = {
   name: 'node-builtins-shim',
   setup(build) {
-    build.onResolve({ filter: /^node:(tls|net|crypto|buffer|zlib|fs|path|process)$/ }, (args) => ({
-      path: args.path,
-      namespace: 'node-shim',
-    }));
+    build.onResolve(
+      { filter: /^node:(tls|net|dns\/promises|crypto|buffer|zlib|fs|path|process)$/ },
+      (args) => ({
+        path: args.path,
+        namespace: 'node-shim',
+      }),
+    );
     build.onLoad({ filter: /.*/, namespace: 'node-shim' }, (args) => {
       // Archive reads need a working inflate, so this one is a real passthrough
       // rather than a stub: a browser bundle gets the bytes it was given.

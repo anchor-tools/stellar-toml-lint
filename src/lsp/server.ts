@@ -1,9 +1,10 @@
 /**
  * Language Server Protocol server over stdio — `stellar-toml-lint --lsp`.
  *
- * Speaks only what editors need to show diagnostics, offer #42 quick fixes, and
- * explain a field under the cursor: `initialize`, open/change/close sync,
- * `publishDiagnostics`, `textDocument/codeAction`, and `textDocument/hover`.
+ * Speaks only what editors need to show diagnostics, offer #42 quick fixes,
+ * explain a field under the cursor, and colour tokens by meaning: `initialize`,
+ * open/change/close sync, `publishDiagnostics`, `textDocument/codeAction`,
+ * `textDocument/hover`, and `textDocument/semanticTokens/full`.
  * Framing is the standard `Content-Length` header; payloads are UTF-8 JSON.
  * Deliberately no `vscode-languageserver` dependency (package.json freezes
  * runtime deps to two packages).
@@ -16,6 +17,7 @@ import type { LspCodeAction } from './code-actions.js';
 import { getCompletionItems } from './completion-provider.js';
 import { getHoverInfo } from './hover.js';
 import type { Hover } from './hover.js';
+import { computeSemanticTokens, SEMANTIC_TOKEN_LEGEND } from './semantic-tokens.js';
 import type {
   CodeActionParams,
   CompletionParams,
@@ -25,6 +27,8 @@ import type {
   HoverParams,
   LspInitializeResult,
   RpcMessage,
+  SemanticTokens,
+  SemanticTokensParams,
 } from './protocol.js';
 import { RPC_INTERNAL_ERROR, RPC_METHOD_NOT_FOUND, SYNC_FULL } from './protocol.js';
 
@@ -67,6 +71,7 @@ export async function runLspServer(
               codeActionProvider: { codeActionKinds: ['quickfix'] },
               completionProvider: { resolveProvider: false, triggerCharacters: ['=', '.'] },
               hoverProvider: true,
+              semanticTokensProvider: { legend: SEMANTIC_TOKEN_LEGEND, full: true },
             },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
           };
@@ -95,10 +100,12 @@ export async function runLspServer(
           const result: Hover | null = getHoverInfo(source, params.position);
           return { jsonrpc: '2.0', id, result };
         }
-        case 'textDocument/completion': {
-          const params = message.params as CompletionParams;
+        case 'textDocument/semanticTokens/full': {
+          const params = message.params as SemanticTokensParams;
           const source = documents.get(params.textDocument.uri);
-          const result = getCompletionItems(source ?? '', params.position);
+          const result: SemanticTokens = {
+            data: source === undefined ? [] : computeSemanticTokens(source),
+          };
           return { jsonrpc: '2.0', id, result };
         }
         default:
