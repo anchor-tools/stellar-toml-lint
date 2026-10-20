@@ -20,6 +20,7 @@ import { uppercaseKeyRules } from './uppercase-keys.js';
 import { whitespaceRules } from './whitespace.js';
 import { httpVersionAuditorRules } from '../network/http-version-auditor.js';
 import { vanityAuditorRules } from '../crypto/vanity-auditor.js';
+import { isPkcs11Uri, pkcs11ValidatorRules } from '../crypto/pkcs11-validator.js';
 
 /**
  * The `WEB_AUTH_CONTRACT_ID` when it is a valid C... id, with its file path,
@@ -38,6 +39,7 @@ export function webAuthContractIdOf(
 export const generalRules: Rule[] = [
   ...vanityAuditorRules,
   ...whitespaceRules,
+  ...pkcs11ValidatorRules,
   ...uppercaseKeyRules,
   trailingSlashRule,
   {
@@ -228,6 +230,10 @@ export const generalRules: Rule[] = [
         const value = ctx.doc[field];
         if (value === undefined) continue;
         if (isAccountId(value)) continue;
+        // A PKCS#11 URI is an enterprise key-vault pointer, not a Stellar
+        // account; the dedicated crypto/* rules validate its syntax and PIN
+        // handling.
+        if (isPkcs11Uri(value)) continue;
 
         // Distinguish "wrong kind of key" from "corrupt key" — the fix differs.
         const muxed = isMuxedAccountId(value);

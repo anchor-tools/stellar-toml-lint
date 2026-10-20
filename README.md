@@ -131,27 +131,30 @@ it was before.
 
 ### Options
 
-| Flag                    | Effect                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------- |
-| `-d, --domain <d>`      | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks           |
-| `-f, --format <fmt>`    | `text` (default), `summary`, `json`, `sarif`, `github`, `junit`, `sonar`        |
-| `--format-file`         | Rewrite files in place in canonical SEP-1 layout                                |
-| `--semantic-hash`       | Print a SHA-256 of each file's data, ignoring whitespace, comments, key order   |
-| `--strict`              | Treat warnings as errors                                                        |
-| `--max-warnings <n>`    | Fail if warnings exceed `n`                                                     |
-| `--check-network`       | Verify accounts, `HORIZON_URL`, `AUTH_SERVER`, and `ANCHOR_QUOTE_SERVER` online |
-| `--off <rule>`          | Disable a rule (repeatable)                                                     |
-| `--error <rule>`        | Raise a rule to error (repeatable)                                              |
-| `--warn <rule>`         | Lower a rule to warning (repeatable)                                            |
-| `-q, --quiet`           | Show errors only                                                                |
-| `--count`               | Print only problem count totals                                                 |
-| `--silent-success`      | Print nothing on stdout when a run has no diagnostics                           |
-| `--export-anchor-tests` | Generate a JSON configuration for `@stellar/anchor-tests`                       |
-| `--show-help-urls`      | Print the spec link for each finding                                            |
-| `--list-rules`          | Print every rule and exit                                                       |
-| `--explore-rules`       | Fuzzy-search rules interactively and preview `--off`/`--warn`/`--error` flags   |
-| `--no-suggestions`      | Hide diagnostic suggestions in the output                                       |
-| `--check-network`       | Validate `ORG_OFFICIAL_EMAIL` domain MX records for email deliverability        |
+| Flag                      | Effect                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `-d, --domain <d>`        | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks           |
+| `-f, --format <fmt>`      | `text` (default), `summary`, `json`, `sarif`, `github`, `junit`, `sonar`        |
+| `--format-file`           | Rewrite files in place in canonical SEP-1 layout                                |
+| `--semantic-hash`         | Print a SHA-256 of each file's data, ignoring whitespace, comments, key order   |
+| `--strict`                | Treat warnings as errors                                                        |
+| `--max-warnings <n>`      | Fail if warnings exceed `n`                                                     |
+| `--check-network`         | Verify accounts, `HORIZON_URL`, `AUTH_SERVER`, and `ANCHOR_QUOTE_SERVER` online |
+| `--audit-fees`            | Compare fee disclosures across SEP-1, SEP-6, SEP-24, and SEP-38                 |
+| `--verify-postmessage`    | Inspect SEP-24 interactive `postMessage` callbacks                              |
+| `--postmessage-url <url>` | Interactive SEP-24 URL to inspect                                               |
+| `--off <rule>`            | Disable a rule (repeatable)                                                     |
+| `--error <rule>`          | Raise a rule to error (repeatable)                                              |
+| `--warn <rule>`           | Lower a rule to warning (repeatable)                                            |
+| `-q, --quiet`             | Show errors only                                                                |
+| `--count`                 | Print only problem count totals                                                 |
+| `--silent-success`        | Print nothing on stdout when a run has no diagnostics                           |
+| `--export-anchor-tests`   | Generate a JSON configuration for `@stellar/anchor-tests`                       |
+| `--show-help-urls`        | Print the spec link for each finding                                            |
+| `--list-rules`            | Print every rule and exit                                                       |
+| `--explore-rules`         | Fuzzy-search rules interactively and preview `--off`/`--warn`/`--error` flags   |
+| `--no-suggestions`        | Hide diagnostic suggestions in the output                                       |
+| `--check-network`         | Validate `ORG_OFFICIAL_EMAIL` domain MX records for email deliverability        |
 
 | Flag                      | Effect                                                                          |
 | ------------------------- | ------------------------------------------------------------------------------- |
@@ -188,6 +191,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                       |
 | `--audit-routing`           | Compare host announcements with public RPKI route data (requires `--check-network`)                                     |
 | `--audit-security`          | Audit token binding and CAA endpoint policy (requires `--check-network`)                                                |
+| `--audit-reserves`          | Compare external-chain collateral reserves with Stellar circulating supply (requires `--check-network`)                 |
 | `--audit-routing`           | Compare host announcements with public RPKI route data (requires `--check-network`)                                     |
 | `--verify-sep6`             | Run end-to-end programmatic SEP-6 integration tester (requires `--check-network`)                                       |
 | `--verify-sep31`            | Audit SEP-31 cross-border payment lifecycle, schema, and webhook delivery (requires `--check-network`)                  |
@@ -304,6 +308,7 @@ failure.
 | `--verify-sep12-deletion`          | Verify SEP-12 DELETE /customer endpoint for GDPR right-to-be-forgotten compliance (requires `--check-network`)                                                                                                                                                  |
 | `--verify-sep24-quote-lock`        | Audit SEP-24 interactive deposit fee quote stability across session (requires `--check-network`)                                                                                                                                                                |
 | `--verify-clawback`                | Verify asset clawback authority (CAP-35) via Horizon and Soroban RPC (requires `--check-network`)                                                                                                                                                               |
+| `--audit-reserves`                 | Compare external-chain collateral reserves (Ethereum, Bitcoin, Solana, Stellar) with Stellar circulating supply; emits `security/collateral-reserve-deficit` and `security/unsupported-collateral-chain` (requires `--check-network`)                           |
 | `--crawl-peers`                    | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                                                                                                                                                         |
 | `--verify-buckets`                 | Download a sample of each archive's `currentBuckets`, verify the SHA-256 of the decompressed stream, and decode the XDR `BucketEntry` stream; range-read random buckets to check gzip headers, CRC32 trailers, and leading records (requires `--check-network`) |
 | `--verify-history-gaps`            | Confirm every 64-ledger checkpoint across the last 10,000 archived ledgers is downloadable; missing runs emit `history/ledger-sequence-gap-detected` (requires `--check-network`)                                                                               |
@@ -1739,6 +1744,8 @@ interface Diagnostic {
     | 'currencies'
     | 'validators'
     | 'network'
+    | 'fees'
+    | 'sep24'
     | 'sep12';
   message: string;
   path?: string; // 'CURRENCIES[1].issuer'
@@ -1818,6 +1825,17 @@ not base64 (or `0x` hex for Ethereum), or decodes to the wrong length, emits
 `collateral_address_signatures` is validated to ensure proper base64 encoding (`currencies/invalid-signature-encoding`, error)
 and verified to decode to exactly 64 bytes for Ed25519 signatures (`currencies/invalid-signature-length`, error).
 Address families the linter cannot verify, such as taproot `bc1p...` (BIP-322), are skipped rather than reported.
+
+Ed25519 signatures are also checked for strict RFC 8032 canonical form: the `S` scalar must be less
+than the Curve25519 group order `L`. A non-canonical scalar emits
+`crypto/malleable-signature-detected` (error), because otherwise an intermediary can mutate the
+signature and transaction hash while the signature still verifies. SEP-10 challenge signatures are
+audited with the same primitive.
+
+Enterprise vault pointers in `SIGNING_KEY`, `URI_REQUEST_SIGNING_KEY`, or issuer fields are validated
+as RFC 7512 PKCS#11 URIs. A syntax or attribute problem emits `crypto/malformed-pkcs11-uri` (error),
+and a plaintext credential in `pin-value` emits `crypto/insecure-embedded-pkcs11-pin` (error); use
+`pin-source=file:/run/secrets/hsm-pin` instead.
 
 Asset-anchored currencies (`is_asset_anchored = true`) must use one of `fiat`, `crypto`, `stock`,
 `bond`, `commodity`, `real_estate`, or `other` for `anchor_asset_type`. Missing or invalid values
@@ -2079,6 +2097,24 @@ emits `bridge/over-reserved` (info). The locked balance is read over the EVM JSO
 with `--evm-rpc`, and a bridge without that endpoint or without a custody address degrades to
 `bridge/balance-unreachable` or `bridge/config-incomplete` (warnings).
 
+**Proof of reserve** (with `--check-network --audit-reserves`) — for every collateral address in
+`[[CURRENCIES]]`, the chain is inferred from the address (Ethereum `0x...`, Bitcoin `1...`/`3...`/`bc1...`,
+Solana base58, or Stellar `G...`) or taken from `collateral_chain` / `origin_network`. The auditor reads
+the native or token balance over the chain's JSON-RPC/REST endpoint, reads the asset's circulating
+supply from Horizon, and compares both with exact BigInt arithmetic. A reserve below supply emits
+`security/collateral-reserve-deficit` (error); an address whose chain cannot be determined or is not
+supported emits `security/unsupported-collateral-chain` (warning). Pass `--evm-rpc` to override the
+Ethereum endpoint, and set `collateral_token_address` (ERC-20/SPL) when the reserve is a token rather
+than the chain's native asset.
+
+**Key rotation synchronization** (with `--check-network`) — the last 90 days of Horizon
+`set_options` operations for `SIGNING_KEY` and each issuer account are replayed into a rotation
+timeline. When stellar.toml is not republished within 24 hours of the newest rotation (or was last
+updated before it), the linter emits `security/stale-signing-key-post-rotation` (error). Signers
+added on-chain but absent from `SIGNING_KEY`/`ACCOUNTS` emit `security/unrecorded-signer-addition`
+(warning). The HTTP `Last-Modified` header of the served file supplies the update time when the
+caller did not record one.
+
 **Contracts** (with `--check-contracts`) — a checksummed `C...` address says nothing about whether
 a contract was ever deployed there, so the linter queries the Soroban RPC's `getLedgerEntries` for
 the contract instance and WASM behind every `[[CURRENCIES]].contract` and `WEB_AUTH_CONTRACT_ID`:
@@ -2309,6 +2345,25 @@ XDR stream. Verifies that token contracts implement all 11 mandatory SEP-41 func
 `authorized`, `transfer`, `transfer_from`, `burn`, `burn_from`, `decimals`, `name`, `symbol`), validating parameter counts,
 argument types, and return types. Emits `soroban/wasm-not-found` (error), `soroban/missing-contract-spec` (error),
 `soroban/missing-sep41-function` (error), or `soroban/invalid-sep41-signature` (error).
+
+With `--check-network --audit-fees`, the linter also compares the fees an anchor publishes in
+`[[CURRENCIES]]` (`fee_fixed`, `fee_percent`, `fee_minimum`, and tiered `fee_tiers`/`fee_schedule`
+structures) against the deposit and withdrawal fees returned by `TRANSFER_SERVER/info`,
+`TRANSFER_SERVER_SEP0024/info`, and any explicit fee fields in `ANCHOR_QUOTE_SERVER/prices`. Fixed,
+percentage, or tiered schedules that disagree for the same asset emit
+`fees/contradictory-fee-schedules` (error), so a wallet never discovers the real price mid-transfer.
+An endpoint that charges a higher percentage than `stellar.toml` declares emits
+`fees/undisclosed-percentage-fee` (warning), surfacing hidden consumer costs before they are applied.
+
+With `--check-network --verify-postmessage`, the linter loads the anchor's SEP-24 interactive page in
+a headless browser and records outgoing `postMessage` callbacks. A callback sent with
+`targetOrigin: "*"` emits `sep24/insecure-postmessage-wildcard` (warning), because any embedding page
+can read the transaction payload. A callback whose payload is not a valid SEP-24 event such as
+`{ "type": "stellar:transaction_completed" }` emits `sep24/malformed-postmessage-payload` (error).
+The probe creates a test deposit session to discover the interactive URL; pass `--postmessage-url`
+to inspect a known URL directly. This check needs Playwright or Puppeteer installed in the
+environment running the linter (`npm install playwright && npx playwright install chromium`, or
+`npm install puppeteer`).
 
 ### Severity
 

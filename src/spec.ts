@@ -195,6 +195,11 @@ export const CURRENCY_FIELDS = [
   'approval_server',
   'approval_criteria',
   'toml',
+  'fee_fixed',
+  'fee_percent',
+  'fee_minimum',
+  'fee_tiers',
+  'fee_schedule',
 ] as const;
 
 /** `[[VALIDATORS]]` fields, in spec order. */
@@ -913,6 +918,43 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
     type: 'url',
     description:
       'Links out to a separate TOML file for the currency: stellar.toml can specify toml="https://DOMAIN/.well-known/CURRENCY.toml" as the currency’s only field.',
+    anchor: 'currency-documentation',
+  },
+  {
+    section: 'CURRENCIES',
+    name: 'fee_fixed',
+    type: 'number',
+    description: 'A fixed fee charged per transaction, in the asset\u2019s units.',
+    anchor: 'currency-documentation',
+  },
+  {
+    section: 'CURRENCIES',
+    name: 'fee_percent',
+    type: 'number',
+    description: 'A percentage fee charged per transaction, expressed as a percentage.',
+    anchor: 'currency-documentation',
+  },
+  {
+    section: 'CURRENCIES',
+    name: 'fee_minimum',
+    type: 'number',
+    description: 'The minimum fee charged per transaction, in the asset\u2019s units.',
+    anchor: 'currency-documentation',
+  },
+  {
+    section: 'CURRENCIES',
+    name: 'fee_tiers',
+    type: 'array of tables',
+    description:
+      'Tiered fee schedule entries, each bounded by min_amount/max_amount and carrying fixed and percent fee components.',
+    anchor: 'currency-documentation',
+  },
+  {
+    section: 'CURRENCIES',
+    name: 'fee_schedule',
+    type: 'table',
+    description:
+      'A structured fee schedule for the asset, used when a single fixed/percent pair cannot describe its fees.',
     anchor: 'currency-documentation',
   },
 

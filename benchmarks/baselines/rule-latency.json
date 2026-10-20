@@ -241,6 +241,14 @@
       "units": 0.002,
       "rmeFraction": 0.0046
     },
+    "fees/contradictory-fee-schedules": {
+      "units": 0,
+      "rmeFraction": 0.1331
+    },
+    "fees/undisclosed-percentage-fee": {
+      "units": 0,
+      "rmeFraction": 0.0577
+    },
     "file/max-size": {
       "units": 0.1248,
       "rmeFraction": 0.0052
@@ -689,6 +697,10 @@
       "units": 0,
       "rmeFraction": 0.0026
     },
+    "sep24/insecure-postmessage-wildcard": {
+      "units": 0,
+      "rmeFraction": 0.0904
+    },
     "sep24/interactive-url-insecure": {
       "units": 0,
       "rmeFraction": 0.0055
@@ -696,6 +708,10 @@
     "sep24/invalid-fee-schema": {
       "units": 0,
       "rmeFraction": 0.0009
+    },
+    "sep24/malformed-postmessage-payload": {
+      "units": 0,
+      "rmeFraction": 0.0245
     },
     "sep3/auth-server-unreachable": {
       "units": 0,
@@ -1190,6 +1206,26 @@
       "rmeFraction": 0
     },
     "sep31/missing-sender-kyc-declaration": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "crypto/malformed-pkcs11-uri": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "crypto/insecure-embedded-pkcs11-pin": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "crypto/malleable-signature-detected": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "security/stale-signing-key-post-rotation": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "security/unrecorded-signer-addition": {
       "units": 0,
       "rmeFraction": 0
     }

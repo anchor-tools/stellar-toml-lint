@@ -275,6 +275,8 @@ describe('sep24Rules', () => {
         CURRENCY_NOT_SUPPORTED_IN_INFO_RULE,
         INVALID_FEE_SCHEMA_RULE,
         INTERACTIVE_URL_INSECURE_RULE,
+        'sep24/insecure-postmessage-wildcard',
+        'sep24/malformed-postmessage-payload',
       ].sort(),
     );
     expect(byId.get(INFO_ENDPOINT_UNREACHABLE_RULE)?.severity).toBe('error');
@@ -283,6 +285,8 @@ describe('sep24Rules', () => {
     expect(byId.get(INTERACTIVE_URL_INSECURE_RULE)?.severity).toBe('error');
     expect(byId.get(BLOCKING_FRAME_ANCESTORS_RULE)?.severity).toBe('error');
     expect(byId.get(MISSING_CLICKJACKING_PROTECTION_RULE)?.severity).toBe('warning');
-    for (const rule of sep24Rules) expect(rule.category).toBe('network');
+    for (const rule of sep24Rules) {
+      expect(['network', 'sep24']).toContain(rule.category);
+    }
   });
 });

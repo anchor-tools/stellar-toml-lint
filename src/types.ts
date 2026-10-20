@@ -20,6 +20,8 @@ export type RuleCategory =
   | 'currencies'
   | 'validators'
   | 'network'
+  | 'fees'
+  | 'sep24'
   | 'policy'
   | 'sep12'
   | 'monitor'

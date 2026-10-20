@@ -22,6 +22,11 @@ import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 import { isString, isUrl } from '../predicates.js';
 import { currenciesOf } from '../rules/currencies.js';
 import { auditCspFramePolicy, cspFrameAuditorRules } from '../security/csp-frame-auditor.js';
+import {
+  checkSep24PostMessage,
+  sep24PostMessageRules,
+  type Sep24PostMessageOptions,
+} from './sep24-postmessage.js';
 
 export const INFO_ENDPOINT_UNREACHABLE_RULE = 'sep24/info-endpoint-unreachable';
 export const CURRENCY_NOT_SUPPORTED_IN_INFO_RULE = 'sep24/currency-not-supported-in-info';
@@ -35,6 +40,8 @@ const TEST_INTERACTIVE_JWT = 'sep24.lint.test.jwt';
 
 export interface Sep24Options {
   rules?: RuleOverrides;
+  verifyPostmessage?: boolean;
+  postmessage?: Omit<Sep24PostMessageOptions, 'rules'>;
 }
 
 /** One engine run: the transfer server under test, the transport, and what it found. */
@@ -340,26 +347,38 @@ export async function verifySep24(
   fetchImpl: typeof fetch = fetch,
   options: Sep24Options = {},
 ): Promise<Diagnostic[]> {
+  const diagnostics: Diagnostic[] = [];
   const preferred = doc.TRANSFER_SERVER_SEP0024;
   const fallback = doc.TRANSFER_SERVER;
   const server = isString(preferred) && isUrl(preferred) ? preferred : fallback;
-  if (!isString(server) || !isUrl(server)) return [];
 
-  const run: Run = {
-    base: server.replace(/\/+$/, ''),
-    fetchImpl,
-    options,
-    diagnostics: [],
-  };
+  if (isString(server) && isUrl(server)) {
+    const run: Run = {
+      base: server.replace(/\/+$/, ''),
+      fetchImpl,
+      options,
+      diagnostics: [],
+    };
 
-  const info = await checkInfo(run);
-  if (info !== null) {
-    checkCurrencies(run, doc, info);
-    checkFees(run, info);
+    const info = await checkInfo(run);
+    if (info !== null) {
+      checkCurrencies(run, doc, info);
+      checkFees(run, info);
+    }
+    await checkInteractive(run, doc);
+    diagnostics.push(...run.diagnostics);
   }
-  await checkInteractive(run, doc);
 
-  return run.diagnostics;
+  if (options.verifyPostmessage === true) {
+    diagnostics.push(
+      ...(await checkSep24PostMessage(doc, fetchImpl, {
+        ...options.postmessage,
+        ...(options.rules !== undefined ? { rules: options.rules } : {}),
+      })),
+    );
+  }
+
+  return diagnostics;
 }
 
 /** Registered so `--list-rules` and `--off`/`--warn`/`--error` know these ids. */
@@ -394,7 +413,26 @@ export const sep24Rules: Rule[] = [
     description: 'SEP-24 interactive deposit sessions must return an HTTPS url',
     run() {},
   },
+  ...sep24PostMessageRules,
 ];
 
 /** Rule ids emitted by {@link verifySep24}. */
 export const sep24RuleIds: readonly string[] = sep24Rules.map((rule) => rule.id);
+
+export {
+  analyzeSep24PostMessages,
+  checkSep24PostMessage,
+  INSECURE_POSTMESSAGE_WILDCARD_RULE,
+  MALFORMED_POSTMESSAGE_PAYLOAD_RULE,
+  sep24PostMessageRuleIds,
+  sep24PostMessageRules,
+  verifySep24PostMessage,
+} from './sep24-postmessage.js';
+
+export type {
+  CapturedPostMessage,
+  PostMessageCaptureOptions,
+  PostMessageDirection,
+  Sep24PostMessageLauncher,
+  Sep24PostMessageOptions,
+} from './sep24-postmessage.js';

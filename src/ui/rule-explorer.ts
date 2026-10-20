@@ -46,6 +46,8 @@ const CATEGORY_ANCHOR: Record<RuleCategory, string> = {
   currencies: 'currency-documentation',
   validators: 'validator-information',
   network: 'general-information',
+  fees: 'general-information',
+  sep24: 'general-information',
   policy: 'general-information',
   sep12: 'general-information',
   monitor: 'general-information',

@@ -2,6 +2,7 @@ import type { Rule } from '../types.js';
 import { TLS_SECURITY_DOC_URL } from '../spec.js';
 import { isDeprecatedTlsVersion, weakCipherSuiteIn } from '../tls.js';
 import { thresholdOptimizerRules } from '../security/threshold-optimizer.js';
+import { rotationDetectorRules } from '../security/rotation-detector.js';
 
 /**
  * Network-transport rules.
@@ -13,6 +14,7 @@ import { thresholdOptimizerRules } from '../security/threshold-optimizer.js';
  */
 export const securityRules: Rule[] = [
   ...thresholdOptimizerRules,
+  ...rotationDetectorRules,
   {
     id: 'security/deprecated-tls-version',
     category: 'network',
