@@ -19,6 +19,7 @@ import { trailingSlashRule } from './trailing-slash.js';
 import { uppercaseKeyRules } from './uppercase-keys.js';
 import { whitespaceRules } from './whitespace.js';
 import { httpVersionAuditorRules } from '../network/http-version-auditor.js';
+import { vanityAuditorRules } from '../crypto/vanity-auditor.js';
 
 /**
  * The `WEB_AUTH_CONTRACT_ID` when it is a valid C... id, with its file path,
@@ -35,6 +36,7 @@ export function webAuthContractIdOf(
 
 /** Rules covering file-level constraints and the global (untabled) fields. */
 export const generalRules: Rule[] = [
+  ...vanityAuditorRules,
   ...whitespaceRules,
   ...uppercaseKeyRules,
   trailingSlashRule,

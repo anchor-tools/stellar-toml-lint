@@ -670,6 +670,85 @@ export {
 } from './soroban/auth-auditor.js';
 export type { AuthAuditorOptions, ContractFunctionSpec } from './soroban/auth-auditor.js';
 
+export {
+  auditJwtCrypto,
+  verifyJwtCrypto,
+  checkJwtCrypto,
+  parseJwt,
+  decodeBase64Url,
+  jwtCryptoAuditorRules,
+  jwtCryptoRuleIds,
+  INSECURE_JWT_ALGORITHM_RULE,
+  JWT_SIGNATURE_VERIFICATION_FAILED_RULE,
+} from './security/jwt-crypto-auditor.js';
+export type {
+  JwtCryptoAuditorOptions,
+  JwtHeader,
+  JwtJwk,
+  JwtPayload,
+  ParsedJwt,
+} from './security/jwt-crypto-auditor.js';
+
+export {
+  auditZkpAttestations,
+  validateZkpAttestations,
+  checkZkpAttestations,
+  zkpAttestationRules,
+  zkpAttestationRuleIds,
+  MALFORMED_ZKP_PROOF_RULE,
+  MALFORMED_ZKP_PROOF_DATA_RULE,
+  ZKP_SUPPLY_COMMITMENT_MISMATCH_RULE,
+} from './crypto/zkp-attestation.js';
+export type { ZkpAttestationOptions } from './crypto/zkp-attestation.js';
+
+export {
+  simulateTrustlineFreezing,
+  simulateTrustLineFreeze,
+  simulateTrustlineRevocation,
+  simulateTrustlineAuthorization,
+  auditTrustlineSimulator,
+  checkTrustlineSimulator,
+  checkTrustlineFreezing,
+  auditTrustlineFreezing,
+  auditTrustlineAuthorization,
+  fetchIssuerAuthorization,
+  buildTrustLineFreezeTransaction,
+  hasFreezeDisclosure,
+  trustlineSimulatorRules,
+  trustlineSimulatorRuleIds,
+  UNDISCLOSED_FREEZING_RULE,
+  UNDISCLOSED_ASSET_FREEZING_RULE,
+} from './security/trustline-simulator.js';
+export type {
+  HorizonIssuerAuthorization,
+  TrustlineSimulatorOptions,
+} from './security/trustline-simulator.js';
+
+export {
+  auditVanityAddresses,
+  auditVanityAddress,
+  checkVanityAddresses,
+  analyzeVanityAddress,
+  vanityAuditorRules,
+  vanityAuditorRuleIds,
+  SUSPICIOUS_VANITY_ADDRESS_RULE,
+  VANITY_SECURITY_ADVISORY_URL,
+} from './crypto/vanity-auditor.js';
+export type { VanityAnalysis } from './crypto/vanity-auditor.js';
+
+export {
+  verifySep10,
+  sep10Rules,
+  sep10RuleIds,
+  INVALID_SOURCE_RULE,
+  INVALID_SEQUENCE_RULE,
+  EXPIRED_TIMEBOUNDS_RULE,
+  INVALID_SERVER_SIGNATURE_RULE,
+  MISSING_CLIENT_DOMAIN_RULE,
+  CHALLENGE_SUBMISSION_FAILED_RULE,
+} from './protocols/sep10.js';
+export type { Sep10Options } from './protocols/sep10.js';
+
 export type {
   Diagnostic,
   Fix,

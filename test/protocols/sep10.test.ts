@@ -46,9 +46,11 @@ function makeChallenge(server: Keypair, options: ChallengeOptions = {}): string 
   return tx.toXDR();
 }
 
-function makeJwt(payload: Record<string, unknown>): string {
+function makeJwt(server: Keypair, payload: Record<string, unknown>): string {
   const b64 = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
-  return `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64(payload)}.signature`;
+  const signingInput = `${b64({ alg: 'EdDSA', typ: 'JWT' })}.${b64(payload)}`;
+  const signature = server.sign(Buffer.from(signingInput)).toString('base64url');
+  return `${signingInput}.${signature}`;
 }
 
 function mockFetch(challengeXdr: string, token: string, status = 200): typeof fetch {
@@ -74,7 +76,7 @@ describe('verifySep10', () => {
     const server = Keypair.random();
     const now = Math.floor(Date.now() / 1000);
     const xdr = makeChallenge(server, { timebounds: freshTimebounds() });
-    const token = makeJwt({ iss: HOME, sub: 'GCLIENT', iat: now, exp: now + 3600 });
+    const token = makeJwt(server, { iss: HOME, sub: 'GCLIENT', iat: now, exp: now + 3600 });
 
     const diagnostics = await verifySep10(ENDPOINT, server.publicKey(), {
       fetchImpl: mockFetch(xdr, token),
@@ -92,7 +94,7 @@ describe('verifySep10', () => {
       source: Keypair.random().publicKey(),
       timebounds: freshTimebounds(),
     });
-    const token = makeJwt({ iss: HOME, sub: 'GCLIENT', iat: now, exp: now + 3600 });
+    const token = makeJwt(server, { iss: HOME, sub: 'GCLIENT', iat: now, exp: now + 3600 });
 
     const diagnostics = await verifySep10(ENDPOINT, server.publicKey(), {
       fetchImpl: mockFetch(xdr, token),
@@ -107,7 +109,7 @@ describe('verifySep10', () => {
     const server = Keypair.random();
     const now = Math.floor(Date.now() / 1000);
     const xdr = makeChallenge(server, { sequence: '42', timebounds: freshTimebounds() });
-    const token = makeJwt({ iss: HOME, sub: 'GCLIENT', iat: now, exp: now + 3600 });
+    const token = makeJwt(server, { iss: HOME, sub: 'GCLIENT', iat: now, exp: now + 3600 });
 
     const diagnostics = await verifySep10(ENDPOINT, server.publicKey(), {
       fetchImpl: mockFetch(xdr, token),
@@ -122,7 +124,7 @@ describe('verifySep10', () => {
     const server = Keypair.random();
     const now = Math.floor(Date.now() / 1000);
     const xdr = makeChallenge(server, {}); // no timebounds
-    const token = makeJwt({ iss: HOME, sub: 'GCLIENT', iat: now, exp: now + 3600 });
+    const token = makeJwt(server, { iss: HOME, sub: 'GCLIENT', iat: now, exp: now + 3600 });
 
     const diagnostics = await verifySep10(ENDPOINT, server.publicKey(), {
       fetchImpl: mockFetch(xdr, token),

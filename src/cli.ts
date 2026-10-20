@@ -74,6 +74,7 @@ import {
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkHistoryArchive } from './rules/history-url-check.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
+import { verifySep10 } from './protocols/sep10.js';
 import { checkTokenBinding } from './security/token-binding.js';
 import { verifySep6Integration } from './protocols/sep6.js';
 import { verifySep31 } from './protocols/sep31.js';
@@ -93,6 +94,7 @@ import { coordinateSep30Recovery } from './protocols/sep30-coordinator.js';
 import { verifySep24QuoteLock } from './protocols/sep24-quote-lock.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { simulateClawback } from './security/clawback-simulator.js';
+import { simulateTrustlineFreezing } from './security/trustline-simulator.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkArchiveDiff } from './history/archive-diff.js';
 import { checkBucketIntegrity } from './history/bucket-auditor.js';
@@ -651,6 +653,19 @@ async function main(argv: string[]): Promise<number> {
         );
         if (domainResult.parsed && cli.checkNetwork) {
           const networkDiagnostics: Diagnostic[] = [
+            ...(cli.verifySep10 && typeof domainResult.parsed.WEB_AUTH_ENDPOINT === 'string'
+              ? await verifySep10(
+                  domainResult.parsed.WEB_AUTH_ENDPOINT,
+                  typeof domainResult.parsed.SIGNING_KEY === 'string'
+                    ? domainResult.parsed.SIGNING_KEY
+                    : '',
+                  {
+                    rules,
+                    fetchImpl,
+                    ...(cli.domain === undefined ? {} : { homeDomain: cli.domain }),
+                  },
+                )
+              : []),
             ...(cli.mockFixtures === undefined
               ? await auditEmailDns(domainResult.parsed, { rules })
               : []),
@@ -690,6 +705,7 @@ async function main(argv: string[]): Promise<number> {
             ...(await checkSigningKeyMultisig(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkMpcGovernance(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkImmutabilityClaims(domainResult.parsed, fetchImpl, { rules })),
+            ...(await simulateTrustlineFreezing(domainResult.parsed, fetchImpl, { rules })),
             ...(await checkCertificateTransparencyFromDocument(domainResult.parsed, {
               rules,
               fetchImpl,
@@ -944,6 +960,11 @@ async function main(argv: string[]): Promise<number> {
                     ? ((fileResult.parsed as Record<string, unknown>).SIGNING_KEY as string)
                     : '';
                 networkDiagnostics.push(
+                  ...(await verifySep10(webAuthEndpoint, signingKey, {
+                    rules,
+                    fetchImpl,
+                    ...(cli.domain === undefined ? {} : { homeDomain: cli.domain }),
+                  })),
                   ...(await checkSep10Replay(signingKey, new URL(webAuthEndpoint).origin, {
                     rules,
                     fetchImpl,
@@ -1095,6 +1116,7 @@ async function main(argv: string[]): Promise<number> {
                 })),
                 ...(await checkFixedSupplyIssuerLocks(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkImmutabilityClaims(fileResult.parsed, fetchImpl, { rules })),
+                ...(await simulateTrustlineFreezing(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkCorsPreflight(fileResult.parsed, fetchImpl, { rules })),
                 // Opens its own sockets, outside the fixture transport.
                 ...(cli.mockFixtures === undefined

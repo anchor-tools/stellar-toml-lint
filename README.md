@@ -3026,6 +3026,30 @@ These auditors run automatically as part of `--check-network`:
   issuer account on Horizon: master weight 0, no active signers, and thresholds
   no signature set can ever reach. See
   [issue #390](https://github.com/anchor-tools/stellar-toml-lint/issues/390).
+- **SEP-10 JWT crypto auditor** (`src/security/jwt-crypto-auditor.ts`, rules
+  `security/insecure-jwt-algorithm` and
+  `security/jwt-signature-verification-failed`) acquires a token through the
+  SEP-10 challenge flow, rejects `none` and HMAC algorithms, and verifies EdDSA
+  signatures with `SIGNING_KEY` or RS256 signatures with published JWKS keys.
+  Enable with `--check-network --verify-sep10`. See
+  [issue #326](https://github.com/anchor-tools/stellar-toml-lint/issues/326).
+- **Trustline freeze simulator** (`src/security/trustline-simulator.ts`, rule
+  `security/undisclosed-asset-freezing-capability`) queries issuer account
+  flags on Horizon and builds the `SetTrustLineFlagsOp` that clears
+  `AUTHORIZED_FLAG`. An issuer that can freeze holders without a matching
+  `regulated = true` disclosure is reported. Enable with `--check-network`. See
+  [issue #327](https://github.com/anchor-tools/stellar-toml-lint/issues/327).
+- **Vanity address entropy auditor** (`src/crypto/vanity-auditor.ts`, rule
+  `crypto/suspicious-vanity-address`) inspects `SIGNING_KEY`, `ACCOUNTS`,
+  validator keys, and asset issuers for long dictionary, repeated, sequential,
+  or alternating prefixes associated with weak vanity generators. See
+  [issue #328](https://github.com/anchor-tools/stellar-toml-lint/issues/328).
+- **ZKP reserve attestation validator** (`src/crypto/zkp-attestation.ts`,
+  rules `crypto/malformed-zkp-proof-data` and
+  `crypto/zkp-supply-commitment-mismatch`) validates Groth16 `pi_a`/`pi_b`/`pi_c`
+  proof points, BLS12-381/BN254 curve declarations, public-input arrays, and
+  the supply commitment in `[[CURRENCIES]]` proof metadata. See
+  [issue #329](https://github.com/anchor-tools/stellar-toml-lint/issues/329).
 - **IPv6 dual-stack reachability auditor** (`src/network/ipv6-auditor.ts`, rules
   `network/missing-ipv6-aaaa-record`, `network/ipv6-connection-timeout`, and
   `network/ipv6-connection-failed`) resolves AAAA records for the anchor domain
@@ -3160,6 +3184,19 @@ Diagnostics emitted:
 | Rule                          | Severity | When it fires                                                                |
 | ----------------------------- | -------- | ---------------------------------------------------------------------------- |
 | `sep24/quote-fee-instability` | error    | Quoted fee (`fixed`, `percent`, `minimum`, or `maximum`) changes mid-session |
+
+### Cryptographic JWT, trustline, vanity, and ZKP auditors
+
+| Module                                | Rules                                                                           | What it checks                                                                                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/security/jwt-crypto-auditor.ts`  | `security/insecure-jwt-algorithm`, `security/jwt-signature-verification-failed` | SEP-10 JWT `alg` must be `EdDSA`/`ed25519` or `RS256`; `none` and `HS256`/`HS384`/`HS512` are rejected, and signatures are verified against `SIGNING_KEY` or JWKS. |
+| `src/security/trustline-simulator.ts` | `security/undisclosed-asset-freezing-capability`                                | Issuers with `auth_revocable` can clear `AUTHORIZED_FLAG`; the file must disclose freezing under `regulated = true` and a regulatory description.                  |
+| `src/crypto/vanity-auditor.ts`        | `crypto/suspicious-vanity-address`                                              | Flags public keys with long vanity prefixes that suggest weak PRNG-based generation, with an advisory link for known vulnerable tools.                             |
+| `src/crypto/zkp-attestation.ts`       | `crypto/malformed-zkp-proof-data`, `crypto/zkp-supply-commitment-mismatch`      | Validates Groth16 proof element shapes, BLS12-381/BN254 curves, public inputs, and that the supply commitment agrees with `fixed_number`/`max_number`.             |
+
+The JWT auditor runs with `--check-network --verify-sep10`; the trustline
+simulator runs with `--check-network`. The vanity and ZKP checks are offline
+and run as part of every lint.
 
 ### Asset clawback transaction simulator (`--verify-clawback`)
 
