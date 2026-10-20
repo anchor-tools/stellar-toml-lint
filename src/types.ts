@@ -198,6 +198,7 @@ export interface StellarToml {
   ACCOUNTS?: string[];
   WEB_AUTH_CONTRACT_ID?: string;
   SIGNING_KEY?: string;
+  MPC_GOVERNANCE?: Record<string, unknown>;
   URI_REQUEST_SIGNING_KEY?: string;
   FEDERATION_SERVER?: string;
   AUTH_SERVER?: string;

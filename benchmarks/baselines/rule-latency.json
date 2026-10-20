@@ -1032,6 +1032,78 @@
     "validators/unknown-field": {
       "units": 0.4636,
       "rmeFraction": 0.0033
+    },
+    "security/missing-dmarc-record": {
+      "units": 0,
+      "rmeFraction": 0.0369
+    },
+    "security/weak-spf-policy": {
+      "units": 0,
+      "rmeFraction": 0.0276
+    },
+    "security/missing-caa-records": {
+      "units": 0,
+      "rmeFraction": 0.0103
+    },
+    "security/unauthorized-issuing-ca": {
+      "units": 0,
+      "rmeFraction": 0.0193
+    },
+    "security/lacks-forward-secrecy": {
+      "units": 0,
+      "rmeFraction": 0.0345
+    },
+    "security/session-resumption-insecure": {
+      "units": 0,
+      "rmeFraction": 0.0199
+    },
+    "network/rpki-invalid-route": {
+      "units": 0,
+      "rmeFraction": 0.0061
+    },
+    "network/unverified-bgp-announcement": {
+      "units": 0,
+      "rmeFraction": 0.0131
+    },
+    "validators/dns-srv-record-missing": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "validators/dns-srv-target-unreachable": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "security/useless-signer-detected": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "security/unintended-veto-key": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "overlay/unprotected-connection-churn": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "overlay/peer-socket-exhaustion": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "overlay/high-topological-distance": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "overlay/disconnected-peer-component": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "validators/partition-vulnerability": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "validators/critical-bridge-node": {
+      "units": 0,
+      "rmeFraction": 0
     }
   }
 }

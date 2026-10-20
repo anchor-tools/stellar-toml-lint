@@ -312,51 +312,29 @@ describe('textDocument/hover over stdio', () => {
   }, 20_000);
 });
 
-describe('diagnostic pull over stdio', () => {
-  it('returns full, unchanged, updated, and workspace diagnostic reports', async () => {
+describe('textDocument/completion over stdio', () => {
+  it('advertises completion and returns scoped fields with templates', async () => {
     const server = startServer();
+    const source = '[[CURRENCIES]]\ncode = "USDC"\n';
     try {
-      const init = await server.request(1, 'initialize', {
-        capabilities: { textDocument: { diagnostic: {} } },
-      });
+      const init = await server.request(1, 'initialize', { capabilities: {} });
       const capabilities = (init.result as { capabilities: Record<string, unknown> }).capabilities;
-      expect(capabilities.diagnosticProvider).toEqual({
-        identifier: 'stellar-toml-lint',
-        interFileDependencies: false,
-        workspaceDiagnostics: true,
-      });
+      expect(capabilities.completionProvider).toMatchObject({ resolveProvider: false });
 
+      server.notify('initialized', {});
       const uri = 'file:///stellar.toml';
       server.notify('textDocument/didOpen', {
-        textDocument: { uri, version: 1, text: DOC },
+        textDocument: { uri, version: 1, text: source },
       });
-      const first = await server.request(2, 'textDocument/diagnostic', {
+      const response = await server.request(2, 'textDocument/completion', {
         textDocument: { uri },
+        position: { line: 2, character: 0 },
       });
-      const firstReport = first.result as { kind: string; resultId: string; items: unknown[] };
-      expect(firstReport.kind).toBe('full');
-      expect(firstReport.resultId).toBeTruthy();
-      expect(firstReport.items.length).toBeGreaterThan(0);
+      const items = (response.result as { items: { label: string }[] }).items;
 
-      const unchanged = await server.request(3, 'textDocument/diagnostic', {
-        textDocument: { uri },
-        previousResultId: firstReport.resultId,
-      });
-      expect(unchanged.result).toEqual({ kind: 'unchanged', resultId: firstReport.resultId });
-
-      server.notify('textDocument/didChange', {
-        textDocument: { uri, version: 2 },
-        contentChanges: [{ text: DOC.replace('VERSION = "2.7.0"', 'VERSION = "2.8.0"') }],
-      });
-      const workspace = await server.request(4, 'workspace/diagnostic', {
-        previousResultIds: [{ uri, value: firstReport.resultId }],
-      });
-      const workspaceItems = (
-        workspace.result as { items: { kind: string; uri: string; resultId?: string }[] }
-      ).items;
-      expect(workspaceItems).toHaveLength(1);
-      expect(workspaceItems[0]).toMatchObject({ uri, kind: 'full' });
-      expect(workspaceItems[0]?.resultId).not.toBe(firstReport.resultId);
+      expect(items.map((item) => item.label)).toContain('issuer');
+      expect(items.map((item) => item.label)).not.toContain('code');
+      expect(items.map((item) => item.label)).toContain('new-currency-anchored');
     } finally {
       server.close();
     }

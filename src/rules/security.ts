@@ -1,6 +1,7 @@
 import type { Rule } from '../types.js';
 import { TLS_SECURITY_DOC_URL } from '../spec.js';
 import { isDeprecatedTlsVersion, weakCipherSuiteIn } from '../tls.js';
+import { thresholdOptimizerRules } from '../security/threshold-optimizer.js';
 
 /**
  * Network-transport rules.
@@ -11,6 +12,7 @@ import { isDeprecatedTlsVersion, weakCipherSuiteIn } from '../tls.js';
  * configuration cannot be judged from a file on disk.
  */
 export const securityRules: Rule[] = [
+  ...thresholdOptimizerRules,
   {
     id: 'security/deprecated-tls-version',
     category: 'network',

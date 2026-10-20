@@ -230,6 +230,42 @@ export type {
   ValidatorEndpoint,
 } from './overlay/handshake.js';
 export {
+  checkOverlayDos,
+  auditOverlayDos,
+  testOverlayDos,
+  runOverlayDosTest,
+  overlayDosRules,
+  overlayDosRuleIds,
+  OVERLAY_UNPROTECTED_CONNECTION_CHURN,
+  OVERLAY_PEER_SOCKET_EXHAUSTION,
+  UNPROTECTED_CONNECTION_CHURN_RULE,
+  PEER_SOCKET_EXHAUSTION_RULE,
+  DEFAULT_DOS_ATTEMPTS,
+  DEFAULT_DOS_TIMEOUT_MS,
+} from './overlay/dos-tester.js';
+export type {
+  DosAttempt,
+  DosAttemptStatus,
+  DosProbe,
+  DosProbeResult,
+  OverlayDosOptions,
+  OverlayDosResult,
+} from './overlay/dos-tester.js';
+export {
+  analyzeOverlayTopology,
+  analyzePeerTopology,
+  checkOverlayTopology,
+  auditOverlayTopology,
+  topologyAnalyzerRules,
+  topologyAnalyzerRuleIds,
+  OVERLAY_HIGH_TOPOLOGICAL_DISTANCE,
+  OVERLAY_DISCONNECTED_PEER_COMPONENT,
+  HIGH_TOPOLOGICAL_DISTANCE_RULE,
+  DISCONNECTED_PEER_COMPONENT_RULE,
+  DEFAULT_MAX_TOPOLOGICAL_HOPS,
+} from './overlay/topology-analyzer.js';
+export type { TopologyAnalysis, TopologyOptions } from './overlay/topology-analyzer.js';
+export {
   checkHistoryPublish,
   checkHistoryPublishState,
   checkHistoryPublishValidator,
@@ -290,6 +326,26 @@ export {
 } from './validators/quorum-solver.js';
 export type { QuorumSet, QuorumSolverOptions, RawQuorumSet } from './validators/quorum-solver.js';
 export {
+  checkSplitBrain,
+  buildTrustGraph,
+  findBridgeNodes,
+  findOrganizationChokePoints,
+  flattenMembers,
+  minimumNodeCut,
+  analyzeQuorumSets,
+  splitBrainRules,
+  splitBrainRuleIds,
+  PARTITION_VULNERABILITY_RULE,
+  CRITICAL_BRIDGE_NODE_RULE,
+} from './validators/split-brain-solver.js';
+export type {
+  SplitBrainOptions,
+  QuorumAnalysis,
+  TrustGraph,
+  BridgeNode,
+  ChokePoint,
+} from './validators/split-brain-solver.js';
+export {
   checkDnsIntegrity,
   checkDnsIntegrityForDomain,
   checkDnssecIntegrity,
@@ -309,19 +365,24 @@ export type {
   DnsResolverResult,
 } from './security/dns-integrity.js';
 export {
-  checkHsts,
-  hstsAuditorRules,
-  MISSING_HSTS_HEADER_RULE,
-  INSUFFICIENT_HSTS_MAX_AGE_RULE,
-} from './security/hsts-auditor.js';
-export type { HstsOptions } from './security/hsts-auditor.js';
-export {
-  auditCspFramePolicy,
-  cspFrameAuditorRules,
-  BLOCKING_FRAME_ANCESTORS_RULE,
-  MISSING_CLICKJACKING_PROTECTION_RULE,
-} from './security/csp-frame-auditor.js';
-export type { CspFrameOptions } from './security/csp-frame-auditor.js';
+  checkValidatorDnsDiscovery,
+  checkDnsDiscovery,
+  auditValidatorDnsDiscovery,
+  resolveValidatorDnsDiscovery,
+  dnsDiscoveryRules,
+  dnsDiscoveryRuleIds,
+  VALIDATORS_DNS_SRV_RECORD_MISSING,
+  VALIDATORS_DNS_SRV_TARGET_UNREACHABLE,
+  DNS_SRV_RECORD_MISSING_RULE,
+  DNS_SRV_TARGET_UNREACHABLE_RULE,
+} from './validators/dns-discovery.js';
+export type {
+  DnsDiscoveryOptions,
+  DnsDiscoveryResolver,
+  DnsDiscoveryResult,
+  DnsTargetProbe,
+  SrvRecord,
+} from './validators/dns-discovery.js';
 export {
   parseSep7Uri,
   validateSep7Uri,
@@ -344,6 +405,42 @@ export {
   JWT_DOMAIN_MISMATCH_RULE,
 } from './security/token-binding.js';
 export type { TokenBindingOptions } from './security/token-binding.js';
+
+export {
+  auditEmailDns,
+  DEFAULT_EMAIL_DNS_DOMAIN_SOURCE,
+  dmarcAuditorRules,
+  SECURITY_MISSING_DMARC_RULE,
+  SECURITY_WEAK_SPF_RULE,
+} from './security/dmarc-auditor.js';
+export type { DmarcAuditorOptions, TxtResolver } from './security/dmarc-auditor.js';
+
+export {
+  auditCaa,
+  isCaaIssuerAuthorized,
+  caaAuditorRules,
+  SECURITY_MISSING_CAA_RULE,
+  SECURITY_UNAUTHORIZED_CA_RULE,
+} from './security/caa-auditor.js';
+export type {
+  CaaAuditorOptions,
+  CaaRecord,
+  CaaResolver,
+  CertificateIssuerProbe,
+} from './security/caa-auditor.js';
+
+export {
+  auditTlsForwardSecrecy,
+  tlsPfsAuditorRules,
+  DEFAULT_TLS_SESSION_OBSERVATION_WINDOW_MS,
+  SECURITY_LACKS_FORWARD_SECRECY_RULE,
+  SECURITY_SESSION_RESUMPTION_RULE,
+} from './security/tls-pfs-auditor.js';
+export type {
+  TlsHandshakeObservation,
+  TlsPfsAuditorOptions,
+  TlsProbe as TlsPfsProbe,
+} from './security/tls-pfs-auditor.js';
 
 export {
   verifySep6Integration,
@@ -591,6 +688,45 @@ export type {
   MultisigAnalysisInput,
   MultisigAuditOptions,
 } from './security/multisig.js';
+export {
+  optimizeThresholds,
+  analyzeThresholds,
+  optimizeSignerWeights,
+  solveMinimalWinningCoalitions,
+  minimalWinningCoalitions,
+  findMinimalWinningCoalitions,
+  checkThresholdOptimizer,
+  auditThresholds,
+  checkMultisigThresholds,
+  thresholdOptimizerRules,
+  thresholdOptimizerRuleIds,
+  SECURITY_USELESS_SIGNER_DETECTED,
+  SECURITY_UNINTENDED_VETO_KEY,
+  USELESS_SIGNER_DETECTED_RULE,
+  UNINTENDED_VETO_KEY_RULE,
+} from './security/threshold-optimizer.js';
+export type {
+  ThresholdName,
+  ThresholdSigner,
+  Thresholds,
+  ThresholdAccount,
+  SignerCoalition,
+  ThresholdOptimization,
+  ThresholdOptimizerOptions,
+} from './security/threshold-optimizer.js';
+
+export {
+  auditCorpHeaders,
+  corpHeaderRules,
+  SECURITY_MISSING_CORP_HEADER,
+  SECURITY_MISSING_NOSNIFF_HEADER,
+  SECURITY_MISSING_OPENER_POLICY,
+} from './security/corp-auditor.js';
+export {
+  checkMpcGovernance,
+  mpcGovernanceRules,
+  SECURITY_INSUFFICIENT_MPC_THRESHOLD,
+} from './security/mpc-governance.js';
 
 export {
   analyzeCtCertificates,
@@ -763,6 +899,19 @@ export type {
   MultiplexingMeasurement,
   MultiplexingProbe,
 } from './network/http-version-auditor.js';
+
+export {
+  auditBgpRoutes,
+  bgpRouteDetectorRules,
+  DEFAULT_RIPESTAT_URL,
+  NETWORK_RPKI_INVALID_ROUTE_RULE,
+  NETWORK_UNVERIFIED_BGP_RULE,
+} from './network/bgp-route-detector.js';
+export type {
+  AddressResolver,
+  BgpRoute,
+  BgpRouteAuditorOptions,
+} from './network/bgp-route-detector.js';
 
 export {
   SlaCalculator,

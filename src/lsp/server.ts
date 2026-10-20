@@ -1,9 +1,10 @@
 /**
  * Language Server Protocol server over stdio — `stellar-toml-lint --lsp`.
  *
- * Speaks only what editors need to show diagnostics, offer #42 quick fixes, and
- * explain a field under the cursor: `initialize`, open/change/close sync,
- * `publishDiagnostics`, `textDocument/codeAction`, and `textDocument/hover`.
+ * Speaks only what editors need to show diagnostics, offer #42 quick fixes,
+ * explain a field under the cursor, and colour tokens by meaning: `initialize`,
+ * open/change/close sync, `publishDiagnostics`, `textDocument/codeAction`,
+ * `textDocument/hover`, and `textDocument/semanticTokens/full`.
  * Framing is the standard `Content-Length` header; payloads are UTF-8 JSON.
  * Deliberately no `vscode-languageserver` dependency (package.json freezes
  * runtime deps to two packages).
@@ -14,16 +15,21 @@ import { lint } from '../lint.js';
 import type { Diagnostic } from '../types.js';
 import { codeActionsFor, toLspDiagnostic } from './code-actions.js';
 import type { LspCodeAction } from './code-actions.js';
+import { getCompletionItems } from './completion-provider.js';
 import { getHoverInfo } from './hover.js';
 import type { Hover } from './hover.js';
+import { computeSemanticTokens, SEMANTIC_TOKEN_LEGEND } from './semantic-tokens.js';
 import type {
   CodeActionParams,
+  CompletionParams,
   DidChangeTextDocumentParams,
   DidCloseTextDocumentParams,
   DidOpenTextDocumentParams,
   HoverParams,
   LspInitializeResult,
   RpcMessage,
+  SemanticTokens,
+  SemanticTokensParams,
 } from './protocol.js';
 import { RPC_INTERNAL_ERROR, RPC_METHOD_NOT_FOUND, SYNC_FULL } from './protocol.js';
 
@@ -79,12 +85,9 @@ export async function runLspServer(
             capabilities: {
               textDocumentSync: { openClose: true, change: SYNC_FULL },
               codeActionProvider: { codeActionKinds: ['quickfix'] },
+              completionProvider: { resolveProvider: false, triggerCharacters: ['=', '.'] },
               hoverProvider: true,
-              diagnosticProvider: {
-                identifier: SERVER_NAME,
-                interFileDependencies: false,
-                workspaceDiagnostics: true,
-              },
+              semanticTokensProvider: { legend: SEMANTIC_TOKEN_LEGEND, full: true },
             },
             serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
           };
@@ -113,47 +116,13 @@ export async function runLspServer(
           const result: Hover | null = getHoverInfo(document.text, params.position);
           return { jsonrpc: '2.0', id, result };
         }
-        case 'textDocument/diagnostic': {
-          const params = message.params as {
-            textDocument: { uri: string };
-            previousResultId?: string;
+        case 'textDocument/semanticTokens/full': {
+          const params = message.params as SemanticTokensParams;
+          const source = documents.get(params.textDocument.uri);
+          const result: SemanticTokens = {
+            data: source === undefined ? [] : computeSemanticTokens(source),
           };
-          const document = documents.get(params.textDocument.uri);
-          if (document === undefined) {
-            return {
-              jsonrpc: '2.0',
-              id,
-              result: { kind: 'full', items: [], resultId: createHash('sha256').update('').digest('hex') },
-            };
-          }
-          const result =
-            params.previousResultId === document.resultId
-              ? { kind: 'unchanged', resultId: document.resultId }
-              : {
-                  kind: 'full',
-                  resultId: document.resultId,
-                  items: document.diagnostics.map(toLspDiagnostic),
-                };
           return { jsonrpc: '2.0', id, result };
-        }
-        case 'workspace/diagnostic': {
-          const params = message.params as {
-            previousResultIds?: { uri: string; value: string }[];
-          };
-          const previous = new Map(
-            (params.previousResultIds ?? []).map(({ uri, value }) => [uri, value]),
-          );
-          const items = [...documents].map(([uri, document]) =>
-            previous.get(uri) === document.resultId
-              ? { uri, kind: 'unchanged', resultId: document.resultId }
-              : {
-                  uri,
-                  kind: 'full',
-                  resultId: document.resultId,
-                  items: document.diagnostics.map(toLspDiagnostic),
-                },
-          );
-          return { jsonrpc: '2.0', id, result: { items } };
         }
         default:
           if (message.id !== undefined && message.id !== null) {

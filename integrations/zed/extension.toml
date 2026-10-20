@@ -1,0 +1,18 @@
+id = "stellar-toml"
+name = "Stellar TOML"
+version = "0.1.0"
+schema_version = 1
+authors = ["anchor-tools <anchortools23@gmail.com>"]
+description = "SEP-1 stellar.toml support for Zed: syntax highlighting, code folding, and the stellar-toml-lint language server"
+repository = "https://github.com/anchor-tools/stellar-toml-lint"
+
+[language_servers.stellar-toml-lint]
+name = "Stellar TOML Lint"
+languages = ["stellar-toml"]
+
+# The grammar supplies the syntax tree the highlight and fold queries match
+# against. Pinned to a tag so an upstream grammar change cannot silently break
+# highlighting; bump deliberately.
+[grammars.stellar-toml]
+repository = "https://github.com/tree-sitter-grammars/tree-sitter-toml"
+rev = "v0.7.0"
