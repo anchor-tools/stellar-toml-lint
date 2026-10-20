@@ -13,6 +13,7 @@
  * values are separated by `&` and `=`. Percent escapes are decoded strictly.
  */
 import type { Diagnostic, Rule, RuleContext, RuleOverrides } from '../types.js';
+import { isString } from '../predicates.js';
 
 export const MALFORMED_PKCS11_URI_RULE = 'crypto/malformed-pkcs11-uri';
 export const INSECURE_EMBEDDED_PKCS11_PIN_RULE = 'crypto/insecure-embedded-pkcs11-pin';
@@ -299,6 +300,69 @@ export function checkPkcs11Pointers(
 export const checkPkcs11Uris = checkPkcs11Pointers;
 export const auditPkcs11Pointers = checkPkcs11Pointers;
 
+interface Pkcs11Pointer {
+  value: string;
+  path: string;
+}
+
+/**
+ * The fields that may legitimately carry a vault pointer. Scanning only these
+ * keeps both rules under the per-rule latency budget on large documents; the
+ * public {@link checkPkcs11Pointers} still offers a full recursive scan.
+ */
+const TOP_LEVEL_POINTER_FIELDS = ['SIGNING_KEY', 'URI_REQUEST_SIGNING_KEY'] as const;
+const CURRENCY_POINTER_FIELDS = ['issuer', 'signing_key', 'key'] as const;
+
+const pointerCache = new WeakMap<object, Pkcs11Pointer[]>();
+
+function pointersOf(doc: Record<string, unknown>): Pkcs11Pointer[] {
+  const cached = pointerCache.get(doc);
+  if (cached !== undefined) return cached;
+
+  const pointers: Pkcs11Pointer[] = [];
+  for (const field of TOP_LEVEL_POINTER_FIELDS) {
+    const value = doc[field];
+    if (isString(value) && isPkcs11Uri(value)) pointers.push({ value, path: field });
+  }
+
+  const accounts = doc.ACCOUNTS;
+  if (Array.isArray(accounts)) {
+    accounts.forEach((account, index) => {
+      if (isString(account) && isPkcs11Uri(account)) {
+        pointers.push({ value: account, path: `ACCOUNTS[${index}]` });
+      }
+    });
+  }
+
+  const currencies = doc.CURRENCIES;
+  if (Array.isArray(currencies)) {
+    currencies.forEach((raw, index) => {
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return;
+      const entry = raw as Record<string, unknown>;
+      for (const field of CURRENCY_POINTER_FIELDS) {
+        const value = entry[field];
+        if (isString(value) && isPkcs11Uri(value)) {
+          pointers.push({ value, path: `CURRENCIES[${index}].${field}` });
+        }
+      }
+    });
+  }
+
+  pointerCache.set(doc, pointers);
+  return pointers;
+}
+
+function checkRulePointers(
+  doc: Record<string, unknown>,
+  options: Pkcs11ValidatorOptions,
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  for (const pointer of pointersOf(doc)) {
+    diagnostics.push(...validatePkcs11Uri(pointer.value, { ...options, path: pointer.path }));
+  }
+  return diagnostics;
+}
+
 /** Rule objects registered for `--list-rules` and severity overrides. */
 export const pkcs11ValidatorRules: Rule[] = [
   {
@@ -307,7 +371,7 @@ export const pkcs11ValidatorRules: Rule[] = [
     severity: 'error',
     description: 'PKCS#11 key URIs must follow RFC 7512 syntax and name a key or token',
     run(ctx: RuleContext) {
-      for (const diagnostic of checkPkcs11Pointers(ctx.doc, { rules: ctx.options.rules })) {
+      for (const diagnostic of checkRulePointers(ctx.doc, { rules: ctx.options.rules })) {
         if (diagnostic.rule === MALFORMED_PKCS11_URI_RULE) ctx.report(diagnostic);
       }
     },
@@ -318,7 +382,7 @@ export const pkcs11ValidatorRules: Rule[] = [
     severity: 'error',
     description: 'PKCS#11 URIs must not embed a plaintext PIN in pin-value',
     run(ctx: RuleContext) {
-      for (const diagnostic of checkPkcs11Pointers(ctx.doc, { rules: ctx.options.rules })) {
+      for (const diagnostic of checkRulePointers(ctx.doc, { rules: ctx.options.rules })) {
         if (diagnostic.rule === INSECURE_EMBEDDED_PKCS11_PIN_RULE) ctx.report(diagnostic);
       }
     },
