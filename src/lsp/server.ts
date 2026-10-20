@@ -1,8 +1,9 @@
 /**
  * Language Server Protocol server over stdio — `stellar-toml-lint --lsp`.
  *
- * Speaks only what editors need to show diagnostics, offer #42 quick fixes,
- * explain a field under the cursor, and colour tokens by meaning: `initialize`,
+ * Speaks only what editors need to show diagnostics, offer #42/#332 code
+ * actions (quick fixes, fix-all, SAC-derivation refactor), explain a field
+ * under the cursor, and colour tokens by meaning: `initialize`,
  * open/change/close sync, `publishDiagnostics`, `textDocument/codeAction`,
  * `textDocument/hover`, and `textDocument/semanticTokens/full`.
  * Framing is the standard `Content-Length` header; payloads are UTF-8 JSON.
@@ -13,8 +14,8 @@ import process from 'node:process';
 import { createHash } from 'node:crypto';
 import { IncrementalParser } from '../cst/incremental-parser.js';
 import type { Diagnostic } from '../types.js';
-import { codeActionsFor, toLspDiagnostic } from './code-actions.js';
-import type { LspCodeAction } from './code-actions.js';
+import { CODE_ACTION_KINDS, codeActionsFor, toLspDiagnostic } from './code-actions-provider.js';
+import type { LspCodeAction } from './code-actions-provider.js';
 import { getCompletionItems } from './completion-provider.js';
 import { getHoverInfo } from './hover.js';
 import type { Hover } from './hover.js';
@@ -89,7 +90,7 @@ export async function runLspServer(
           const result: LspInitializeResult = {
             capabilities: {
               textDocumentSync: { openClose: true, change: SYNC_FULL },
-              codeActionProvider: { codeActionKinds: ['quickfix'] },
+              codeActionProvider: { codeActionKinds: [...CODE_ACTION_KINDS] },
               completionProvider: { resolveProvider: false, triggerCharacters: ['=', '.'] },
               hoverProvider: true,
               semanticTokensProvider: { legend: SEMANTIC_TOKEN_LEGEND, full: true },
@@ -111,6 +112,7 @@ export async function runLspServer(
             params.textDocument.uri,
             document.diagnostics,
             params.range,
+            params.context?.only,
           );
           return { jsonrpc: '2.0', id, result };
         }

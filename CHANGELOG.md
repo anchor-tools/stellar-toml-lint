@@ -9,6 +9,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Interactive code actions and an auto-fix refactoring provider over LSP (#332):
+  `src/lsp/code-actions-provider.ts` answers `textDocument/codeAction` with executable
+  `WorkspaceEdit`s in three kinds — `quickfix` for every fix-bearing diagnostic (including the
+  newly auto-fixable `general/lowercase-public-key` and previously untitled
+  `general/insecure-http-url` and `general/untrimmed-string-value`), a `quickfix` that inserts a
+  missing recommended `[DOCUMENTATION]` field such as `ORG_NAME` under the table header, and a
+  `refactor.rewrite` that derives the Stellar Asset Contract ID for the `[[CURRENCIES]]` entry
+  under the cursor from its `code`/`issuer` via `Asset.contractId`. `source.fixAll` merges every
+  value rewrite in the file into one "Fix all auto-fixable problems in file" edit — the same
+  answer `--fix` gives — and the server advertises all three kinds, honouring `context.only`
+  filtering with LSP's `.` subtype semantics.
+
 - Playground share links (#372): `encodeShareLink` / `decodeShareLink` in
   `src/browser/share-state.ts` put the edited file, the rule overrides and `--strict` into the URL
   fragment as a DEFLATE-compressed, base64url-encoded payload with a SHA-256 checksum, and the

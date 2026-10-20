@@ -73,7 +73,7 @@ export interface CodeActionParams {
     start: { line: number; character: number };
     end: { line: number; character: number };
   };
-  context: { diagnostics: unknown[] };
+  context?: { diagnostics?: unknown[]; only?: string[] };
 }
 
 export interface HoverParams {

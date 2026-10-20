@@ -642,11 +642,17 @@ is still useful in a script.
 $ stellar-toml-lint --lsp
 ```
 
-Speaks the Language Server Protocol on stdio so editors can show live diagnostics and offer
-quick-fix code actions for mechanically safe findings (strip a trailing slash from an endpoint,
-normalize a near-miss `NETWORK_PASSPHRASE`, reduce a social URL to a bare handle, format a phone
-number as E.164). Unfixable parse errors never produce a code action. Point your editor's LSP
-client at the `stellar-toml-lint` binary with `--lsp`.
+Speaks the Language Server Protocol on stdio so editors can show live diagnostics and turn them
+into edits from the lightbulb / alt-enter menu. Mechanically safe findings get executable
+`quickfix` actions — strip a trailing slash from an endpoint, normalize a near-miss
+`NETWORK_PASSPHRASE`, reduce a social URL or `@handle` to a bare handle, format a phone number as
+E.164, upgrade `http://` to `https://`, trim stray whitespace around a string value, uppercase a
+lowercase public key, and add a missing recommended `[DOCUMENTATION]` field such as `ORG_NAME`
+under the table header. A `refactor.rewrite` action derives the Stellar Asset Contract ID for the
+`[[CURRENCIES]]` entry under the cursor from its `code` and `issuer` against the document's
+`NETWORK_PASSPHRASE`, and `source.fixAll` offers "Fix all auto-fixable problems in file" — the
+same rewrites `--fix` would write, merged into one edit. Unfixable parse errors never produce a
+code action. Point your editor's LSP client at the `stellar-toml-lint` binary with `--lsp`.
 
 Diagnostics update incrementally: each keystroke computes the changed line/offset region and
 reparses only that slice, re-running only the rules whose category covers the touched table

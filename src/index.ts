@@ -801,8 +801,14 @@ export type {
 export { SPEC_URL } from './spec.js';
 export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
-export { codeActionsFor } from './lsp/code-actions.js';
-export type { LspCodeAction, LspRange, LspTextEdit, LspWorkspaceEdit } from './lsp/code-actions.js';
+export { codeActionsFor } from './lsp/code-actions-provider.js';
+export type {
+  LspCodeAction,
+  LspCodeActionKind,
+  LspRange,
+  LspTextEdit,
+  LspWorkspaceEdit,
+} from './lsp/code-actions-provider.js';
 
 export {
   checkSignatureStateMachine,
