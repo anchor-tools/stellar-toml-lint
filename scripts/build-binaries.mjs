@@ -47,7 +47,6 @@ execFileSync(
     '--platform=node',
     '--format=cjs',
     '--target=node20',
-    '--banner:js=#!/usr/bin/env node',
     `--outfile=${bundle}`,
   ],
   { stdio: 'inherit' },

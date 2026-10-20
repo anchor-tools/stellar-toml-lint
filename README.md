@@ -76,6 +76,8 @@ sudo install -m 0755 stellar-toml-lint-linux-x64 /usr/local/bin/stellar-toml-lin
 ```
 
 Assets are published for Linux x64 (glibc and musl), Linux ARM64, macOS Intel, macOS Apple Silicon, and Windows x64. These binaries have no Node.js runtime dependency. The npm package remains available for Node.js 20+ users. Runtime dependencies for the npm package are `smol-toml`, `@stellar/stellar-base`, and the pure-JS `@noble/curves` and `@noble/hashes` that `@stellar/stellar-base` already installs.
+
+Releases are generated from Conventional Commits on `main`: `fix:` creates a patch release, `feat:` creates a minor release, and `BREAKING CHANGE:` creates a major release. The release workflow updates the npm and VS Code versions, changelog, GitHub release, and npm provenance.
 Commit a `.stellartomlrc.json` next to your `stellar.toml` to record the project's rule policy once
 instead of repeating `--off`/`--warn` flags in every workflow (see [Usage](#usage)).
 

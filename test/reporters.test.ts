@@ -282,7 +282,7 @@ describe('formatCount', () => {
 });
 
 describe('formatSarif', () => {
-  const sarif = JSON.parse(formatSarif(lint(BROKEN), 'stellar.toml', '0.1.0'));
+  const sarif = JSON.parse(formatSarif(lint(BROKEN), 'stellar.toml', '0.1.0', BROKEN));
 
   it('declares SARIF 2.1.0', () => {
     expect(sarif.version).toBe('2.1.0');
@@ -308,6 +308,38 @@ describe('formatSarif', () => {
       expect(region.startLine).toBeGreaterThanOrEqual(1);
       expect(region.startColumn).toBeGreaterThanOrEqual(1);
     }
+  });
+
+  it('includes CWE taxonomy tags, Markdown help, and source snippets', () => {
+    const result = lint(BROKEN);
+    const resultWithTlsFinding = {
+      ...result,
+      diagnostics: [
+        ...result.diagnostics,
+        {
+          rule: 'security/weak-cipher-suite',
+          severity: 'warning' as const,
+          category: 'network' as const,
+          message: 'Host negotiated a weak cipher suite',
+          position: { line: 1, column: 1 },
+        },
+      ],
+    };
+    const enriched = JSON.parse(formatSarif(resultWithTlsFinding, 'stellar.toml', '0.1.0', BROKEN));
+    const rules = enriched.runs[0].tool.driver.rules;
+    expect(enriched.runs[0].taxonomies[0].taxa).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'CWE-295' })]),
+    );
+    expect(
+      rules.some((rule: { properties: { tags?: string[] } }) =>
+        rule.properties.tags?.includes('external/cwe/cwe-326'),
+      ),
+    ).toBe(true);
+    expect(
+      rules.find((rule: { id: string }) => rule.id === 'security/weak-cipher-suite').help.markdown,
+    ).toContain('### security/weak-cipher-suite');
+    const firstRegion = enriched.runs[0].results[0].locations[0].physicalLocation.region;
+    expect(firstRegion.snippet.text).toBe(BROKEN.split(/\r?\n/)[firstRegion.startLine - 1]);
   });
 });
 

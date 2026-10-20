@@ -577,7 +577,7 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
 
-    const results: { name: string; result: LintResult }[] = [];
+    const results: { name: string; result: LintResult; source?: string }[] = [];
     // Each linted file's contract error catalogues, kept for the text report.
     const catalogues: ContractErrorCatalogue[] = [];
     // Project defaults from .stellartomlrc.json, overridden by any CLI flag.
@@ -1263,6 +1263,7 @@ async function main(argv: string[]): Promise<number> {
           results.push({
             name: path === '-' ? 'stdin' : path,
             result: fileResult,
+            source,
           });
         }
       }
@@ -1451,7 +1452,7 @@ async function main(argv: string[]): Promise<number> {
       if (!silent && cli.count) {
         process.stdout.write(formatCount(results, { color }));
       } else if (!silent) {
-        for (const { name, result } of results) {
+        for (const { name, result, source } of results) {
           if (cli.readiness) {
             process.stdout.write(renderReadiness(result, name, cli, color));
             continue;
@@ -1466,7 +1467,7 @@ async function main(argv: string[]): Promise<number> {
           // files that do have something to read still report as usual.
           if (cli.silentSuccess && filtered.diagnostics.length === 0) continue;
 
-          process.stdout.write(render(filtered, name, cli, color));
+          process.stdout.write(render(filtered, name, cli, color, source));
         }
 
         // One line closing a multi-file run, so a CI log answers "did the whole
@@ -1674,14 +1675,20 @@ function formatFailure(name: string, result: Extract<FormatResult, { ok: false }
   return `${name}${at}: ${result.error}\n`;
 }
 
-function render(result: LintResult, name: string, cli: Cli, color: boolean): string {
+function render(
+  result: LintResult,
+  name: string,
+  cli: Cli,
+  color: boolean,
+  source?: string,
+): string {
   switch (cli.format) {
     case 'json':
       return formatJson(result, name);
     case 'ndjson':
       return formatNdjson(result, name);
     case 'sarif':
-      return formatSarif(result, name, VERSION);
+      return formatSarif(result, name, VERSION, source);
     case 'github':
       return formatGithub(result, name);
     case 'junit':
