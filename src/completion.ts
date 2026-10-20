@@ -104,6 +104,7 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--audit-diversity', description: 'Flag ASN/geographic validator concentration' },
   { long: '--verify-sep10', description: 'Verify SEP-10 nonce replay resistance' },
   { long: '--audit-security', description: 'Audit token binding, TLS, and CAA security' },
+  { long: '--audit-reserves', description: 'Compare collateral reserves with Stellar supply' },
   { long: '--verify-sep6', description: 'Run SEP-6 programmatic integration tester' },
   { long: '--verify-sep30', description: 'Coordinate multi-party recovery signing' },
   { long: '--verify-sep31', description: 'Audit SEP-31 cross-border payment lifecycle' },

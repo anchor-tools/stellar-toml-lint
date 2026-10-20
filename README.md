@@ -191,6 +191,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                       |
 | `--audit-routing`           | Compare host announcements with public RPKI route data (requires `--check-network`)                                     |
 | `--audit-security`          | Audit token binding and CAA endpoint policy (requires `--check-network`)                                                |
+| `--audit-reserves`          | Compare external-chain collateral reserves with Stellar circulating supply (requires `--check-network`)                 |
 | `--audit-routing`           | Compare host announcements with public RPKI route data (requires `--check-network`)                                     |
 | `--verify-sep6`             | Run end-to-end programmatic SEP-6 integration tester (requires `--check-network`)                                       |
 | `--verify-sep31`            | Audit SEP-31 cross-border payment lifecycle, schema, and webhook delivery (requires `--check-network`)                  |
@@ -307,6 +308,7 @@ failure.
 | `--verify-sep12-deletion`          | Verify SEP-12 DELETE /customer endpoint for GDPR right-to-be-forgotten compliance (requires `--check-network`)                                                                                                                                                  |
 | `--verify-sep24-quote-lock`        | Audit SEP-24 interactive deposit fee quote stability across session (requires `--check-network`)                                                                                                                                                                |
 | `--verify-clawback`                | Verify asset clawback authority (CAP-35) via Horizon and Soroban RPC (requires `--check-network`)                                                                                                                                                               |
+| `--audit-reserves`                 | Compare external-chain collateral reserves (Ethereum, Bitcoin, Solana, Stellar) with Stellar circulating supply; emits `security/collateral-reserve-deficit` and `security/unsupported-collateral-chain` (requires `--check-network`)                           |
 | `--crawl-peers`                    | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                                                                                                                                                         |
 | `--verify-buckets`                 | Download a sample of each archive's `currentBuckets`, verify the SHA-256 of the decompressed stream, and decode the XDR `BucketEntry` stream; range-read random buckets to check gzip headers, CRC32 trailers, and leading records (requires `--check-network`) |
 | `--verify-history-gaps`            | Confirm every 64-ledger checkpoint across the last 10,000 archived ledgers is downloadable; missing runs emit `history/ledger-sequence-gap-detected` (requires `--check-network`)                                                                               |
@@ -1830,6 +1832,17 @@ not base64 (or `0x` hex for Ethereum), or decodes to the wrong length, emits
 and verified to decode to exactly 64 bytes for Ed25519 signatures (`currencies/invalid-signature-length`, error).
 Address families the linter cannot verify, such as taproot `bc1p...` (BIP-322), are skipped rather than reported.
 
+Ed25519 signatures are also checked for strict RFC 8032 canonical form: the `S` scalar must be less
+than the Curve25519 group order `L`. A non-canonical scalar emits
+`crypto/malleable-signature-detected` (error), because otherwise an intermediary can mutate the
+signature and transaction hash while the signature still verifies. SEP-10 challenge signatures are
+audited with the same primitive.
+
+Enterprise vault pointers in `SIGNING_KEY`, `URI_REQUEST_SIGNING_KEY`, or issuer fields are validated
+as RFC 7512 PKCS#11 URIs. A syntax or attribute problem emits `crypto/malformed-pkcs11-uri` (error),
+and a plaintext credential in `pin-value` emits `crypto/insecure-embedded-pkcs11-pin` (error); use
+`pin-source=file:/run/secrets/hsm-pin` instead.
+
 Asset-anchored currencies (`is_asset_anchored = true`) must use one of `fiat`, `crypto`, `stock`,
 `bond`, `commodity`, `real_estate`, or `other` for `anchor_asset_type`. Missing or invalid values
 emit `currencies/missing-anchor-asset-type` as an error. Missing `anchor_asset` metadata emits the
@@ -2089,6 +2102,24 @@ common precision. Locked less than minted emits `bridge/undercollateralized` (er
 emits `bridge/over-reserved` (info). The locked balance is read over the EVM JSON-RPC endpoint given
 with `--evm-rpc`, and a bridge without that endpoint or without a custody address degrades to
 `bridge/balance-unreachable` or `bridge/config-incomplete` (warnings).
+
+**Proof of reserve** (with `--check-network --audit-reserves`) — for every collateral address in
+`[[CURRENCIES]]`, the chain is inferred from the address (Ethereum `0x...`, Bitcoin `1...`/`3...`/`bc1...`,
+Solana base58, or Stellar `G...`) or taken from `collateral_chain` / `origin_network`. The auditor reads
+the native or token balance over the chain's JSON-RPC/REST endpoint, reads the asset's circulating
+supply from Horizon, and compares both with exact BigInt arithmetic. A reserve below supply emits
+`security/collateral-reserve-deficit` (error); an address whose chain cannot be determined or is not
+supported emits `security/unsupported-collateral-chain` (warning). Pass `--evm-rpc` to override the
+Ethereum endpoint, and set `collateral_token_address` (ERC-20/SPL) when the reserve is a token rather
+than the chain's native asset.
+
+**Key rotation synchronization** (with `--check-network`) — the last 90 days of Horizon
+`set_options` operations for `SIGNING_KEY` and each issuer account are replayed into a rotation
+timeline. When stellar.toml is not republished within 24 hours of the newest rotation (or was last
+updated before it), the linter emits `security/stale-signing-key-post-rotation` (error). Signers
+added on-chain but absent from `SIGNING_KEY`/`ACCOUNTS` emit `security/unrecorded-signer-addition`
+(warning). The HTTP `Last-Modified` header of the served file supplies the update time when the
+caller did not record one.
 
 **Contracts** (with `--check-contracts`) — a checksummed `C...` address says nothing about whether
 a contract was ever deployed there, so the linter queries the Soroban RPC's `getLedgerEntries` for
