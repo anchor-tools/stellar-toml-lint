@@ -19,6 +19,7 @@ import { trailingSlashRule } from './trailing-slash.js';
 import { uppercaseKeyRules } from './uppercase-keys.js';
 import { whitespaceRules } from './whitespace.js';
 import { httpVersionAuditorRules } from '../network/http-version-auditor.js';
+import { vanityAuditorRules } from '../crypto/vanity-auditor.js';
 import { isPkcs11Uri, pkcs11ValidatorRules } from '../crypto/pkcs11-validator.js';
 
 /**
@@ -36,6 +37,7 @@ export function webAuthContractIdOf(
 
 /** Rules covering file-level constraints and the global (untabled) fields. */
 export const generalRules: Rule[] = [
+  ...vanityAuditorRules,
   ...whitespaceRules,
   ...pkcs11ValidatorRules,
   ...uppercaseKeyRules,

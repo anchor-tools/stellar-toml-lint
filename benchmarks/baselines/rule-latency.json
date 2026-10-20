@@ -541,9 +541,17 @@
       "units": 0.3974,
       "rmeFraction": 0.0032
     },
-    "security/broken-dnssec-chain": {
+    "crypto/malformed-zkp-proof-data": {
       "units": 0,
-      "rmeFraction": 0.0145
+      "rmeFraction": 0.0001
+    },
+    "crypto/suspicious-vanity-address": {
+      "units": 0,
+      "rmeFraction": 0.0001
+    },
+    "crypto/zkp-supply-commitment-mismatch": {
+      "units": 0,
+      "rmeFraction": 0.0001
     },
     "security/deprecated-tls-version": {
       "units": 0.0001,
@@ -581,6 +589,10 @@
       "units": 0,
       "rmeFraction": 0.0009
     },
+    "security/insecure-jwt-algorithm": {
+      "units": 0,
+      "rmeFraction": 0.0001
+    },
     "security/jwt-domain-mismatch": {
       "units": 0,
       "rmeFraction": 0.0013
@@ -588,6 +600,10 @@
     "security/jwt-rejected-by-transfer-server": {
       "units": 0,
       "rmeFraction": 0.0007
+    },
+    "security/jwt-signature-verification-failed": {
+      "units": 0,
+      "rmeFraction": 0.0001
     },
     "security/missing-on-chain-verification-proof": {
       "units": 0,
@@ -636,6 +652,10 @@
     "security/tls-cert-expiring-soon": {
       "units": 0,
       "rmeFraction": 0.001
+    },
+    "security/undisclosed-asset-freezing-capability": {
+      "units": 0,
+      "rmeFraction": 0.0001
     },
     "security/unreachable-threshold": {
       "units": 0,
