@@ -1168,6 +1168,26 @@
     "sep31/missing-sender-kyc-declaration": {
       "units": 0,
       "rmeFraction": 0
+    },
+    "crypto/malformed-pkcs11-uri": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "crypto/insecure-embedded-pkcs11-pin": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "crypto/malleable-signature-detected": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "security/stale-signing-key-post-rotation": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "security/unrecorded-signer-addition": {
+      "units": 0,
+      "rmeFraction": 0
     }
   }
 }

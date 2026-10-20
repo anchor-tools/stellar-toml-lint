@@ -108,6 +108,8 @@ import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkHsts } from './security/hsts-auditor.js';
 import { checkImmutabilityClaims } from './security/immutability-auditor.js';
 import { checkSigningKeyRevocation } from './security/key-revocation.js';
+import { checkKeyRotation } from './security/rotation-detector.js';
+import { checkProofOfReserve } from './security/proof-of-reserve.js';
 import { checkSigningKeyMultisig } from './security/multisig.js';
 import { checkMpcGovernance } from './security/mpc-governance.js';
 import { checkCertificateTransparencyFromDocument } from './security/ct-auditor.js';
@@ -230,6 +232,7 @@ interface Cli {
   followLinks: boolean;
   verifySep10: boolean;
   auditSecurity?: boolean;
+  auditReserves?: boolean;
   verifySep6?: boolean;
   verifySep31?: boolean;
   verifySep8?: boolean;
@@ -382,6 +385,8 @@ OPTIONS
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --audit-security    Audit token binding and CAA policy for declared
               service endpoints
+      --audit-reserves    With --check-network: compare external-chain collateral
+                          reserve balances against Stellar circulating supply
       --verify-sep6       Run end-to-end programmatic SEP-6 integration tester
       --verify-sep31      Audit SEP-31 cross-border payment lifecycle and schema
       --verify-sep8       Simulate SEP-8 regulated asset compliance approval server interaction
@@ -689,6 +694,17 @@ async function main(argv: string[]): Promise<number> {
             ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkSigningKeyMultisig(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkMpcGovernance(domainResult.parsed, { rules, fetchImpl })),
+            ...(await checkKeyRotation(domainResult.parsed, {
+              rules,
+              fetchImpl,
+              ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+            })),
+            ...(cli.auditReserves
+              ? await checkProofOfReserve(domainResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.evmRpc === undefined ? {} : { evmRpcUrl: cli.evmRpc }),
+                })
+              : []),
             ...(await checkImmutabilityClaims(domainResult.parsed, fetchImpl, { rules })),
             ...(await checkCertificateTransparencyFromDocument(domainResult.parsed, {
               rules,
@@ -1141,6 +1157,17 @@ async function main(argv: string[]): Promise<number> {
                 ...(await checkHistoryPublish(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkArchiveDiff(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkMpcGovernance(fileResult.parsed, { rules, fetchImpl })),
+                ...(await checkKeyRotation(fileResult.parsed, {
+                  rules,
+                  fetchImpl,
+                  ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                })),
+                ...(cli.auditReserves
+                  ? await checkProofOfReserve(fileResult.parsed, fetchImpl, {
+                      rules,
+                      ...(cli.evmRpc === undefined ? {} : { evmRpcUrl: cli.evmRpc }),
+                    })
+                  : []),
                 ...(cli.verifyBuckets
                   ? await checkBucketIntegrity(fileResult.parsed, fetchImpl, { rules })
                   : []),
@@ -2056,6 +2083,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-security':
         cli.auditSecurity = true;
+        break;
+
+      case '--audit-reserves':
+        cli.auditReserves = true;
         break;
 
       case '--verify-sep6':
