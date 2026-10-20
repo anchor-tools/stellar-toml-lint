@@ -18,6 +18,7 @@ import { checkCorsPreflight } from './network/cors-preflight.js';
 import { checkCertExpiry } from './network/cert-expiry.js';
 import { auditIpv6Reachability } from './network/ipv6-auditor.js';
 import { auditHttpVersions } from './network/http-version-auditor.js';
+import { auditBgpRoutes } from './network/bgp-route-detector.js';
 import { checkRateLimitResilience } from './network/rate-limit-tester.js';
 import { horizonUrlFor } from './network-checks.js';
 import { checkSignatureStateMachineFromDocument } from './security/signature-state-machine.js';
@@ -99,6 +100,7 @@ import {
   formatQuorumSummaryTable,
   simulateQuorumBft,
 } from './validators/quorum.js';
+import { checkSplitBrain } from './validators/split-brain-solver.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { auditOriginExposure } from './security/origin-leak-detector.js';
 import { verifyDnssecChain } from './security/dnssec-chain-node.js';
@@ -107,10 +109,17 @@ import { checkImmutabilityClaims } from './security/immutability-auditor.js';
 import { checkSigningKeyRevocation } from './security/key-revocation.js';
 import { checkSigningKeyMultisig } from './security/multisig.js';
 import { checkCertificateTransparencyFromDocument } from './security/ct-auditor.js';
+import { auditEmailDns } from './security/dmarc-auditor.js';
+import { auditCaa } from './security/caa-auditor.js';
+import { auditTlsForwardSecrecy } from './security/tls-pfs-auditor.js';
 import { checkValidatorDiversityFromDocument } from './validators/geo-diversity.js';
 import { validateAnchorDiscovery } from './validators/anchorDiscovery.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { checkOverlayHandshake } from './overlay/handshake.js';
+import { checkOverlayDos } from './overlay/dos-tester.js';
+import { checkOverlayTopology } from './overlay/topology-analyzer.js';
+import { checkValidatorDnsDiscovery } from './validators/dns-discovery.js';
+import { checkThresholdOptimizer } from './security/threshold-optimizer.js';
 import { allRules } from './rules/index.js';
 import { PRESETS, resolvePreset, type PresetName } from './presets.js';
 import { generateBadgeSvg, generateShieldsEndpoint } from './generators/badge.js';
@@ -124,6 +133,7 @@ import { generateDiagram, type GraphFormat } from './generators/diagram.js';
 import { deliverWebhooks, isSupportedWebhookUrl } from './reporters/webhook.js';
 import { runHealthCheck, formatHealthCheckTable } from './health-check.js';
 import { runDashboard, supportsDashboard } from './ui/dashboard.js';
+import { runRuleExplorerCli } from './ui/rule-explorer.js';
 import { loadPolicy, validatePolicy, evaluatePolicy } from './policy/engine.js';
 import { createFixtureFetch } from './mock-fixtures.js';
 import { runLspServer } from './lsp/server.js';
@@ -202,9 +212,14 @@ interface Cli {
   failOn?: Severity;
   checkNetwork: boolean;
   checkIpv6?: boolean;
+  auditRouting?: boolean;
+  expectedAsns?: string[];
   verifyDirectorySync?: boolean;
   directoryFeeds?: string[];
   auditQuorum: boolean;
+  auditDos?: boolean;
+  auditMultisig?: boolean;
+  crawlTopology?: boolean;
   auditDiversity?: boolean;
   followLinks: boolean;
   verifySep10: boolean;
@@ -234,6 +249,7 @@ interface Cli {
   webhookSlack?: string;
   webhookDiscord?: string;
   interactive?: boolean;
+  exploreRules?: boolean;
   checkContracts: boolean;
   sorobanRpc?: string;
   evmRpc?: string;
@@ -305,6 +321,9 @@ OPTIONS
                           or issuer (see PRESETS)
   -i, --interactive       Full-screen dashboard to walk the findings. Needs a TTY;
                           without one the text reporter is used instead
+      --explore-rules     Fuzzy-search every rule, read its description and spec
+                          link, and preview --off/--warn/--error overrides. In
+                          a non-terminal it prints the rule catalogue and exits
       --lsp               Run as a Language Server on stdio (diagnostics,
                           quick-fix code actions, and SEP-1 hover docs)
   -q, --quiet             Report errors only
@@ -327,6 +346,12 @@ OPTIONS
                           ([[VALIDATORS]].QUORUM_SET or CONFIG_URL-linked
                           stellar-core.cfg) for split-brain risk and fragile
                           thresholds
+      --audit-multisig    With --check-network: compute exact minimal signer
+                          coalitions for low, medium, and high thresholds
+      --audit-dos         With --check-network: run ten sequential overlay
+                          connection attempts and verify graceful backoff
+      --crawl-topology    With --check-network: crawl GET_PEERS and report
+                          validator paths longer than three overlay hops
       --audit-diversity   With --check-network: resolve validator hosts and flag
                           ASN or geographic concentration (>33% in one bucket).
                           Enrichment uses the JSON table in ANCHOR_GEO_LOOKUP
@@ -334,6 +359,10 @@ OPTIONS
                           anchor domain and every service endpoint, and verify
                           each IPv6 address accepts a TCP connection (for
                           DNS64/NAT64 IPv6-only mobile networks)
+      --audit-routing     With --check-network: compare announced routes with
+                          public RPKI data from RIPEstat; repeat --expected-asn
+                          to flag unexpected origin ASNs
+      --expected-asn <asn> Expected BGP origin ASN for --audit-routing (repeatable)
       --verify-directory-sync
                           With --check-network: compare ecosystem directory
                           listings with stellar.toml (ORG_NAME, ORG_URL,
@@ -343,8 +372,8 @@ OPTIONS
                           --verify-directory-sync (repeatable; defaults to the
                           Stellar Expert SEP-37 directory)
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
-      --audit-security    Audit cross-server token binding (SEP-10 JWT against
-                          TRANSFER_SERVER_SEP0024, KYC_SERVER, DIRECT_PAYMENT_SERVER)
+      --audit-security    Audit token binding and CAA policy for declared
+              service endpoints
       --verify-sep6       Run end-to-end programmatic SEP-6 integration tester
       --verify-sep31      Audit SEP-31 cross-border payment lifecycle and schema
       --verify-sep8       Simulate SEP-8 regulated asset compliance approval server interaction
@@ -529,6 +558,12 @@ async function main(argv: string[]): Promise<number> {
 
   if (cli.formatFile) return formatFiles(cli);
 
+  // The explorer is about rules, not about a file, so it runs before any path
+  // is read and needs no file argument.
+  if (cli.exploreRules) {
+    return runRuleExplorerCli(allRules, { stdin: process.stdin, stdout: process.stdout });
+  }
+
   // Readiness draws its own report, so it only has a text and a JSON form.
   if (cli.readiness && cli.format !== 'text' && cli.format !== 'json') {
     process.stderr.write(
@@ -603,6 +638,9 @@ async function main(argv: string[]): Promise<number> {
         );
         if (domainResult.parsed && cli.checkNetwork) {
           const networkDiagnostics: Diagnostic[] = [
+            ...(cli.mockFixtures === undefined
+              ? await auditEmailDns(domainResult.parsed, { rules })
+              : []),
             ...(await checkHistoryPublish(domainResult.parsed, fetchImpl, { rules })),
             ...(await checkArchiveDiff(domainResult.parsed, fetchImpl, { rules })),
             ...(cli.verifyBuckets
@@ -610,6 +648,9 @@ async function main(argv: string[]): Promise<number> {
               : []),
             ...(cli.auditQuorum || cli.auditSecurity
               ? await auditQuorumSets(domainResult.parsed, fetchImpl, { rules })
+              : []),
+            ...(cli.auditQuorum
+              ? await checkSplitBrain(domainResult.parsed, fetchImpl, { rules })
               : []),
             ...(cli.verifyDnssec
               ? await checkDnsIntegrity(domainResult.parsed, fetchImpl, {
@@ -631,7 +672,7 @@ async function main(argv: string[]): Promise<number> {
                 })
               : []),
             ...(cli.auditSecurity && cli.mockFixtures === undefined
-              ? await auditOriginExposure(domainResult.parsed, { rules, domain: cli.domain })
+              ? await auditCaa(domainResult.parsed, { rules, domain: cli.domain })
               : []),
             ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkSigningKeyMultisig(domainResult.parsed, { rules, fetchImpl })),
@@ -699,6 +740,18 @@ async function main(argv: string[]): Promise<number> {
             ...(cli.crawlPeers && cli.mockFixtures === undefined
               ? await checkOverlayPeers(domainResult.parsed, { rules })
               : []),
+            ...(cli.crawlTopology && cli.mockFixtures === undefined
+              ? await checkOverlayTopology(domainResult.parsed, { rules })
+              : []),
+            ...(cli.auditDos && cli.mockFixtures === undefined
+              ? await checkOverlayDos(domainResult.parsed, { rules })
+              : []),
+            ...(cli.mockFixtures === undefined
+              ? await checkValidatorDnsDiscovery(domainResult.parsed, { rules })
+              : []),
+            ...(cli.auditMultisig
+              ? await checkThresholdOptimizer(domainResult.parsed, { rules, fetchImpl })
+              : []),
             ...(await checkNetworkConsistency(domainResult.parsed, fetchImpl, { rules })),
             // The handshake dials each peer directly, so a hermetic run skips it.
             ...(cli.verifyOverlay && cli.mockFixtures === undefined
@@ -713,6 +766,9 @@ async function main(argv: string[]): Promise<number> {
             ...(cli.mockFixtures === undefined
               ? await auditHttpVersions(domainResult.parsed, { rules, domain: cli.domain })
               : []),
+            ...(cli.mockFixtures === undefined
+              ? await auditTlsForwardSecrecy(domainResult.parsed, { rules, domain: cli.domain })
+              : []),
             // The peer-port probe dials raw TCP for the same reason.
             ...(cli.mockFixtures === undefined
               ? await checkPeerPortReachability(domainResult.parsed, { rules })
@@ -720,6 +776,14 @@ async function main(argv: string[]): Promise<number> {
             // DNS + raw IPv6 sockets, outside the fixture transport.
             ...(cli.checkIpv6 && cli.mockFixtures === undefined
               ? await auditIpv6Reachability(domainResult.parsed, { rules, domain: cli.domain })
+              : []),
+            ...(cli.auditRouting && cli.mockFixtures === undefined
+              ? await auditBgpRoutes(domainResult.parsed, {
+                  rules,
+                  domain: cli.domain,
+                  fetchImpl,
+                  expectedAsns: cli.expectedAsns,
+                })
               : []),
             ...(cli.verifyDirectorySync
               ? await validateAnchorDiscovery(domainResult.parsed, {
@@ -872,6 +936,12 @@ async function main(argv: string[]): Promise<number> {
                 })),
                 ...(await checkSigningKeyRevocation(fileResult.parsed, { rules, fetchImpl })),
                 ...(await checkSigningKeyMultisig(fileResult.parsed, { rules, fetchImpl })),
+                ...(cli.mockFixtures === undefined
+                  ? await auditCaa(fileResult.parsed, {
+                      rules,
+                      ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                    })
+                  : []),
                 ...(cli.auditDiversity && cli.mockFixtures === undefined
                   ? await checkValidatorDiversityFromDocument(fileResult.parsed, { rules })
                   : []),
@@ -881,6 +951,12 @@ async function main(argv: string[]): Promise<number> {
                       ...(cli.domain === undefined ? {} : { domain: cli.domain }),
                     })
                   : []),
+              );
+            }
+
+            if (cli.auditMultisig && cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await checkThresholdOptimizer(fileResult.parsed, { rules, fetchImpl })),
               );
             }
 
@@ -969,6 +1045,15 @@ async function main(argv: string[]): Promise<number> {
             }
             if (cli.checkNetwork) {
               networkDiagnostics.push(
+                ...(cli.mockFixtures === undefined
+                  ? await auditEmailDns(fileResult.parsed, { rules })
+                  : []),
+                ...(cli.mockFixtures === undefined
+                  ? await auditTlsForwardSecrecy(fileResult.parsed, {
+                      rules,
+                      ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                    })
+                  : []),
                 ...(await checkHorizon(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkNetworkAccounts(fileResult.parsed, fetchImpl)),
                 ...(await checkDisplayDecimals(fileResult.parsed, fetchImpl, { rules: cli.rules })),
@@ -1005,6 +1090,14 @@ async function main(argv: string[]): Promise<number> {
                       ...(cli.domain === undefined ? {} : { domain: cli.domain }),
                     })
                   : []),
+                ...(cli.auditRouting && cli.mockFixtures === undefined
+                  ? await auditBgpRoutes(fileResult.parsed, {
+                      rules,
+                      ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                      fetchImpl,
+                      expectedAsns: cli.expectedAsns,
+                    })
+                  : []),
                 ...(cli.verifyDirectorySync
                   ? await validateAnchorDiscovery(fileResult.parsed, {
                       rules,
@@ -1024,6 +1117,9 @@ async function main(argv: string[]): Promise<number> {
                   : []),
                 ...(cli.auditQuorum || cli.auditSecurity
                   ? await auditQuorumSets(fileResult.parsed, fetchImpl, { rules })
+                  : []),
+                ...(cli.auditQuorum
+                  ? await checkSplitBrain(fileResult.parsed, fetchImpl, { rules })
                   : []),
                 ...(cli.verifyDnssec
                   ? await checkDnsIntegrity(fileResult.parsed, fetchImpl, {
@@ -1053,6 +1149,15 @@ async function main(argv: string[]): Promise<number> {
                   : []),
                 ...(cli.crawlPeers && cli.mockFixtures === undefined
                   ? await checkOverlayPeers(fileResult.parsed, { rules })
+                  : []),
+                ...(cli.crawlTopology && cli.mockFixtures === undefined
+                  ? await checkOverlayTopology(fileResult.parsed, { rules })
+                  : []),
+                ...(cli.auditDos && cli.mockFixtures === undefined
+                  ? await checkOverlayDos(fileResult.parsed, { rules })
+                  : []),
+                ...(cli.mockFixtures === undefined
+                  ? await checkValidatorDnsDiscovery(fileResult.parsed, { rules })
                   : []),
                 ...(await auditTomlContractEnvMeta(fileResult.parsed, fetchImpl, {
                   rules,
@@ -1818,6 +1923,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.interactive = true;
         break;
 
+      case '--explore-rules':
+        cli.exploreRules = true;
+        break;
+
       case '--no-suggestions':
         cli.noSuggestions = true;
         break;
@@ -1833,6 +1942,19 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--check-ipv6':
         cli.checkIpv6 = true;
         break;
+
+      case '--audit-routing':
+        cli.auditRouting = true;
+        break;
+
+      case '--expected-asn': {
+        const value = requireValue(argv, ++i, arg).replace(/^AS/i, '');
+        if (!/^\d+$/.test(value))
+          throw new Error('--expected-asn expects an AS number, e.g. AS12345.');
+        cli.expectedAsns ??= [];
+        cli.expectedAsns.push(value);
+        break;
+      }
 
       case '--verify-directory-sync':
         cli.verifyDirectorySync = true;
@@ -1850,6 +1972,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-quorum':
         cli.auditQuorum = true;
+        break;
+
+      case '--audit-multisig':
+        cli.auditMultisig = true;
+        break;
+
+      case '--audit-dos':
+        cli.auditDos = true;
+        break;
+
+      case '--crawl-topology':
+        cli.crawlTopology = true;
         break;
 
       case '--audit-diversity':

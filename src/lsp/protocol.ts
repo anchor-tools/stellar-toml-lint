@@ -15,13 +15,31 @@ export interface RpcMessage {
   error?: { code: number; message: string; data?: unknown };
 }
 
+export interface SemanticTokensLegend {
+  tokenTypes: string[];
+  tokenModifiers: string[];
+}
+
 export interface LspInitializeResult {
   capabilities: {
     textDocumentSync?: { openClose: boolean; change: number };
     codeActionProvider?: boolean | { codeActionKinds?: string[] };
     hoverProvider?: boolean;
+    semanticTokensProvider?: {
+      legend: SemanticTokensLegend;
+      full?: boolean | { delta?: boolean };
+      range?: boolean;
+    };
   };
   serverInfo?: { name: string; version: string };
+}
+
+export interface SemanticTokensParams {
+  textDocument: { uri: string };
+}
+
+export interface SemanticTokens {
+  data: number[];
 }
 
 export interface TextDocumentItem {
