@@ -106,7 +106,14 @@ jobs:
           fi
 
           cp -R node_modules ../base/node_modules
-          ( cd ../base && npm run bench:regression -- --update )
+          # A base commit that cannot run the suite (for example, one with a
+          # broken import that this PR fixes) must not block the PR; compare
+          # against the committed baseline instead.
+          if ! ( cd ../base && npm run bench:regression -- --update ); then
+            echo "::warning::bench:regression failed on base commit ${{ github.event.pull_request.base.sha }}; falling back to the committed baseline."
+            echo "same_runner=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           cp ../base/benchmarks/baselines/rule-latency.json benchmarks/baselines/rule-latency.json
           echo "same_runner=true" >> "$GITHUB_OUTPUT"
 

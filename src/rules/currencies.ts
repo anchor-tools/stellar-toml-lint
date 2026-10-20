@@ -6,6 +6,8 @@ import { collateralSigFormatRules } from './collateral-sig-format.js';
 import { duplicateCurrencyRules } from './duplicate-currency.js';
 import { immutabilityAuditorRules } from '../security/immutability-auditor.js';
 import { verifyCollateralSignature } from '../crypto/collateral.js';
+import { malleabilityAuditorRules } from '../crypto/malleability-auditor.js';
+import { isPkcs11Uri } from '../crypto/pkcs11-validator.js';
 import {
   ANCHOR_ASSET_TYPES,
   CURRENCY_STATUSES,
@@ -277,6 +279,7 @@ export const currencyRules: Rule[] = [
   ...anchoredAssetRules,
   ...assetCodeFormatRules,
   ...collateralSigFormatRules,
+  ...malleabilityAuditorRules,
   ...duplicateCurrencyRules,
   ...immutabilityAuditorRules,
 
@@ -435,7 +438,7 @@ export const currencyRules: Rule[] = [
           });
         }
 
-        if (hasIssuer && !isAccountId(entry.issuer)) {
+        if (hasIssuer && !isAccountId(entry.issuer) && !isPkcs11Uri(entry.issuer)) {
           ctx.report({
             rule: 'currencies/issuer-or-contract',
             category: 'currencies',

@@ -12,15 +12,13 @@
 export { lint, lintDomain } from './lint.js';
 export { formatToml } from './format-file.js';
 export type { FormatResult } from './format-file.js';
-export { auditOriginExposure, ORIGIN_IP_EXPOSED_RULE } from './security/origin-leak-detector.js';
-export { verifyDnssecChain, verifyDnssecDomain } from './security/dnssec-chain-node.js';
-export { BROKEN_DNSSEC_CHAIN_RULE, EXPIRED_RRSIG_RULE } from './security/dnssec-chain.js';
 export {
-  evaluateGitOpsAdmission,
-  createGitOpsWebhookServer,
-  createGitOpsWebhookHttpsServer,
-} from './integrations/gitops/webhook.js';
-export { buildPullRequestReviewPayload, submitPullRequestReview } from './reporters/pr-reviewer.js';
+  semanticHash,
+  semanticallyEqual,
+  canonicalize,
+  hashCanonical,
+} from './cst/semantic-hash.js';
+export type { SemanticHashResult } from './cst/semantic-hash.js';
 export { lspMain } from './lsp.js';
 export {
   parseCst,
@@ -226,6 +224,36 @@ export {
   OVERLAY_MAC_BYTES,
   ENVELOPE_TYPE_AUTH,
 } from './overlay/handshake.js';
+export {
+  checkOverlayCipher,
+  verifyOverlayCipher,
+  verifyCipherSession,
+  cipherFindings,
+  deriveCipherKeys,
+  cipherNonce,
+  sealFrame,
+  openFrame,
+  encodePeerAddressRequest,
+  openSocketChannel,
+  overlayCipherRules,
+  overlayCipherRuleIds,
+  OVERLAY_CIPHER_NEGOTIATION_FAILED_RULE,
+  OVERLAY_MAC_TAG_MISMATCH_RULE,
+  CIPHER_NEGOTIATION_FAILED_RULE,
+  MAC_TAG_MISMATCH_RULE,
+  CHACHA20_POLY1305_KEY_BYTES,
+  CHACHA20_POLY1305_NONCE_BYTES,
+  POLY1305_TAG_BYTES,
+  SEALED_FRAME_HEADER_BYTES,
+} from './overlay/cipher-verifier.js';
+export type {
+  CipherChannel,
+  CipherChannelFactory,
+  CipherKeys,
+  CipherOutcome,
+  CipherVerifierOptions,
+  OpenedFrame,
+} from './overlay/cipher-verifier.js';
 export type {
   AnnouncedHello,
   EphemeralIdentity,
@@ -322,6 +350,55 @@ export {
   DEFAULT_MAX_BUCKET_BYTES,
 } from './history/bucket-auditor.js';
 export type { BucketAuditorOptions, BucketReference } from './history/bucket-auditor.js';
+export {
+  checkBucketStreams,
+  verifyBucketStreams,
+  auditBucketStreams,
+  validateBucketStream,
+  parseGzipHeader,
+  verifyGzipMember,
+  inflatePrefix,
+  decodeLeadingBucketEntries,
+  normalizeBucketReference,
+  sampleRandomBuckets,
+  crc32,
+  bucketStreamRules,
+  bucketStreamRuleIds,
+  CORRUPTED_BUCKET_GZIP_STREAM_RULE,
+  TRUNCATED_BUCKET_XDR_RULE,
+  HISTORY_CORRUPTED_BUCKET_GZIP_STREAM,
+  HISTORY_TRUNCATED_BUCKET_XDR,
+  DEFAULT_BUCKET_STREAM_SAMPLE_COUNT,
+  DEFAULT_BUCKET_RANGE_BYTES,
+  DEFAULT_FULL_VERIFY_MAX_BYTES,
+  DEFAULT_LEADING_ENTRIES,
+} from './history/bucket-stream-validator.js';
+export type {
+  BucketStreamOptions,
+  BucketStreamVerdict,
+  GzipHeaderResult,
+} from './history/bucket-stream-validator.js';
+export {
+  checkHistoryGaps,
+  auditHistoryGaps,
+  verifyHistoryGaps,
+  findLedgerGaps,
+  groupGaps,
+  checkpointsInRange,
+  checkpointContaining,
+  checkpointFilePath,
+  checkpointHex,
+  isCheckpointLedger,
+  latestArchivedLedger,
+  gapAuditorRules,
+  gapAuditorRuleIds,
+  LEDGER_SEQUENCE_GAP_RULE,
+  HISTORY_LEDGER_SEQUENCE_GAP_DETECTED,
+  CHECKPOINT_FREQUENCY,
+  DEFAULT_GAP_AUDIT_LEDGERS,
+  DEFAULT_GAP_AUDIT_CONCURRENCY,
+} from './history/gap-auditor.js';
+export type { CheckpointCategory, GapAuditorOptions, LedgerGap } from './history/gap-auditor.js';
 export {
   checkQuorumIntersection,
   quorumSolverRules,
@@ -681,6 +758,146 @@ export type {
 } from './security/key-revocation.js';
 
 export {
+  analyzeKeyRotations,
+  analyzeRotationTimeline,
+  checkKeyRotation,
+  checkKeyRotationSynchronization,
+  checkSigningKeyRotation,
+  detectKeyRotationHistory,
+  checkRotation,
+  rotationDetector,
+  checkRotationDetector,
+  checkRotationSynchronization,
+  detectKeyRotation,
+  rotationEventsFromOperations,
+  rotationDetectorRules,
+  keyRotationRules,
+  rotationRules,
+  keyRotationDetectorRules,
+  rotationDetectorRuleIds,
+  STALE_SIGNING_KEY_POST_ROTATION_RULE,
+  UNRECORDED_SIGNER_ADDITION_RULE,
+  SECURITY_STALE_SIGNING_KEY_POST_ROTATION,
+  SECURITY_UNRECORDED_SIGNER_ADDITION,
+  STALE_SIGNING_KEY_RULE,
+  ROTATION_WINDOW_DAYS,
+  ROTATION_SYNC_GRACE_MS,
+} from './security/rotation-detector.js';
+export type {
+  HorizonOperation as RotationHorizonOperation,
+  KeyRotationEvent,
+  AccountOperations,
+  RotationAnalysisInput,
+  RotationDetectorOptions,
+} from './security/rotation-detector.js';
+
+export {
+  checkProofOfReserve,
+  checkCollateralReserves,
+  auditProofOfReserve,
+  auditCollateralReserves,
+  auditReserves,
+  checkReserves,
+  auditReserveBalances,
+  proofOfReserveAuditor,
+  collateralAccountsOf,
+  collateralReserveAccountsOf,
+  fetchCollateralBalance,
+  fetchEthereumBalance,
+  fetchEvmBalance,
+  fetchBitcoinBalance,
+  fetchSolanaBalance,
+  fetchStellarBalance,
+  compareCollateralReserve,
+  collateralReserveDeficitDiagnostics,
+  compareReserveToSupply,
+  proofOfReserveRules,
+  collateralReserveRules,
+  reserveAuditorRules,
+  proofOfReserveAuditorRules,
+  proofOfReserveRuleIds,
+  COLLATERAL_RESERVE_DEFICIT_RULE,
+  UNSUPPORTED_COLLATERAL_CHAIN_RULE,
+  SECURITY_COLLATERAL_RESERVE_DEFICIT,
+  SECURITY_UNSUPPORTED_COLLATERAL_CHAIN,
+  RESERVE_DEFICIT_RULE,
+  DEFAULT_ETHEREUM_RPC_URL,
+  DEFAULT_BITCOIN_API_URL,
+  DEFAULT_SOLANA_RPC_URL,
+} from './security/proof-of-reserve.js';
+export type {
+  CollateralAccount,
+  CollateralChain,
+  ProofOfReserveOptions,
+  ReserveSnapshot,
+  ReserveComparisonInput,
+} from './security/proof-of-reserve.js';
+
+export {
+  parsePkcs11Uri,
+  parsePkcs11,
+  validatePkcs11Uri,
+  validatePkcs11,
+  auditPkcs11Uri,
+  checkPkcs11Uri,
+  pkcs11Diagnostics,
+  auditPkcs11,
+  checkPkcs11Pointers,
+  checkPkcs11Uris,
+  auditPkcs11Pointers,
+  isPkcs11Uri,
+  isValidPkcs11Uri,
+  pkcs11ValidatorRules,
+  pkcs11Rules,
+  pkcs11ValidatorRuleIds,
+  MALFORMED_PKCS11_URI_RULE,
+  INSECURE_EMBEDDED_PKCS11_PIN_RULE,
+  CRYPTO_MALFORMED_PKCS11_URI,
+  CRYPTO_INSECURE_EMBEDDED_PKCS11_PIN,
+} from './crypto/pkcs11-validator.js';
+export type {
+  ParsedPkcs11Uri,
+  Pkcs11Attribute,
+  Pkcs11ParseResult,
+  Pkcs11ValidatorOptions,
+} from './crypto/pkcs11-validator.js';
+
+export {
+  checkSignatureMalleability,
+  checkMalleability,
+  auditMalleability,
+  auditSignatureMalleability,
+  auditCollateralSignatureMalleability,
+  auditSep10ChallengeSignatures,
+  auditEd25519Signature,
+  parseEd25519Signature,
+  parseSignature,
+  decodeEd25519Signature,
+  bytesToBigIntLE,
+  isCanonicalEd25519Signature,
+  isCanonicalSignature,
+  isMalleableEd25519Signature,
+  isSignatureMalleable,
+  isEd25519SignatureMalleable,
+  malleabilityAuditorRules,
+  malleabilityRules,
+  signatureMalleabilityRules,
+  malleabilityAuditorRuleIds,
+  MALLEABLE_SIGNATURE_RULE,
+  CRYPTO_MALLEABLE_SIGNATURE,
+  MALLEABLE_SIGNATURE_DETECTED_RULE,
+  MALLEABILITY_RULE,
+  ED25519_GROUP_ORDER,
+  ED25519_L,
+  ED25519_SIGNATURE_BYTES,
+} from './crypto/malleability-auditor.js';
+export type {
+  ParsedEd25519Signature,
+  SignatureMalleabilityResult,
+  MalleabilityAuditOptions,
+} from './crypto/malleability-auditor.js';
+
+export {
   analyzeAccountThresholds,
   auditAccountThresholds,
   checkSigningKeyMultisig,
@@ -723,6 +940,19 @@ export type {
   ThresholdOptimization,
   ThresholdOptimizerOptions,
 } from './security/threshold-optimizer.js';
+
+export {
+  auditCorpHeaders,
+  corpHeaderRules,
+  SECURITY_MISSING_CORP_HEADER,
+  SECURITY_MISSING_NOSNIFF_HEADER,
+  SECURITY_MISSING_OPENER_POLICY,
+} from './security/corp-auditor.js';
+export {
+  checkMpcGovernance,
+  mpcGovernanceRules,
+  SECURITY_INSUFFICIENT_MPC_THRESHOLD,
+} from './security/mpc-governance.js';
 
 export {
   analyzeCtCertificates,
@@ -942,3 +1172,29 @@ export type { JsonLdNode, JsonLdValidation } from './generators/jsonld.js';
 
 export { MonitorDaemon } from './monitor/daemon.js';
 export type { DiffResult, MonitorDaemonOptions, PollSample } from './monitor/daemon.js';
+
+export {
+  coordinateSep30Recovery,
+  extractRecoveryServers,
+  sep30CoordinatorRules,
+  sep30CoordinatorRuleIds,
+  INSUFFICIENT_RECOVERY_SIGNATURES_RULE,
+  SIGNATURE_COORDINATION_TIMEOUT_RULE,
+} from './protocols/sep30-coordinator.js';
+export type { Sep30CoordinatorOptions } from './protocols/sep30-coordinator.js';
+
+export {
+  validateSep31KycMatrix,
+  generateSep31PaymentJsonSchema,
+  generateSep31ClientSchemas,
+  sep31KycRules,
+  sep31KycRuleIds,
+  INVALID_KYC_FIELD_DEFINITION_RULE,
+  MISSING_SENDER_KYC_DECLARATION_RULE,
+} from './protocols/sep31-kyc-matrix.js';
+export type {
+  Sep31FieldDefinition,
+  Sep31AssetFields,
+  Sep31AssetInfo,
+  Sep31KycMatrixOptions,
+} from './protocols/sep31-kyc-matrix.js';

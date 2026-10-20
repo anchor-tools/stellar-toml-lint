@@ -241,6 +241,14 @@
       "units": 0.002,
       "rmeFraction": 0.0046
     },
+    "fees/contradictory-fee-schedules": {
+      "units": 0,
+      "rmeFraction": 0.1331
+    },
+    "fees/undisclosed-percentage-fee": {
+      "units": 0,
+      "rmeFraction": 0.0577
+    },
     "file/max-size": {
       "units": 0.1248,
       "rmeFraction": 0.0052
@@ -541,6 +549,10 @@
       "units": 0.0001,
       "rmeFraction": 0.0032
     },
+    "security/blocking-frame-ancestors-directive": {
+      "units": 0,
+      "rmeFraction": 0.001
+    },
     "security/dns-resolver-divergence": {
       "units": 0,
       "rmeFraction": 0.0028
@@ -561,6 +573,10 @@
       "units": 0,
       "rmeFraction": 0.0019
     },
+    "security/insufficient-hsts-max-age": {
+      "units": 0,
+      "rmeFraction": 0.001
+    },
     "security/invalid-regex": {
       "units": 0,
       "rmeFraction": 0.0009
@@ -576,6 +592,14 @@
     "security/missing-on-chain-verification-proof": {
       "units": 0,
       "rmeFraction": 0.0037
+    },
+    "security/missing-clickjacking-protection": {
+      "units": 0,
+      "rmeFraction": 0.001
+    },
+    "security/missing-hsts-header": {
+      "units": 0,
+      "rmeFraction": 0.001
     },
     "security/on-chain-toml-hash-mismatch": {
       "units": 0,
@@ -661,6 +685,10 @@
       "units": 0,
       "rmeFraction": 0.0026
     },
+    "sep24/insecure-postmessage-wildcard": {
+      "units": 0,
+      "rmeFraction": 0.0904
+    },
     "sep24/interactive-url-insecure": {
       "units": 0,
       "rmeFraction": 0.0055
@@ -668,6 +696,10 @@
     "sep24/invalid-fee-schema": {
       "units": 0,
       "rmeFraction": 0.0009
+    },
+    "sep24/malformed-postmessage-payload": {
+      "units": 0,
+      "rmeFraction": 0.0245
     },
     "sep3/auth-server-unreachable": {
       "units": 0,
@@ -1098,6 +1130,90 @@
       "rmeFraction": 0
     },
     "validators/critical-bridge-node": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "history/corrupted-bucket-gzip-stream": {
+      "units": 0,
+      "rmeFraction": 0.0123
+    },
+    "history/ledger-sequence-gap-detected": {
+      "units": 0,
+      "rmeFraction": 0.0017
+    },
+    "history/truncated-bucket-xdr": {
+      "units": 0,
+      "rmeFraction": 0.0011
+    },
+    "overlay/cipher-negotiation-failed": {
+      "units": 0,
+      "rmeFraction": 0.1143
+    },
+    "overlay/mac-tag-mismatch": {
+      "units": 0,
+      "rmeFraction": 0.5152
+    },
+    "security/insufficient-mpc-threshold": {
+      "units": 0,
+      "rmeFraction": 0.0144
+    },
+    "security/missing-corp-header": {
+      "units": 0,
+      "rmeFraction": 0.2651
+    },
+    "security/missing-nosniff-header": {
+      "units": 0,
+      "rmeFraction": 0.0004
+    },
+    "security/missing-opener-policy": {
+      "units": 0,
+      "rmeFraction": 0.0378
+    },
+    "sep30/server-unreachable": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "sep30/invalid-signer-response": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "sep30/identity-schema-mismatch": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "sep30/insufficient-recovery-signatures": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "sep30/signature-coordination-timeout": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "sep31/invalid-kyc-field-definition": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "sep31/missing-sender-kyc-declaration": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "crypto/malformed-pkcs11-uri": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "crypto/insecure-embedded-pkcs11-pin": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "crypto/malleable-signature-detected": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "security/stale-signing-key-post-rotation": {
+      "units": 0,
+      "rmeFraction": 0
+    },
+    "security/unrecorded-signer-addition": {
       "units": 0,
       "rmeFraction": 0
     }

@@ -7,7 +7,6 @@
  * dependency tree small enough to audit by eye.
  */
 import { readFile, writeFile } from 'node:fs/promises';
-import { watch } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
@@ -48,6 +47,7 @@ import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
 import { checkSep3Auth } from './rules/sep3-auth.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
+import { checkCrossSepFees } from './rules/cross-sep-fee-auditor.js';
 import { checkRegulatedIssuerFlags } from './rules/regulated-flags.js';
 import { checkFixedSupplyIssuerLocks } from './rules/fixed-supply-audit.js';
 import { checkContracts } from './soroban.js';
@@ -79,22 +79,26 @@ import { checkTokenBinding } from './security/token-binding.js';
 import { verifySep6Integration } from './protocols/sep6.js';
 import { verifySep31 } from './protocols/sep31.js';
 import { verifySep31Webhooks } from './protocols/sep31-webhook-verifier.js';
+import { validateSep31KycMatrix } from './protocols/sep31-kyc-matrix.js';
 import { verifySep8 } from './protocols/sep8.js';
 import { verifySep8Webhook } from './sep8/webhookCoordinator.js';
 import { verifySep38 } from './protocols/sep38.js';
 import { validateIpfsMetadata } from './validators/ipfsMetadata.js';
 import { auditTomlInstanceStorage } from './soroban/instance-storage-auditor.js';
 import { auditTomlAccountData } from './security/account-data-auditor.js';
-import { verifySep24 } from './protocols/sep24.js';
+import { checkSep24PostMessage, verifySep24 } from './protocols/sep24.js';
 import { verifySep12 } from './protocols/sep12.js';
 import { verifySep12Deletion } from './protocols/sep12-deletion.js';
 import { verifySep30 } from './protocols/sep30.js';
+import { coordinateSep30Recovery } from './protocols/sep30-coordinator.js';
 import { verifySep24QuoteLock } from './protocols/sep24-quote-lock.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { simulateClawback } from './security/clawback-simulator.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkArchiveDiff } from './history/archive-diff.js';
 import { checkBucketIntegrity } from './history/bucket-auditor.js';
+import { checkBucketStreams } from './history/bucket-stream-validator.js';
+import { checkHistoryGaps } from './history/gap-auditor.js';
 import {
   auditQuorumSets,
   formatQuorumSummaryTable,
@@ -102,12 +106,13 @@ import {
 } from './validators/quorum.js';
 import { checkSplitBrain } from './validators/split-brain-solver.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
-import { auditOriginExposure } from './security/origin-leak-detector.js';
-import { verifyDnssecChain } from './security/dnssec-chain-node.js';
-import { submitPullRequestReview, type PullRequestReviewSource } from './reporters/pr-reviewer.js';
+import { checkHsts } from './security/hsts-auditor.js';
 import { checkImmutabilityClaims } from './security/immutability-auditor.js';
 import { checkSigningKeyRevocation } from './security/key-revocation.js';
+import { checkKeyRotation } from './security/rotation-detector.js';
+import { checkProofOfReserve } from './security/proof-of-reserve.js';
 import { checkSigningKeyMultisig } from './security/multisig.js';
+import { checkMpcGovernance } from './security/mpc-governance.js';
 import { checkCertificateTransparencyFromDocument } from './security/ct-auditor.js';
 import { auditEmailDns } from './security/dmarc-auditor.js';
 import { auditCaa } from './security/caa-auditor.js';
@@ -116,11 +121,13 @@ import { checkValidatorDiversityFromDocument } from './validators/geo-diversity.
 import { validateAnchorDiscovery } from './validators/anchorDiscovery.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { checkOverlayHandshake } from './overlay/handshake.js';
+import { checkOverlayCipher } from './overlay/index.js';
 import { checkOverlayDos } from './overlay/dos-tester.js';
 import { checkOverlayTopology } from './overlay/topology-analyzer.js';
 import { checkValidatorDnsDiscovery } from './validators/dns-discovery.js';
 import { checkThresholdOptimizer } from './security/threshold-optimizer.js';
 import { allRules } from './rules/index.js';
+import { isUrl } from './predicates.js';
 import { PRESETS, resolvePreset, type PresetName } from './presets.js';
 import { generateBadgeSvg, generateShieldsEndpoint } from './generators/badge.js';
 import {
@@ -137,6 +144,7 @@ import { runRuleExplorerCli } from './ui/rule-explorer.js';
 import { loadPolicy, validatePolicy, evaluatePolicy } from './policy/engine.js';
 import { createFixtureFetch } from './mock-fixtures.js';
 import { runLspServer } from './lsp/server.js';
+import { startSmartWatch } from './watcher/smart-watch.js';
 import { getTomlJsonSchema } from './schema.js';
 import { generateCompletion, isCompletionShell } from './completion.js';
 import {
@@ -173,6 +181,7 @@ import { applyFixes } from './fix.js';
 import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
 import { formatToml } from './format-file.js';
 import type { FormatResult } from './format-file.js';
+import { semanticHash } from './cst/semantic-hash.js';
 
 const VERSION = '0.1.0';
 const DEFAULT_PATH = 'stellar.toml';
@@ -198,6 +207,7 @@ interface Cli {
   domain?: string;
   format: Format;
   formatFile: boolean;
+  semanticHash: boolean;
   healthCheck?: boolean;
   strict: boolean;
   watch?: boolean;
@@ -211,6 +221,9 @@ interface Cli {
   maxWarnings?: number;
   failOn?: Severity;
   checkNetwork: boolean;
+  auditFees: boolean;
+  verifyPostmessage: boolean;
+  postmessageUrl?: string;
   checkIpv6?: boolean;
   auditRouting?: boolean;
   expectedAsns?: string[];
@@ -224,6 +237,7 @@ interface Cli {
   followLinks: boolean;
   verifySep10: boolean;
   auditSecurity?: boolean;
+  auditReserves?: boolean;
   verifySep6?: boolean;
   verifySep31?: boolean;
   verifySep8?: boolean;
@@ -242,6 +256,7 @@ interface Cli {
   reportPrReview?: boolean;
   verifyOverlay: boolean;
   verifyBuckets: boolean;
+  verifyHistoryGaps: boolean;
   badgeSvg?: string;
   badgeJson?: string;
   exportApConfig?: boolean;
@@ -296,6 +311,9 @@ USAGE
                                          Compare two versions for breaking changes
   cat stellar.toml | stellar-toml-lint - Lint stdin
   stellar-toml-lint --format-file <file> Rewrite the file in canonical SEP-1 layout
+  stellar-toml-lint --semantic-hash <file>
+                                         Print a SHA-256 of the file's data that
+                                         ignores whitespace, comments, and key order
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type,
@@ -374,6 +392,8 @@ OPTIONS
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --audit-security    Audit token binding and CAA policy for declared
               service endpoints
+      --audit-reserves    With --check-network: compare external-chain collateral
+                          reserve balances against Stellar circulating supply
       --verify-sep6       Run end-to-end programmatic SEP-6 integration tester
       --verify-sep31      Audit SEP-31 cross-border payment lifecycle and schema
       --verify-sep8       Simulate SEP-8 regulated asset compliance approval server interaction
@@ -382,8 +402,18 @@ OPTIONS
       --verify-sep12      Audit SEP-12 KYC customer verification against the KYC server
       --verify-sep12-deletion
                           Verify SEP-12 DELETE /customer endpoint (GDPR right-to-be-forgotten)
+      --verify-sep30      Coordinate multi-party recovery signing and verify threshold compliance
       --verify-sep24-quote-lock
                           Audit SEP-24 interactive deposit fee quote stability across session
+      --audit-fees        Compare fixed and percentage fees across stellar.toml,
+                          SEP-6 /info, SEP-24 /info, and SEP-38 /prices
+                          (implies --check-network)
+      --verify-postmessage
+                          Inspect SEP-24 interactive postMessage callbacks
+                          (implies --check-network; needs Playwright or Puppeteer)
+      --postmessage-url <url>
+                          Interactive SEP-24 URL to inspect instead of creating
+                          a test deposit session
       --verify-clawback   Verify asset clawback authority (CAP-35) via Horizon and Soroban RPC
       --verify-sep8-webhook
                            Simulate SEP-8 regulated asset post-signing approval webhook
@@ -391,10 +421,17 @@ OPTIONS
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-buckets    With --check-network: download a sample of the archive
                           buckets a validator publishes, verify each against the
-                          SHA-256 in its name, and decode its XDR entries
+                          SHA-256 in its name, and decode its XDR entries; also
+                          range-read random buckets to check gzip headers, CRC32
+                          trailers, and leading BucketEntry records
+      --verify-history-gaps
+                          With --check-network: confirm every 64-ledger checkpoint
+                          across the last 10,000 archived ledgers is downloadable
       --verify-overlay    With --check-network: complete the overlay TCP handshake
                           with each [[VALIDATORS]] HOST and check its network,
-                          node ID, and protocol version
+                          node ID, and protocol version, then derive HKDF
+                          ChaCha20-Poly1305 session keys and verify one sealed
+                          frame exchange
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
       --verify-dnssec-chain
               Check DNSKEY, DS, and RRSIG evidence through a validating DoH resolver
@@ -557,6 +594,7 @@ async function main(argv: string[]): Promise<number> {
   }
 
   if (cli.formatFile) return formatFiles(cli);
+  if (cli.semanticHash) return printSemanticHashes(cli);
 
   // The explorer is about rules, not about a file, so it runs before any path
   // is read and needs no file argument.
@@ -646,6 +684,12 @@ async function main(argv: string[]): Promise<number> {
             ...(cli.verifyBuckets
               ? await checkBucketIntegrity(domainResult.parsed, fetchImpl, { rules })
               : []),
+            ...(cli.verifyBuckets
+              ? await checkBucketStreams(domainResult.parsed, fetchImpl, { rules })
+              : []),
+            ...(cli.verifyHistoryGaps
+              ? await checkHistoryGaps(domainResult.parsed, fetchImpl, { rules })
+              : []),
             ...(cli.auditQuorum || cli.auditSecurity
               ? await auditQuorumSets(domainResult.parsed, fetchImpl, { rules })
               : []),
@@ -676,6 +720,18 @@ async function main(argv: string[]): Promise<number> {
               : []),
             ...(await checkSigningKeyRevocation(domainResult.parsed, { rules, fetchImpl })),
             ...(await checkSigningKeyMultisig(domainResult.parsed, { rules, fetchImpl })),
+            ...(await checkMpcGovernance(domainResult.parsed, { rules, fetchImpl })),
+            ...(await checkKeyRotation(domainResult.parsed, {
+              rules,
+              fetchImpl,
+              ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+            })),
+            ...(cli.auditReserves
+              ? await checkProofOfReserve(domainResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.evmRpc === undefined ? {} : { evmRpcUrl: cli.evmRpc }),
+                })
+              : []),
             ...(await checkImmutabilityClaims(domainResult.parsed, fetchImpl, { rules })),
             ...(await checkCertificateTransparencyFromDocument(domainResult.parsed, {
               rules,
@@ -704,13 +760,20 @@ async function main(argv: string[]): Promise<number> {
             ...(cli.verifySep31
               ? await verifySep31(domainResult.parsed, fetchImpl, { rules })
               : []),
+            ...(cli.verifySep31 ||
+            (cli.checkNetwork && domainResult.parsed?.DIRECT_PAYMENT_SERVER !== undefined)
+              ? await validateSep31KycMatrix(domainResult.parsed, fetchImpl, { rules })
+              : []),
             // The webhook listener opens a local socket and waits for a real
             // callback, so a hermetic fixture run skips it.
             ...(cli.verifySep31 && cli.mockFixtures === undefined
               ? await verifySep31Webhooks(domainResult.parsed, fetchImpl, { rules })
               : []),
             ...(cli.verifySep30 && domainResult.parsed?.RECOVERY_SERVER !== undefined
-              ? await verifySep30(domainResult.parsed, fetchImpl, { rules })
+              ? [
+                  ...(await verifySep30(domainResult.parsed, fetchImpl, { rules })),
+                  ...(await coordinateSep30Recovery(domainResult.parsed, fetchImpl, { rules })),
+                ]
               : []),
             ...(cli.verifySep8 ? await verifySep8(domainResult.parsed, fetchImpl, { rules }) : []),
             ...(cli.verifySep8Webhook
@@ -722,8 +785,17 @@ async function main(argv: string[]): Promise<number> {
             ...(cli.verifySep38
               ? await verifySep38(domainResult.parsed, fetchImpl, { rules })
               : []),
+            ...(cli.auditFees
+              ? await checkCrossSepFees(domainResult.parsed, fetchImpl, { rules })
+              : []),
             ...(cli.verifySep24
               ? await verifySep24(domainResult.parsed, fetchImpl, { rules })
+              : []),
+            ...(cli.verifyPostmessage
+              ? await checkSep24PostMessage(domainResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.postmessageUrl !== undefined ? { url: cli.postmessageUrl } : {}),
+                })
               : []),
             ...(cli.verifySep12Deletion && cli.checkNetwork
               ? await verifySep12Deletion(domainResult.parsed, fetchImpl, { rules })
@@ -757,11 +829,15 @@ async function main(argv: string[]): Promise<number> {
             ...(cli.verifyOverlay && cli.mockFixtures === undefined
               ? await checkOverlayHandshake(domainResult.parsed, { rules })
               : []),
+            ...(cli.verifyOverlay && cli.mockFixtures === undefined
+              ? await checkOverlayCipher(domainResult.parsed, { rules })
+              : []),
             // A certificate probe opens its own socket rather than going
             // through the fixture transport, so hermetic runs skip it.
             ...(cli.mockFixtures === undefined
               ? await checkCertExpiry(domainResult.parsed, { rules })
               : []),
+            ...(await checkHsts(domainResult.parsed, fetchImpl, { rules })),
             // The ALPN probe opens its own TLS socket for the same reason.
             ...(cli.mockFixtures === undefined
               ? await auditHttpVersions(domainResult.parsed, { rules, domain: cli.domain })
@@ -966,14 +1042,22 @@ async function main(argv: string[]): Promise<number> {
               );
             }
 
-            if (cli.verifySep31 && cli.checkNetwork) {
+            if (
+              (cli.verifySep31 || cli.checkNetwork) &&
+              fileResult.parsed?.DIRECT_PAYMENT_SERVER !== undefined
+            ) {
+              if (cli.verifySep31) {
+                networkDiagnostics.push(
+                  ...(await verifySep31(fileResult.parsed, fetchImpl, { rules })),
+                  // Opens a loopback listener for the callback, so hermetic
+                  // fixture runs skip it.
+                  ...(cli.mockFixtures === undefined
+                    ? await verifySep31Webhooks(fileResult.parsed, fetchImpl, { rules })
+                    : []),
+                );
+              }
               networkDiagnostics.push(
-                ...(await verifySep31(fileResult.parsed, fetchImpl, { rules })),
-                // Opens a loopback listener for the callback, so hermetic
-                // fixture runs skip it.
-                ...(cli.mockFixtures === undefined
-                  ? await verifySep31Webhooks(fileResult.parsed, fetchImpl, { rules })
-                  : []),
+                ...(await validateSep31KycMatrix(fileResult.parsed, fetchImpl, { rules })),
               );
             }
 
@@ -984,6 +1068,7 @@ async function main(argv: string[]): Promise<number> {
             ) {
               networkDiagnostics.push(
                 ...(await verifySep30(fileResult.parsed, fetchImpl, { rules })),
+                ...(await coordinateSep30Recovery(fileResult.parsed, fetchImpl, { rules })),
               );
             }
 
@@ -1011,9 +1096,24 @@ async function main(argv: string[]): Promise<number> {
               );
             }
 
+            if (cli.auditFees && cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await checkCrossSepFees(fileResult.parsed, fetchImpl, { rules })),
+              );
+            }
+
             if (cli.verifySep24 && cli.checkNetwork) {
               networkDiagnostics.push(
                 ...(await verifySep24(fileResult.parsed, fetchImpl, { rules })),
+              );
+            }
+
+            if (cli.verifyPostmessage && cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await checkSep24PostMessage(fileResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.postmessageUrl !== undefined ? { url: cli.postmessageUrl } : {}),
+                })),
               );
             }
 
@@ -1073,6 +1173,7 @@ async function main(argv: string[]): Promise<number> {
                 ...(cli.mockFixtures === undefined
                   ? await checkCertExpiry(fileResult.parsed, { rules })
                   : []),
+                ...(await checkHsts(fileResult.parsed, fetchImpl, { rules })),
                 // TLS ALPN probe, outside the fixture transport.
                 ...(cli.mockFixtures === undefined
                   ? await auditHttpVersions(fileResult.parsed, {
@@ -1112,8 +1213,26 @@ async function main(argv: string[]): Promise<number> {
                   : []),
                 ...(await checkHistoryPublish(fileResult.parsed, fetchImpl, { rules })),
                 ...(await checkArchiveDiff(fileResult.parsed, fetchImpl, { rules })),
+                ...(await checkMpcGovernance(fileResult.parsed, { rules, fetchImpl })),
+                ...(await checkKeyRotation(fileResult.parsed, {
+                  rules,
+                  fetchImpl,
+                  ...(cli.domain === undefined ? {} : { domain: cli.domain }),
+                })),
+                ...(cli.auditReserves
+                  ? await checkProofOfReserve(fileResult.parsed, fetchImpl, {
+                      rules,
+                      ...(cli.evmRpc === undefined ? {} : { evmRpcUrl: cli.evmRpc }),
+                    })
+                  : []),
                 ...(cli.verifyBuckets
                   ? await checkBucketIntegrity(fileResult.parsed, fetchImpl, { rules })
+                  : []),
+                ...(cli.verifyBuckets
+                  ? await checkBucketStreams(fileResult.parsed, fetchImpl, { rules })
+                  : []),
+                ...(cli.verifyHistoryGaps
+                  ? await checkHistoryGaps(fileResult.parsed, fetchImpl, { rules })
                   : []),
                 ...(cli.auditQuorum || cli.auditSecurity
                   ? await auditQuorumSets(fileResult.parsed, fetchImpl, { rules })
@@ -1197,6 +1316,9 @@ async function main(argv: string[]): Promise<number> {
                 // Dials each peer directly, outside the fixture transport.
                 ...(cli.verifyOverlay && cli.mockFixtures === undefined
                   ? await checkOverlayHandshake(fileResult.parsed, { rules })
+                  : []),
+                ...(cli.verifyOverlay && cli.mockFixtures === undefined
+                  ? await checkOverlayCipher(fileResult.parsed, { rules })
                   : []),
                 // SDEX corridors, history archives, and bridge reserves all
                 // target the network the file declares.
@@ -1708,6 +1830,45 @@ async function formatFiles(cli: Cli): Promise<number> {
   return failed ? 2 : 0;
 }
 
+/**
+ * `--semantic-hash`: one `<sha256>  <name>` line per file, in the layout
+ * `sha256sum` uses, so a CI step can compare it against an approved value.
+ * `--format json` prints the hashes and canonical forms as one JSON array.
+ */
+async function printSemanticHashes(cli: Cli): Promise<number> {
+  if (cli.domain && cli.paths.length === 0) {
+    process.stderr.write('--semantic-hash hashes local files; pass a path or - for stdin.\n');
+    return 2;
+  }
+
+  const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
+  const results: { file: string; hash: string; canonical: string }[] = [];
+  let failed = false;
+
+  for (const path of paths) {
+    const name = path === '-' ? 'stdin' : path;
+    try {
+      const source = path === '-' ? await readStdin() : await readFile(path, 'utf8');
+      const result = semanticHash(source);
+      if (!result.ok) {
+        const at =
+          result.line === undefined ? '' : ` at line ${result.line}, column ${result.column ?? 1}`;
+        process.stderr.write(`${name}${at}: ${result.error}\n`);
+        failed = true;
+        continue;
+      }
+      results.push({ file: name, hash: result.hash, canonical: result.canonical });
+      if (cli.format !== 'json') process.stdout.write(`${result.hash}  ${name}\n`);
+    } catch (error) {
+      process.stderr.write(`${message(error)}\n`);
+      failed = true;
+    }
+  }
+
+  if (cli.format === 'json') process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);
+  return failed ? 2 : 0;
+}
+
 function formatFailure(name: string, result: Extract<FormatResult, { ok: false }>): string {
   const at =
     result.line === undefined ? '' : ` at line ${result.line}, column ${result.column ?? 1}`;
@@ -1790,12 +1951,15 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     paths: [],
     format: 'text',
     formatFile: false,
+    semanticHash: false,
     strict: false,
     quiet: false,
     count: false,
     showHelp: false,
     rules: {},
     checkNetwork: false,
+    auditFees: false,
+    verifyPostmessage: false,
     auditQuorum: false,
     auditDiversity: false,
     followLinks: false,
@@ -1808,6 +1972,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     verifyDnssec: false,
     verifyOverlay: false,
     verifyBuckets: false,
+    verifyHistoryGaps: false,
     checkContracts: false,
     simulateSoroban: false,
     sorobanRentAudit: false,
@@ -1885,6 +2050,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.formatFile = true;
         break;
 
+      case '--semantic-hash':
+        cli.semanticHash = true;
+        break;
+
       case '-f':
       case '--format': {
         const value = requireValue(argv, ++i, arg);
@@ -1938,6 +2107,25 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--check-network':
         cli.checkNetwork = true;
         break;
+
+      case '--audit-fees':
+        cli.auditFees = true;
+        cli.checkNetwork = true;
+        break;
+
+      case '--verify-postmessage':
+        cli.verifyPostmessage = true;
+        cli.checkNetwork = true;
+        break;
+
+      case '--postmessage-url': {
+        const value = requireValue(argv, ++i, arg);
+        if (!isUrl(value)) {
+          throw new Error('--postmessage-url expects an http or https URL.');
+        }
+        cli.postmessageUrl = value;
+        break;
+      }
 
       case '--check-ipv6':
         cli.checkIpv6 = true;
@@ -1998,6 +2186,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.auditSecurity = true;
         break;
 
+      case '--audit-reserves':
+        cli.auditReserves = true;
+        break;
+
       case '--verify-sep6':
         cli.verifySep6 = true;
         break;
@@ -2048,6 +2240,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-buckets':
         cli.verifyBuckets = true;
+        break;
+
+      case '--verify-history-gaps':
+        cli.verifyHistoryGaps = true;
         break;
 
       case '--verify-dnssec':
@@ -2633,30 +2829,36 @@ async function watchFiles(
   runLint: (cli: Cli, color: boolean) => Promise<number>,
 ) {
   await runLint(cli, color);
-
-  for (const path of paths) {
-    if (path === '-') continue; // can't watch stdin
-    let timer: NodeJS.Timeout | null = null;
-    try {
-      const watcher = watch(path, () => {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(async () => {
-          timer = null;
-          if (process.stdout.isTTY) process.stdout.write('\x1Bc');
-          await runLint(cli, color);
-        }, 100);
-      });
-      watcher.on('error', (error) => {
-        process.stderr.write(`Warning: Watcher error on ${path}: ${error.message}\n`);
-      });
-    } catch (error) {
-      const e = error as Error;
-      process.stderr.write(`Warning: Could not watch ${path}: ${e.message}\n`);
-    }
-  }
+  const watchState = await startSmartWatch(paths, {
+    runOffline: (changedPaths) =>
+      runLint(
+        {
+          ...cli,
+          paths: changedPaths,
+          checkNetwork: false,
+          checkContracts: false,
+          followLinks: false,
+        },
+        color,
+      ),
+    ...(cli.checkNetwork
+      ? { runNetwork: (changedPaths: string[]) => runLint({ ...cli, paths: changedPaths }, color) }
+      : {}),
+    onRun: (phase, changedPaths) => {
+      if (process.stdout.isTTY) process.stdout.write('\x1Bc');
+      process.stdout.write(`Watch mode: ${phase} checks for ${changedPaths.join(', ')}\n`);
+    },
+    onError: (path, error) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`Warning: Watcher error on ${path}: ${detail}\n`);
+    },
+  });
 
   // Wait indefinitely, exit on SIGINT
   return new Promise<number>(() => {
-    process.on('SIGINT', () => process.exit(0));
+    process.on('SIGINT', () => {
+      watchState.close();
+      process.exit(0);
+    });
   });
 }

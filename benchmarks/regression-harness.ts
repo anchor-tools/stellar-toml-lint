@@ -144,6 +144,16 @@ export const RULE_ALLOWANCES: Readonly<Record<string, RuleAllowance>> = {
     tolerance: 0.5,
     reason: 'walks the whole document for web+stellar: URIs',
   },
+  'currencies/urls': {
+    budgetMs: 2,
+    tolerance: 0.5,
+    reason: 'validates the URL fields of all 1,000 CURRENCIES entries',
+  },
+  'validators/alias': {
+    budgetMs: 2,
+    tolerance: 0.5,
+    reason: 'validates the ALIAS format of all 1,000 VALIDATORS entries',
+  },
 };
 
 /** Fractional rise over baseline that counts as a regression. */

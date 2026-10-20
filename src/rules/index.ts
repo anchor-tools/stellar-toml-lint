@@ -19,6 +19,7 @@ import { maxDecimalsRules } from './max-decimals.js';
 import { horizonRules } from './horizon-check.js';
 import { sep3Rules } from './sep3-auth.js';
 import { sep38Rules } from './sep38-endpoints.js';
+import { crossSepFeeRules } from './cross-sep-fee-auditor.js';
 import { orgUrlRules } from './org-url-check.js';
 import { imageAssetRules } from './image-assets.js';
 import { sorobanRules } from '../soroban.js';
@@ -31,13 +32,19 @@ import { sep6Rules } from '../cross-sep/sep6.js';
 import { corsPreflightRules } from '../network/cors-preflight.js';
 import { overlayCrawlerRules } from '../overlay/crawler-rules.js';
 import { overlayHandshakeRules } from '../overlay/handshake.js';
+import { overlayCipherRules } from '../overlay/cipher-verifier.js';
 import { cryptoAuditorRules } from '../overlay/crypto-auditor.js';
 import { historyPublishRules } from '../history/publish-validator.js';
 import { archiveDiffRules } from '../history/archive-diff.js';
 import { bucketAuditorRules } from '../history/bucket-auditor.js';
+import { bucketStreamRules } from '../history/bucket-stream-validator.js';
+import { gapAuditorRules } from '../history/gap-auditor.js';
 import { quorumSolverRules } from '../validators/quorum-solver.js';
 import { quorumAuditRules } from '../validators/quorum.js';
 import { dnsIntegrityRules } from '../security/dns-integrity.js';
+import { corpHeaderRules } from '../security/corp-auditor.js';
+import { mpcGovernanceRules } from '../security/mpc-governance.js';
+import { hstsAuditorRules } from '../security/hsts-auditor.js';
 import { dmarcAuditorRules, caaAuditorRules, tlsPfsAuditorRules } from '../security/index.js';
 import { certExpiryRules } from '../network/cert-expiry.js';
 import { bgpRouteDetectorRules } from '../network/bgp-route-detector.js';
@@ -55,6 +62,9 @@ import { sep7Rules } from '../protocols/sep7.js';
 import { sep6IntegrationRules } from '../protocols/sep6.js';
 import { sep31Rules } from '../protocols/sep31.js';
 import { sep31WebhookRules } from '../protocols/sep31-webhook-verifier.js';
+import { sep31KycRules } from '../protocols/sep31-kyc-matrix.js';
+import { sep30Rules } from '../protocols/sep30.js';
+import { sep30CoordinatorRules } from '../protocols/sep30-coordinator.js';
 import { sep8Rules } from '../protocols/sep8.js';
 import { sep38QuoteRules } from '../protocols/sep38.js';
 import { sep24Rules } from '../protocols/sep24.js';
@@ -96,12 +106,15 @@ export const allRules: Rule[] = [
   ...historyArchiveRules,
   ...securityRules,
   ...multisigRules,
+  ...corpHeaderRules,
+  ...mpcGovernanceRules,
 
   emailMxRule,
 
   ...horizonRules,
   ...sep3Rules,
   ...sep38Rules,
+  ...crossSepFeeRules,
   ...corridorRoutingRules,
   ...bridgeReserveRules,
   ...orgUrlRules,
@@ -123,8 +136,11 @@ export const allRules: Rule[] = [
   ...sep12Rules,
   ...sep6Rules,
   ...sep6IntegrationRules,
+  ...sep30Rules,
+  ...sep30CoordinatorRules,
   ...sep31Rules,
   ...sep31WebhookRules,
+  ...sep31KycRules,
   ...sep8Rules,
   ...sep8WebhookRules,
   ...sep38QuoteRules,
@@ -133,12 +149,15 @@ export const allRules: Rule[] = [
   ...corsPreflightRules,
   ...overlayCrawlerRules,
   ...overlayHandshakeRules,
+  ...overlayCipherRules,
   ...overlayDosRules,
   ...topologyAnalyzerRules,
   ...cryptoAuditorRules,
   ...historyPublishRules,
   ...archiveDiffRules,
   ...bucketAuditorRules,
+  ...bucketStreamRules,
+  ...gapAuditorRules,
   ...quorumSolverRules,
   ...quorumAuditRules,
   ...dnsIntegrityRules,
@@ -147,6 +166,7 @@ export const allRules: Rule[] = [
   ...tlsPfsAuditorRules,
   ...bgpRouteDetectorRules,
   ...certExpiryRules,
+  ...hstsAuditorRules,
   ...ipv6AuditorRules,
   // `httpVersionAuditorRules` is folded into `generalRules` (see
   // src/rules/general.ts, where the issue wires it), so it is exported rather
@@ -185,6 +205,7 @@ export {
   horizonRules,
   sep3Rules,
   sep38Rules,
+  crossSepFeeRules,
   imageAssetRules,
   sorobanRules,
   sorobanErrorRules,
@@ -196,10 +217,13 @@ export {
   corsPreflightRules,
   overlayCrawlerRules,
   overlayHandshakeRules,
+  overlayCipherRules,
   cryptoAuditorRules,
   historyPublishRules,
   archiveDiffRules,
   bucketAuditorRules,
+  bucketStreamRules,
+  gapAuditorRules,
   quorumSolverRules,
   quorumAuditRules,
   dnsIntegrityRules,
@@ -215,8 +239,11 @@ export {
   testnetContractRules,
   sep7Rules,
   sep6IntegrationRules,
+  sep30Rules,
+  sep30CoordinatorRules,
   sep31Rules,
   sep31WebhookRules,
+  sep31KycRules,
   sep8Rules,
   sep38QuoteRules,
   sep24Rules,
@@ -237,4 +264,7 @@ export {
   bridgeReserveRules,
   corridorRoutingRules,
   redosDetectorRules,
+  corpHeaderRules,
+  mpcGovernanceRules,
+  hstsAuditorRules,
 };

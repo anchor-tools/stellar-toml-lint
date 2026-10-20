@@ -116,6 +116,9 @@ export const GLOBAL_FIELDS = [
 export const KNOWN_GLOBAL_FIELDS = new Set<string>([
   ...GLOBAL_FIELDS,
   ...Object.keys(DEPRECATED_FIELDS),
+  'MPC_GOVERNANCE',
+  'RECOVERY_SERVER',
+  'RECOVERY_SERVERS',
   // Tables, handled by their own rule sets.
   'DOCUMENTATION',
   'PRINCIPALS',
@@ -192,6 +195,11 @@ export const CURRENCY_FIELDS = [
   'approval_server',
   'approval_criteria',
   'toml',
+  'fee_fixed',
+  'fee_percent',
+  'fee_minimum',
+  'fee_tiers',
+  'fee_schedule',
 ] as const;
 
 /** `[[VALIDATORS]]` fields, in spec order. */
@@ -344,6 +352,13 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
   },
   {
     section: '',
+    name: 'MPC_GOVERNANCE',
+    type: 'table (extension)',
+    description: 'Optional MPC custody declaration used by the network governance audit.',
+    anchor: 'general-information',
+  },
+  {
+    section: '',
     name: 'FEDERATION_SERVER',
     type: 'url (`https://`)',
     description:
@@ -450,6 +465,20 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
     name: 'ANCHOR_QUOTE_SERVER',
     type: 'url (`https://`)',
     description: 'The server used for receiving SEP-38 requests.',
+    anchor: 'general-information',
+  },
+  {
+    section: '',
+    name: 'RECOVERY_SERVER',
+    type: 'url (`https://`)',
+    description: 'The endpoint for SEP-30 multi-party recovery servers.',
+    anchor: 'general-information',
+  },
+  {
+    section: '',
+    name: 'RECOVERY_SERVERS',
+    type: 'list of `https://` URLs',
+    description: 'Declared SEP-30 multi-party recovery server endpoints.',
     anchor: 'general-information',
   },
 
@@ -889,6 +918,43 @@ export const FIELD_DOCS: readonly FieldDoc[] = [
     type: 'url',
     description:
       'Links out to a separate TOML file for the currency: stellar.toml can specify toml="https://DOMAIN/.well-known/CURRENCY.toml" as the currency’s only field.',
+    anchor: 'currency-documentation',
+  },
+  {
+    section: 'CURRENCIES',
+    name: 'fee_fixed',
+    type: 'number',
+    description: 'A fixed fee charged per transaction, in the asset\u2019s units.',
+    anchor: 'currency-documentation',
+  },
+  {
+    section: 'CURRENCIES',
+    name: 'fee_percent',
+    type: 'number',
+    description: 'A percentage fee charged per transaction, expressed as a percentage.',
+    anchor: 'currency-documentation',
+  },
+  {
+    section: 'CURRENCIES',
+    name: 'fee_minimum',
+    type: 'number',
+    description: 'The minimum fee charged per transaction, in the asset\u2019s units.',
+    anchor: 'currency-documentation',
+  },
+  {
+    section: 'CURRENCIES',
+    name: 'fee_tiers',
+    type: 'array of tables',
+    description:
+      'Tiered fee schedule entries, each bounded by min_amount/max_amount and carrying fixed and percent fee components.',
+    anchor: 'currency-documentation',
+  },
+  {
+    section: 'CURRENCIES',
+    name: 'fee_schedule',
+    type: 'table',
+    description:
+      'A structured fee schedule for the asset, used when a single fixed/percent pair cannot describe its fees.',
     anchor: 'currency-documentation',
   },
 

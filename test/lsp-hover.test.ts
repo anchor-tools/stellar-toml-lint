@@ -279,7 +279,9 @@ describe('textDocument/hover over stdio', () => {
   it('advertises hover and answers a hover request with the field docs', async () => {
     const server = startServer();
     try {
-      const init = await server.request(1, 'initialize', { capabilities: {} });
+      const init = await server.request(1, 'initialize', {
+        capabilities: { textDocument: { diagnostic: {} } },
+      });
       const capabilities = (init.result as { capabilities: Record<string, unknown> }).capabilities;
       expect(capabilities.hoverProvider).toBe(true);
 
@@ -304,6 +306,35 @@ describe('textDocument/hover over stdio', () => {
         position: { line: blankLine, character: 0 },
       });
       expect(blank.result).toBeNull();
+    } finally {
+      server.close();
+    }
+  }, 20_000);
+});
+
+describe('textDocument/completion over stdio', () => {
+  it('advertises completion and returns scoped fields with templates', async () => {
+    const server = startServer();
+    const source = '[[CURRENCIES]]\ncode = "USDC"\n';
+    try {
+      const init = await server.request(1, 'initialize', { capabilities: {} });
+      const capabilities = (init.result as { capabilities: Record<string, unknown> }).capabilities;
+      expect(capabilities.completionProvider).toMatchObject({ resolveProvider: false });
+
+      server.notify('initialized', {});
+      const uri = 'file:///stellar.toml';
+      server.notify('textDocument/didOpen', {
+        textDocument: { uri, version: 1, text: source },
+      });
+      const response = await server.request(2, 'textDocument/completion', {
+        textDocument: { uri },
+        position: { line: 2, character: 0 },
+      });
+      const items = (response.result as { items: { label: string }[] }).items;
+
+      expect(items.map((item) => item.label)).toContain('issuer');
+      expect(items.map((item) => item.label)).not.toContain('code');
+      expect(items.map((item) => item.label)).toContain('new-currency-anchored');
     } finally {
       server.close();
     }

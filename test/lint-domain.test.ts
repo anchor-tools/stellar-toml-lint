@@ -144,7 +144,7 @@ describe('lintDomain', () => {
       });
     }) as unknown as typeof fetch;
 
-    const result = await lintDomain('example.com', {}, impl);
+    const result = await lintDomain('example.com', { checkNetwork: true }, impl);
     expect(calls).toContain('https://history.example.com/archive/.well-known/stellar-history.json');
     expect(ruleIds(result)).not.toContain('validators/history-archive-unreachable');
     expect(ruleIds(result)).not.toContain('validators/history-archive-malformed');
@@ -163,6 +163,32 @@ describe('lintDomain', () => {
     const { impl, calls } = stubFetch();
     await lintDomain('example.com', {}, impl);
     expect(calls[0]?.headers.Origin).toBeTruthy();
+  });
+
+  it('sends Fetch Metadata and validates response isolation headers', async () => {
+    const { impl, calls } = stubFetch({
+      headers: {
+        'access-control-allow-origin': '*',
+        'cross-origin-resource-policy': 'cross-origin',
+        'cross-origin-opener-policy': 'same-origin',
+        'x-content-type-options': 'nosniff',
+      },
+    });
+    const result = await lintDomain('example.com', { checkNetwork: true }, impl);
+
+    expect(calls[0]?.headers['Sec-Fetch-Site']).toBe('cross-site');
+    expect(calls[0]?.headers['Sec-Fetch-Mode']).toBe('cors');
+    expect(ruleIds(result)).not.toContain('security/missing-corp-header');
+    expect(ruleIds(result)).not.toContain('security/missing-opener-policy');
+    expect(ruleIds(result)).not.toContain('security/missing-nosniff-header');
+  });
+
+  it('warns when live stellar.toml responses omit nosniff and opener policy', async () => {
+    const { impl } = stubFetch({ headers: { 'access-control-allow-origin': '*' } });
+    const result = await lintDomain('example.com', { checkNetwork: true }, impl);
+
+    expect(ruleIds(result)).toContain('security/missing-opener-policy');
+    expect(ruleIds(result)).toContain('security/missing-nosniff-header');
   });
 
   it('accepts a wildcard CORS header', async () => {
