@@ -327,10 +327,71 @@ describe('cli --diff', () => {
     expect(stderr).toContain('Could not find');
   });
 
-  it('exits 2 when --diff is missing its second argument', async () => {
-    const { code, stderr } = await cli(['--diff', fixture('valid.toml')]);
+  it('exits 2 when --diff is given no argument', async () => {
+    const { code, stderr } = await cli(['--diff']);
     expect(code).toBe(2);
     expect(stderr).toContain('--diff expects a value');
+  });
+
+  it('compares the first positional file against a single --diff value', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'stellar-diff-'));
+    try {
+      const base = join(dir, 'base.toml');
+      const target = join(dir, 'target.toml');
+      await writeFile(
+        base,
+        doc(
+          '[[CURRENCIES]]\ncode="USDX"\nissuer="' +
+            ACCOUNT_B +
+            '"\nis_unlimited=true\nstatus="live"',
+        ),
+      );
+      await writeFile(
+        target,
+        doc(
+          '[[CURRENCIES]]\ncode="USDX"\nissuer="' +
+            ACCOUNT_C +
+            '"\nis_unlimited=true\nstatus="live"',
+        ),
+      );
+
+      const { code, stdout } = await cli([base, '--diff', target]);
+      expect(code).toBe(1);
+      expect(stdout).toContain('BREAKING');
+      expect(stdout).toContain('CURRENCIES[USDX].issuer');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('renders side-by-side columns with --diff-style side-by-side', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'stellar-diff-'));
+    try {
+      const base = join(dir, 'base.toml');
+      const target = join(dir, 'target.toml');
+      await writeFile(base, doc(''));
+      await writeFile(target, doc('').replace('ORG_NAME="Example"', 'ORG_NAME="Renamed Example"'));
+
+      const { code, stdout } = await cli(['--diff', base, target, '--diff-style', 'side-by-side']);
+      expect(code).toBe(0);
+      expect(stdout).toContain('ORG_NAME="Example"');
+      expect(stdout).toContain('ORG_NAME="Renamed Example"');
+      expect(stdout).toContain('1 insertions(+)');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an unknown --diff-style value', async () => {
+    const { code, stderr } = await cli([
+      '--diff',
+      fixture('valid.toml'),
+      fixture('valid.toml'),
+      '--diff-style',
+      'split',
+    ]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('Unknown diff style');
   });
 
   it('exits 0 with a WARNING for mutated ORG_DESCRIPTION', async () => {

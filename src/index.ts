@@ -66,6 +66,23 @@ export type {
   TokenKind,
   TriviaKind,
 } from './cst/lexer.js';
+export {
+  LosslessRewriter,
+  rewrite,
+  countComments,
+  detectCommentLoss,
+  evaluateRewritten,
+  COMMENT_LOSS_RULE,
+} from './cst/lossless-rewrite.js';
+export type { RewriteEdit, RewriteResult } from './cst/lossless-rewrite.js';
+export { IncrementalParser, computeLineDelta } from './cst/incremental-parser.js';
+export type {
+  IncrementalParserOptions,
+  LineDelta,
+  ReparseResult,
+} from './cst/incremental-parser.js';
+export { renderSplitDiff, detectTerminalWidth } from './reporters/split-diff.js';
+export type { Segment, SplitDiffOptions } from './reporters/split-diff.js';
 export { allRules, ruleIds } from './rules/index.js';
 export { PRESETS, PRESET_NAMES, resolvePreset } from './presets.js';
 export type { Preset, PresetName } from './presets.js';

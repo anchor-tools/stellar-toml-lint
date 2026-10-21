@@ -644,6 +644,13 @@ normalize a near-miss `NETWORK_PASSPHRASE`, reduce a social URL to a bare handle
 number as E.164). Unfixable parse errors never produce a code action. Point your editor's LSP
 client at the `stellar-toml-lint` binary with `--lsp`.
 
+Diagnostics update incrementally: each keystroke computes the changed line/offset region and
+reparses only that slice, re-running only the rules whose category covers the touched table
+(`src/cst/incremental-parser.ts`). Any edit the incremental path cannot handle safely — a syntax
+error, comments in the changed region, a shifted suppressions map — falls back to a full reparse,
+so the incremental path is an optimisation and never a second source of truth: the diagnostics a
+keystroke publishes are the diagnostics a full lint would.
+
 Hovering a key or a table header shows the SEP-1 documentation for what is under the cursor: the
 qualified name (`[[CURRENCIES]].display_decimals`), its type (`integer (0-7)`), the specification's
 own description, the permitted values where SEP-1 enumerates them (`live`, `dead`, `test`,
@@ -940,6 +947,12 @@ stellar-toml-lint --migrate sep41 --dry-run stellar.toml
 
 When passed with `--fix`, the linter calculates all safe mechanical fixes, outputs the unified diff of modifications to `stdout`, and exits without writing changes to the filesystem. When `--fix` is passed without `--dry-run`, fixes are written directly to the file. Both `--migrate` and `--dry-run` can be combined with any existing flags. When `--migrate` is set, the linter runs the migration first, shows the unified diff, and optionally writes the migrated source back to disk (unless `--dry-run` is specified). Diagnostics are emitted as `codemod/migration-conflict` (error) and `codemod/migration-applied` (info).
 
+Fixes rewrite the file losslessly (`src/cst/lossless-rewrite.ts`): comments, blank lines, and
+formatting survive a `--fix` pass byte-for-byte except for the text a fix actually touches. If a
+rewrite would drop a comment, the fix is refused — the file is left untouched and a
+`cst/comment-loss-detected` error (in `--dry-run`) or a skipped write (otherwise) reports which
+file was spared rather than silently deleting review history.
+
 ## In the browser
 
 The linter itself is free of Node built-ins, so it also runs in a page or a worker under dedicated browser packages and bundles:
@@ -1209,11 +1222,26 @@ trusts its assets. `--diff` compares two versions and labels each change:
 # Fail the PR job if the proposed file would break existing integrations
 stellar-toml-lint --diff origin/main:public/.well-known/stellar.toml \
                          public/.well-known/stellar.toml
+
+# One file against another: --diff <base> <target>, or --diff <file2> to
+# compare ./stellar.toml (or the first positional path) against file2
+stellar-toml-lint --diff old.toml
+
+# Side-by-side columns with word-level highlighting instead of the change list
+stellar-toml-lint --diff old.toml --diff-style side-by-side
 ```
+
+`--diff-style` accepts `unified` (the default — the labelled change list above) or `side-by-side`,
+which lines the two versions up in synchronized columns: line numbers, `-`/`+` markers, red/green
+word-level highlights inside changed lines, and a `... N unchanged lines ...` fold across long
+runs of context so the changed regions stay on one screen. The exit code is the same either way —
+it comes from the semantic comparison (`hasBreakingChanges`), not from the renderer, and the
+semantic report follows the columns so breaking-change labels are never lost.
 
 Programmatic equivalent: `compareToml(baseSource, targetSource)` returns
 `TomlDifference[]` with `{ path, message, severity, breaking }`; `formatDiff` renders the
-same report the CLI prints.
+same report the CLI prints; `renderSplitDiff(baseSource, targetSource, options)` from
+`src/reporters/split-diff.ts` renders the side-by-side block.
 
 ## In CI
 
@@ -1807,7 +1835,11 @@ requiring a valid `anchor_asset_type` and warning when `anchor_asset` is absent;
 requiring a declared transfer server; SEP-8 regulated assets carrying an approval server, with
 `regulated = true` rejected on the native asset and on Soroban contract tokens; collateral address,
 message, and signature lists of equal length; `toml` pointer entries carrying nothing else;
-duplicate currency declarations (`currencies/duplicate-currency-declaration`).
+duplicate currency declarations (`currencies/duplicate-currency-declaration`). Configuration that
+cannot be doing anything also warns: an `approval_server`/`approval_criteria` pair on an entry that
+is not declared `regulated = true`, and `collateral_addresses`/`collateral_address_messages`/
+`collateral_address_signatures` on an entry that is explicitly `is_asset_anchored = false`
+(`general/dead-configuration-key`, warning).
 
 Collateral signatures are verified cryptographically, offline, not just counted. For each position
 `i`, `collateral_address_signatures[i]` must be the signature of `collateral_address_messages[i]` by

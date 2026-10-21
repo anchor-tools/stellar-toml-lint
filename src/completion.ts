@@ -189,6 +189,12 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--help', short: '-h', description: 'Print usage' },
   { long: '--fix', description: 'Apply safe autofixes to files' },
   { long: '--dry-run', description: 'Preview autofix or migration diff without modifying files' },
+  { long: '--diff', description: 'Compare two versions for breaking changes', takesValue: true },
+  {
+    long: '--diff-style',
+    description: 'Render --diff as unified or side-by-side',
+    values: ['unified', 'side-by-side'],
+  },
 ];
 
 /** Rule-override flags, which complete to the registered rule ids. */

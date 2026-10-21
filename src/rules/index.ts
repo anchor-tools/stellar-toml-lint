@@ -77,6 +77,7 @@ import { storageFootprintRules } from '../soroban/storage-footprint.js';
 import { authAuditorRules } from '../soroban/auth-auditor.js';
 import { instanceStorageAuditorRules } from '../soroban/instance-storage-auditor.js';
 import { insecureHttpRule } from './insecure-http.js';
+import { deadCodeRules } from './dead-code.js';
 import { multisigRules } from '../security/multisig.js';
 import { ipfsMetadataRules } from '../validators/ipfsMetadata.js';
 import { sep8WebhookRules } from '../sep8/webhookCoordinator.js';
@@ -92,6 +93,7 @@ import { topologyAnalyzerRules } from '../overlay/topology-analyzer.js';
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
   ...generalRules,
+  ...deadCodeRules,
   insecureHttpRule,
   ...deprecationRules,
   ...sep10Rules,

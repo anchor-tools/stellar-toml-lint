@@ -11,7 +11,7 @@
  */
 import process from 'node:process';
 import { createHash } from 'node:crypto';
-import { lint } from '../lint.js';
+import { IncrementalParser } from '../cst/incremental-parser.js';
 import type { Diagnostic } from '../types.js';
 import { codeActionsFor, toLspDiagnostic } from './code-actions.js';
 import type { LspCodeAction } from './code-actions.js';
@@ -45,6 +45,10 @@ export async function runLspServer(
     string,
     { text: string; resultId: string; diagnostics: Diagnostic[] }
   >();
+  // Incremental reparsing: keeps the previous CST per URI and re-runs only the
+  // rules a keystroke can affect, falling back to a full `lint()` whenever the
+  // edit is one it cannot reason about exactly.
+  const parser = new IncrementalParser();
   let shuttingDown = false;
   let clientSupportsDiagnosticPull = false;
 
@@ -66,7 +70,7 @@ export async function runLspServer(
   };
 
   const updateDocument = (uri: string, text: string): void => {
-    const diagnostics = lint(text).diagnostics;
+    const diagnostics = parser.update(uri, text).diagnostics;
     const resultId = createHash('sha256').update(text).digest('hex');
     documents.set(uri, { text, resultId, diagnostics });
     if (!clientSupportsDiagnosticPull) publishDiagnostics(uri, diagnostics);
@@ -179,6 +183,7 @@ export async function runLspServer(
       case 'textDocument/didClose': {
         const params = message.params as DidCloseTextDocumentParams;
         documents.delete(params.textDocument.uri);
+        parser.close(params.textDocument.uri);
         return true;
       }
       default:

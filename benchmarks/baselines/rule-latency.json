@@ -261,6 +261,10 @@
       "units": 0,
       "rmeFraction": 0.0052
     },
+    "general/dead-configuration-key": {
+      "units": 0.09,
+      "rmeFraction": 0.005
+    },
     "general/deprecated-field": {
       "units": 0.0018,
       "rmeFraction": 0.0029

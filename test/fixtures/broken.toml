@@ -67,6 +67,17 @@ code="ORPH"
 code="native"
 display_decimals=2
 
+[[CURRENCIES]]
+# Dead configuration: neither gating condition is on, so no client reads
+# approval_server or collateral_addresses on this entry.
+code="DEAD"
+issuer="GAZ3V7WDE3TADF6UQWU3TAWQPVSW6ZV3NCCW6A7UN6HUDI5WXPMLQDFY"
+is_unlimited=true
+is_asset_anchored=false
+approval_server="https://api.example.com/approval"
+approval_criteria="Licensed intermediary only"
+collateral_addresses=["2C1mCx3ukix1KfegAY5zgQJV7sanAciZpv"]
+
 [[VALIDATORS]]
 ALIAS="Example_US_Node"
 HOST="core-us.example.com"

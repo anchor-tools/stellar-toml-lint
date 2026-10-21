@@ -307,6 +307,36 @@ main
 - `lintDomain` accepts an optional `tlsProbe` so embedders and tests can supply the session instead of
   having one opened for them. `probeTls` is exported for callers that need to measure it themselves.
 
+- `--diff` gains `--diff-style side-by-side` (#302): synchronized columns with line numbers, `-`/`+`
+  markers, red/green word-level highlights inside changed lines, and a `... N unchanged lines ...`
+  fold across long runs of context, rendered by `renderSplitDiff(base, target, options)` in
+  `src/reporters/split-diff.ts`. `--diff` also accepts a single value — `stellar-toml-lint --diff
+  other.toml` compares `./stellar.toml` (or the first positional path) against `other.toml` — while
+  the two-value form and the exit code, which comes from the semantic comparison either way, are
+  unchanged.
+
+- `--fix` rewrites through a lossless CST rewrite (`src/cst/lossless-rewrite.ts`, #300): comments,
+  blank lines, and formatting survive a fix byte-for-byte except for the text the fix actually
+  touches. A rewrite that would drop a comment is refused — `--fix --dry-run` reports
+  `cst/comment-loss-detected` and exits 2, and a real run skips the write and names the file it
+  spared — so review history is never silently deleted. Exported as `rewrite`, `countComments`,
+  `detectCommentLoss`, `evaluateRewritten`, and the `LosslessRewriter` class.
+
+- The LSP updates diagnostics incrementally (`src/cst/incremental-parser.ts`, #305): each keystroke
+  computes the changed line/offset region, reparses only that slice, and re-runs only the rules whose
+  category covers the touched table, carrying diagnostics below the edit forward with their line
+  numbers shifted. Any edit the path cannot handle safely — a syntax error, comments in the region,
+  a shifted suppressions map — falls back to a full reparse, so the incremental path is an
+  optimisation and never a second source of truth: the diagnostics a keystroke publishes are the
+  diagnostics a full lint would. Exported as `IncrementalParser` and `computeLineDelta`.
+
+- `general/dead-configuration-key` (warning, #307) flags configuration that cannot be doing anything:
+  an `approval_server`/`approval_criteria` pair on a `[[CURRENCIES]]` entry that does not declare
+  `regulated = true`, and `collateral_addresses`/`collateral_address_messages`/
+  `collateral_address_signatures` on an entry that is explicitly `is_asset_anchored = false`. An
+  absent flag never fires — only an explicit `false` does — so files that say nothing are
+  unaffected.
+
 ## [0.1.0]
 
 Initial release.

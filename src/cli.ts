@@ -40,6 +40,8 @@ import {
   formatSummary,
   formatText,
 } from './reporters.js';
+import { renderSplitDiff } from './reporters/split-diff.js';
+import { detectCommentLoss } from './cst/lossless-rewrite.js';
 import { calculateReadiness } from './readiness.js';
 import { expandGlob, hasMagic } from './glob.js';
 import { generateAnchorTestsConfig } from './integrations/anchor-tests.js';
@@ -295,7 +297,8 @@ interface Cli {
   dryRun?: boolean;
   fix?: boolean;
   serveMock?: number;
-  diff?: { base: string; target: string };
+  diff?: { base?: string; target: string };
+  diffStyle?: 'unified' | 'side-by-side';
   readiness?: boolean;
 }
 
@@ -311,6 +314,8 @@ USAGE
   stellar-toml-lint --domain <domain>    Fetch and lint https://<domain>/.well-known/stellar.toml
   stellar-toml-lint --diff <base> <target>
                                          Compare two versions for breaking changes
+  stellar-toml-lint --diff <file2>       Compare ./stellar.toml (or the first
+                                         positional path) against file2
   cat stellar.toml | stellar-toml-lint - Lint stdin
   stellar-toml-lint --format-file <file> Rewrite the file in canonical SEP-1 layout
   stellar-toml-lint --semantic-hash <file>
@@ -492,6 +497,14 @@ OPTIONS
         --migrate <target>  Run a code migration: sep41 or v2
         --fix               Apply safe autofixes to files
         --dry-run           Preview autofix or migration diff without modifying files
+        --diff <base> <target>
+                            Compare two versions for breaking changes; with a
+                            single value, compares ./stellar.toml (or the first
+                            positional path) against that file
+        --diff-style <style>
+                            How to render --diff: unified (default, the
+                            semantic change list) or side-by-side (aligned
+                            columns with word-level highlighting)
        --monitor           Start a polling daemon that watches a URL or local
                            file for changes
        --interval <ms>     Polling interval in milliseconds (default 300)
@@ -653,10 +666,23 @@ async function main(argv: string[]): Promise<number> {
 
     try {
       if (cli.diff) {
-        const baseSource = await readFile(cli.diff.base, 'utf8');
-        const targetSource = await readFile(cli.diff.target, 'utf8');
+        const basePath = cli.diff.base ?? cli.paths[0] ?? DEFAULT_PATH;
+        const targetPath = cli.diff.target;
+        const baseSource = await readFile(basePath, 'utf8');
+        const targetSource = await readFile(targetPath, 'utf8');
         const differences = compareToml(baseSource, targetSource);
-        process.stdout.write(formatDiff(differences, cli.diff, { color }));
+        if (cli.diffStyle === 'side-by-side') {
+          process.stdout.write(
+            renderSplitDiff(baseSource, targetSource, {
+              base: basePath,
+              target: targetPath,
+              color,
+            }),
+          );
+        }
+        process.stdout.write(
+          formatDiff(differences, { base: basePath, target: targetPath }, { color }),
+        );
         return hasBreakingChanges(differences) ? 1 : 0;
       }
 
@@ -954,6 +980,11 @@ async function main(argv: string[]): Promise<number> {
             const fileResult = lint(source, { rules });
             const fixed = applyFixes(source, fileResult.diagnostics);
             if (fixed !== source) {
+              const loss = detectCommentLoss(source, fixed);
+              if (loss !== undefined) {
+                process.stderr.write(`${path === '-' ? 'stdin' : path}: ${loss.message}\n`);
+                return 2;
+              }
               const diff = generateDiff(source, fixed, path === '-' ? 'stdin' : path);
               process.stdout.write(diff);
             }
@@ -967,6 +998,10 @@ async function main(argv: string[]): Promise<number> {
           strict = strict || config.strict;
           maxWarnings ??= config.maxWarnings;
           const rules = { ...config.rules, ...cli.rules };
+          // Captured when --fix would have dropped comments: the rewrite is
+          // skipped for this file, and the finding joins the report below so
+          // the run fails loudly instead of silently writing a commentless file.
+          let fixCommentLoss: Diagnostic | undefined;
 
           let source = path === '-' ? await readStdin() : await readFile(path, 'utf8');
 
@@ -974,8 +1009,13 @@ async function main(argv: string[]): Promise<number> {
             const preResult = lint(source, { rules });
             const fixed = applyFixes(source, preResult.diagnostics);
             if (fixed !== source) {
-              await writeFile(path, fixed, 'utf8');
-              source = fixed;
+              const loss = detectCommentLoss(source, fixed);
+              if (loss !== undefined) {
+                fixCommentLoss = loss;
+              } else {
+                await writeFile(path, fixed, 'utf8');
+                source = fixed;
+              }
             }
           }
 
@@ -1426,6 +1466,14 @@ async function main(argv: string[]): Promise<number> {
                 fileResult.parsed,
               );
             }
+          }
+
+          if (fixCommentLoss !== undefined) {
+            fileResult = finalize(
+              [...fileResult.diagnostics, fixCommentLoss],
+              { strict: fileStrict },
+              fileResult.parsed,
+            );
           }
 
           results.push({
@@ -2089,9 +2137,23 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       }
 
       case '--diff': {
-        const base = requireValue(argv, ++i, arg);
-        const target = requireValue(argv, ++i, arg);
-        cli.diff = { base, target };
+        const first = requireValue(argv, ++i, arg);
+        const second = argv[i + 1];
+        if (second !== undefined && !second.startsWith('-')) {
+          i++;
+          cli.diff = { base: first, target: second };
+        } else {
+          cli.diff = { target: first };
+        }
+        break;
+      }
+
+      case '--diff-style': {
+        const value = requireValue(argv, ++i, arg);
+        if (value !== 'unified' && value !== 'side-by-side') {
+          throw new Error(`Unknown diff style "${value}". Expected unified or side-by-side.`);
+        }
+        cli.diffStyle = value;
         break;
       }
 
