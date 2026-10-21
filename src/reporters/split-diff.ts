@@ -130,8 +130,29 @@ export function renderSplitDiff(
   lines.push(`${color ? GREEN : ''}+++${color ? RESET : ''} ${options.target ?? 'b'}`);
   lines.push(...renderRows(rows, aLines.length, bLines.length, width, color));
   lines.push('');
-  lines.push(summarize(rows, color));
+  // The summary is prose, not part of the columns, so it is wrapped on word
+  // boundaries: a narrow `--width` must bound every line, and the single-line
+  // form would otherwise overrun it ("1 insertions(+), 1 deletions(-), …").
+  lines.push(...wrapPlain(summarize(rows, color), width));
   return `${lines.join('\n')}\n`;
+}
+
+/** Splits `text` into lines of at most `width` characters, breaking at spaces. */
+function wrapPlain(text: string, width: number): string[] {
+  const out: string[] = [];
+  let current = '';
+  for (const word of text.split(' ')) {
+    if (current === '') {
+      current = word;
+    } else if (current.length + 1 + word.length <= width) {
+      current += ` ${word}`;
+    } else {
+      out.push(current);
+      current = word;
+    }
+  }
+  if (current !== '') out.push(current);
+  return out;
 }
 
 /** Splits text into lines, normalizing CRLF and dropping the final empty line. */

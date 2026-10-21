@@ -72,9 +72,7 @@ describe('quick fixes (#332 acceptance)', () => {
   it('trims leading and trailing whitespace from a string value', () => {
     const source = ['[DOCUMENTATION]', 'ORG_NAME = "  Example  "', ''].join('\n');
 
-    expect(
-      editFor(actionsOf(source), 'Fix: Trim whitespace from DOCUMENTATION.ORG_NAME'),
-    ).toEqual({
+    expect(editFor(actionsOf(source), 'Fix: Trim whitespace from DOCUMENTATION.ORG_NAME')).toEqual({
       range: valueRange(source, '  Example  '),
       newText: 'Example',
     });
@@ -114,10 +112,7 @@ describe('SAC contract ID derivation refactor', () => {
 
   it('derives the Testnet USDC SAC id from code + issuer', () => {
     expect(
-      editFor(
-        actionsOf(source, insideEntry),
-        'Refactor: Derive SAC contract ID for CURRENCIES[0]',
-      ),
+      editFor(actionsOf(source, insideEntry), 'Refactor: Derive SAC contract ID for CURRENCIES[0]'),
     ).toEqual({
       range: insertPoint(source, 'issuer'),
       newText: `\ncontract = "${TESTNET_USDC_SAC}"`,

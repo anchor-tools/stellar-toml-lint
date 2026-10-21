@@ -109,6 +109,9 @@ const ALWAYS_RUN: ReadonlySet<RuleCategory> = new Set<RuleCategory>([
   'codemod',
   'monitor',
   'network',
+  // Style findings span the whole file (indentation is not owned by a table),
+  // so a section-scoped round must still re-scan or a reindent goes unnoticed.
+  'style',
 ]);
 
 /** Top-level section a rule category reads, for the categories that are section-scoped. */
@@ -522,7 +525,18 @@ function touchedEntries(
 
     const startLine = lineOf(oldStarts, entry.start);
     const endLine = lineOf(oldStarts, Math.max(entry.end - 1, entry.start));
-    if (startLine <= delta.oldEndLine && endLine >= delta.startLine) {
+    // `oldEndLine` is an exclusive bound: `computeLineDelta` reports the start
+    // of the first unchanged line after the edit, and the replaced range
+    // includes the edited line's newline. Comparing inclusively made the entry
+    // that merely *follows* the edit look touched — a `[DOCUMENTATION]` edit
+    // dragged the next `[[CURRENCIES]]` block (and all its rules) in with it.
+    // A pure insertion reports `startLine === oldEndLine` and does touch the
+    // entry at that line, so it keeps the inclusive comparison.
+    const insertion = delta.startLine === delta.oldEndLine;
+    const overlaps = insertion
+      ? startLine <= delta.oldEndLine && endLine >= delta.startLine
+      : startLine < delta.oldEndLine && endLine >= delta.startLine;
+    if (overlaps) {
       touched.push({ entry, path, prefix: entryPrefix });
     }
   }

@@ -332,7 +332,7 @@ main
   markers, red/green word-level highlights inside changed lines, and a `... N unchanged lines ...`
   fold across long runs of context, rendered by `renderSplitDiff(base, target, options)` in
   `src/reporters/split-diff.ts`. `--diff` also accepts a single value — `stellar-toml-lint --diff
-  other.toml` compares `./stellar.toml` (or the first positional path) against `other.toml` — while
+other.toml` compares `./stellar.toml` (or the first positional path) against `other.toml` — while
   the two-value form and the exit code, which comes from the semantic comparison either way, are
   unchanged.
 

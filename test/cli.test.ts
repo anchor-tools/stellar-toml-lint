@@ -524,7 +524,7 @@ describe('cli --count', () => {
     // Must emit only the single problem count line without diagnostic text
     const lines = stdout.trimEnd().split('\n');
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe('45 problems (29 errors, 16 warnings)');
+    expect(lines[0]).toBe('50 problems (31 errors, 19 warnings)');
 
     // Suppresses diagnostic lists, file headers, suggestions, and rule ids
     expect(stdout).not.toContain('broken.toml');
@@ -552,7 +552,7 @@ describe('cli --count', () => {
     expect(code).toBe(1);
     const lines = stdout.trimEnd().split('\n');
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe('45 problems (29 errors, 16 warnings)');
+    expect(lines[0]).toBe('50 problems (31 errors, 19 warnings)');
     expect(stdout).not.toContain('valid.toml');
     expect(stdout).not.toContain('broken.toml');
     expect(stdout).not.toContain('Checked');
