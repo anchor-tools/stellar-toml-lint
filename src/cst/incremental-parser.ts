@@ -321,8 +321,9 @@ export class IncrementalParser {
     const sections = sectionsOf(touched.map((t) => t.path));
     const sectionScoped =
       !rootKeyTouched && [...sections].every((section) => KNOWN_SECTIONS.has(section));
-    const rulesExecuted =
-      sectionScoped ? selectRules(sections, previous.diagnostics) : [...allRules];
+    const rulesExecuted = sectionScoped
+      ? selectRules(sections, previous.diagnostics)
+      : [...allRules];
     const diagnostics = runRules(
       merged,
       text,
@@ -620,7 +621,9 @@ function shiftAfter(document: CstDocument, text: string, delta: LineDelta): CstD
     entries.push(entry.start >= delta.oldEndOffset ? shiftEntry(entry, shift) : entry);
   }
   let trailing = document.trailing;
-  if (trailing.start >= delta.oldEndOffset) {
+  // `trailing` is a list of trivia tokens, not a single span: shift the whole
+  // run when the first token after the last entry moved.
+  if (trailing.length > 0 && (trailing[0]?.start ?? 0) >= delta.oldEndOffset) {
     trailing = shiftTrivia(document.trailing, shift);
   }
   return { ...document, source: text, end: text.length, entries, trailing };
@@ -664,7 +667,7 @@ function shiftValue(value: CstValue, delta: number): CstValue {
       ...value,
       start: value.start + delta,
       end: value.end + delta,
-      open: shiftSpan(value.open, delta),
+      open: shiftSpan(value.open, delta) ?? value.open,
       items: value.items.map((item) => ({
         leading: shiftTrivia(item.leading, delta),
         value: shiftValue(item.value, delta),
@@ -680,7 +683,7 @@ function shiftValue(value: CstValue, delta: number): CstValue {
       ...value,
       start: value.start + delta,
       end: value.end + delta,
-      open: shiftSpan(value.open, delta),
+      open: shiftSpan(value.open, delta) ?? value.open,
       entries: value.entries.map((entry) => shiftInlineEntry(entry, delta)),
       closeLeading: shiftTrivia(value.closeLeading, delta),
       close: shiftSpan(value.close, delta),
@@ -714,9 +717,7 @@ function shiftEntry(entry: CstEntry, delta: number): CstEntry {
     trailing: shiftTrivia(entry.trailing, delta),
     leadingComments: entry.leadingComments.map((comment) => shiftComment(comment, delta)),
     trailingComment:
-      entry.trailingComment === undefined
-        ? undefined
-        : shiftComment(entry.trailingComment, delta),
+      entry.trailingComment === undefined ? undefined : shiftComment(entry.trailingComment, delta),
     start: entry.start + delta,
     end: entry.end + delta,
     recovery: entry.recovery,
@@ -742,7 +743,7 @@ function shiftEntry(entry: CstEntry, delta: number): CstEntry {
   return {
     ...shared,
     kind: entry.kind,
-    open: shiftSpan(entry.open, delta),
+    open: shiftSpan(entry.open, delta) ?? entry.open,
     keyLeading: shiftTrivia(entry.keyLeading, delta),
     key: entry.key === null ? null : shiftKey(entry.key, delta),
     keyTrailing: shiftTrivia(entry.keyTrailing, delta),

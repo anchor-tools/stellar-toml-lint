@@ -262,7 +262,11 @@ function longestIncreasing(pairs: Array<{ a: number; b: number }>): Array<[numbe
     let high = tails.length;
     while (low < high) {
       const mid = (low + high) >> 1;
-      if ((pairs[tails[mid]]?.b ?? -1) < value) low = mid + 1;
+      // `tails[mid]` is `number | undefined` under `noUncheckedIndexedAccess`;
+      // an absent tail sorts before any real pair. The width test for this
+      // reporter still fails on main, so only the type is fixed here.
+      const tail = tails[mid];
+      if ((tail === undefined ? -1 : (pairs[tail]?.b ?? -1)) < value) low = mid + 1;
       else high = mid;
     }
     prev[i] = low > 0 ? (tails[low - 1] ?? -1) : -1;
