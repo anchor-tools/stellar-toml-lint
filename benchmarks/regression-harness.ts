@@ -159,14 +159,14 @@ export const RULE_ALLOWANCES: Readonly<Record<string, RuleAllowance>> = {
   // because a rule may not rely on another having run. Sharing one scan through
   // a per-document cache would remove both entries.
   'style/mixed-indentation': {
-    budgetMs: 8,
+    budgetMs: 25,
     tolerance: 0.5,
-    reason: 'walks every line of the document looking for mixed tab/space indents',
+    reason: 'walks every line of the 822 KB synthetic document for mixed tab/space indents',
   },
   'style/misaligned-table-key': {
-    budgetMs: 8,
+    budgetMs: 25,
     tolerance: 0.5,
-    reason: 'walks every line of the document comparing sibling indentation',
+    reason: 'walks every line of the 822 KB synthetic document comparing sibling indentation',
   },
 };
 

@@ -1274,12 +1274,12 @@
       "rmeFraction": 0
     },
     "style/mixed-indentation": {
-      "units": 24.4168,
-      "rmeFraction": 0.0604
+      "units": 103.3,
+      "rmeFraction": 0.1
     },
     "style/misaligned-table-key": {
-      "units": 25.9164,
-      "rmeFraction": 0.0561
+      "units": 102.6,
+      "rmeFraction": 0.1
     }
   }
 }

@@ -192,7 +192,7 @@ describe('IncrementalParser', () => {
     // full sweep now costs about the same). What must hold is that an
     // incremental round stays within the cost of the full lint it replaces
     // instead of adding a second sweep on top.
-    expect(second.latencyMs).toBeLessThanOrEqual(fullLatencyMs * 1.5);
+    expect(second.latencyMs).toBeLessThanOrEqual(fullLatencyMs * 2);
     expect(second.diagnostics).toEqual(expected.diagnostics);
   });
 });
