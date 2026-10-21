@@ -25,6 +25,7 @@ import type {
   DidChangeTextDocumentParams,
   DidCloseTextDocumentParams,
   DidOpenTextDocumentParams,
+  DocumentSymbolParams,
   HoverParams,
   LspInitializeResult,
   RpcMessage,
@@ -136,6 +137,13 @@ export async function runLspServer(
           const result: SemanticTokens = {
             data: document === undefined ? [] : computeSemanticTokens(document.text),
           };
+          return { jsonrpc: '2.0', id, result };
+        }
+        case 'textDocument/documentSymbol': {
+          const params = message.params as DocumentSymbolParams;
+          const source = documents.get(params.textDocument.uri);
+          if (source === undefined) return { jsonrpc: '2.0', id, result: [] };
+          const result: LspDocumentSymbol[] = getDocumentSymbols(source);
           return { jsonrpc: '2.0', id, result };
         }
         default:

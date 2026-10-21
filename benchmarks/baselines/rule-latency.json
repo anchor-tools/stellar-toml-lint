@@ -1,245 +1,245 @@
 {
   "version": 2,
-  "recordedAt": "2026-10-17T13:05:42.506Z",
-  "node": "v26.9.0",
+  "recordedAt": "2026-10-20T22:20:50.322Z",
+  "node": "v24.21.0",
   "nodes": 1000,
-  "calibrationMs": 0.12247,
+  "calibrationMs": 0.28179,
   "rules": {
     "bridge/balance-unreachable": {
       "units": 0,
-      "rmeFraction": 0.0093
+      "rmeFraction": 0.0217
     },
     "bridge/config-incomplete": {
       "units": 0,
-      "rmeFraction": 0.0049
+      "rmeFraction": 0.0181
     },
     "bridge/over-reserved": {
       "units": 0,
-      "rmeFraction": 0.0026
+      "rmeFraction": 0.0338
     },
     "bridge/undercollateralized": {
       "units": 0,
-      "rmeFraction": 0.0026
+      "rmeFraction": 0.0157
     },
     "corridors/illiquid": {
       "units": 0,
-      "rmeFraction": 0.0028
+      "rmeFraction": 0.0239
     },
     "corridors/no-route": {
       "units": 0,
-      "rmeFraction": 0.0008
+      "rmeFraction": 0.0155
     },
     "corridors/orphaned-asset": {
       "units": 0,
-      "rmeFraction": 0.0008
+      "rmeFraction": 0.0183
     },
     "corridors/unreachable": {
       "units": 0,
-      "rmeFraction": 0.0018
+      "rmeFraction": 0.0238
     },
     "currencies/anchored-asset-fields": {
-      "units": 0.1,
-      "rmeFraction": 0.0052
+      "units": 0.1881,
+      "rmeFraction": 0.0577
     },
     "currencies/anchored-fiat-needs-transfer-server": {
       "units": 0,
-      "rmeFraction": 0.0031
+      "rmeFraction": 0.0112
     },
     "currencies/asset-code-too-long": {
-      "units": 0.1246,
-      "rmeFraction": 0.0064
+      "units": 0.0921,
+      "rmeFraction": 0.0188
     },
     "currencies/circular-toml-pointer": {
       "units": 0,
-      "rmeFraction": 0.0029
+      "rmeFraction": 0.0217
     },
     "currencies/code": {
-      "units": 0.215,
-      "rmeFraction": 0.0066
+      "units": 0.279,
+      "rmeFraction": 0.0561
     },
     "currencies/collateral-consistency": {
-      "units": 0.086,
-      "rmeFraction": 0.0059
+      "units": 0.1043,
+      "rmeFraction": 0.0211
     },
     "currencies/collateral-signature-invalid": {
-      "units": 0.1298,
-      "rmeFraction": 0.0043
+      "units": 0.1817,
+      "rmeFraction": 0.0524
     },
     "currencies/collateral-signature-malformed": {
-      "units": 0.1304,
-      "rmeFraction": 0.0046
+      "units": 0.1458,
+      "rmeFraction": 0.0168
     },
     "currencies/display-decimals": {
-      "units": 0.2392,
-      "rmeFraction": 0.005
+      "units": 0.2141,
+      "rmeFraction": 0.019
     },
     "currencies/display-decimals-contract-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0031
+      "rmeFraction": 0.0124
     },
     "currencies/display-decimals-exceeds-max": {
-      "units": 0.0692,
-      "rmeFraction": 0.0038
+      "units": 0.065,
+      "rmeFraction": 0.0179
     },
     "currencies/display-decimals-exceeds-network-limit": {
       "units": 0,
-      "rmeFraction": 0.0054
+      "rmeFraction": 0.0219
     },
     "currencies/duplicate-currency-declaration": {
-      "units": 0.8354,
-      "rmeFraction": 0.0053
+      "units": 0.8372,
+      "rmeFraction": 0.018
     },
     "currencies/entries-are-tables": {
-      "units": 0.0136,
-      "rmeFraction": 0.0444
+      "units": 0.0095,
+      "rmeFraction": 0.0626
     },
     "currencies/enums": {
-      "units": 0.2223,
-      "rmeFraction": 0.0051
+      "units": 0.2693,
+      "rmeFraction": 0.0472
     },
     "currencies/fixed-supply-account-lock-unverifiable": {
       "units": 0,
-      "rmeFraction": 0.0062
+      "rmeFraction": 0.0092
     },
     "currencies/fixed-supply-account-not-locked": {
       "units": 0,
-      "rmeFraction": 0.0009
+      "rmeFraction": 0.0233
     },
     "currencies/invalid-asset-code-format": {
-      "units": 0.2066,
-      "rmeFraction": 0.0039
+      "units": 0.1777,
+      "rmeFraction": 0.0192
     },
     "currencies/invalid-signature-encoding": {
-      "units": 0.077,
-      "rmeFraction": 0.021
+      "units": 0.0611,
+      "rmeFraction": 0.0227
     },
     "currencies/invalid-signature-length": {
-      "units": 0.0737,
-      "rmeFraction": 0.0059
+      "units": 0.0609,
+      "rmeFraction": 0.0222
     },
     "currencies/issuance-exclusive": {
-      "units": 1.2368,
-      "rmeFraction": 0.0094
+      "units": 1.2172,
+      "rmeFraction": 0.0204
     },
     "currencies/issuer-or-contract": {
-      "units": 6.6459,
-      "rmeFraction": 0.0042
+      "units": 7.43,
+      "rmeFraction": 0.0358
     },
     "currencies/missing-anchor-asset-code": {
-      "units": 0.0778,
-      "rmeFraction": 0.0118
+      "units": 0.0656,
+      "rmeFraction": 0.0215
     },
     "currencies/missing-anchor-asset-type": {
-      "units": 0.1502,
-      "rmeFraction": 0.004
+      "units": 0.1261,
+      "rmeFraction": 0.0301
     },
     "currencies/name-length": {
-      "units": 0.1357,
-      "rmeFraction": 0.0053
+      "units": 0.1359,
+      "rmeFraction": 0.0197
     },
     "currencies/regulated-asset-missing-auth-required": {
       "units": 0,
-      "rmeFraction": 0.0008
+      "rmeFraction": 0.0154
     },
     "currencies/regulated-invalid-target": {
-      "units": 0.0858,
-      "rmeFraction": 0.0058
+      "units": 0.1033,
+      "rmeFraction": 0.015
     },
     "currencies/regulated-issuer-flags-unverifiable": {
       "units": 0,
-      "rmeFraction": 0.0031
+      "rmeFraction": 0.012
     },
     "currencies/regulated-missing-auth-revocable-flag": {
       "units": 0,
-      "rmeFraction": 0.0008
+      "rmeFraction": 0.0456
     },
     "currencies/regulated-needs-approval-server": {
-      "units": 0.0899,
-      "rmeFraction": 0.0055
+      "units": 0.1422,
+      "rmeFraction": 0.0732
     },
     "currencies/toml-pointer": {
-      "units": 0.0819,
-      "rmeFraction": 0.0053
+      "units": 0.0624,
+      "rmeFraction": 0.0131
     },
     "currencies/unknown-field": {
-      "units": 0.8526,
-      "rmeFraction": 0.0033
+      "units": 0.6696,
+      "rmeFraction": 0.0186
     },
     "currencies/urls": {
-      "units": 1.1018,
-      "rmeFraction": 0.0056
+      "units": 0.8689,
+      "rmeFraction": 0.0195
     },
     "directory/capability-mismatch": {
       "units": 0,
-      "rmeFraction": 0.001
+      "rmeFraction": 0.0198
     },
     "directory/profile-out-of-sync": {
       "units": 0,
-      "rmeFraction": 0.005
+      "rmeFraction": 0.0419
     },
     "directory/registry-unreachable": {
       "units": 0,
-      "rmeFraction": 0.001
+      "rmeFraction": 0.0134
     },
     "directory/schema-invalid": {
       "units": 0,
-      "rmeFraction": 0.0027
+      "rmeFraction": 0.0119
     },
     "documentation/attestation-domain": {
       "units": 0.0009,
-      "rmeFraction": 0.0048
+      "rmeFraction": 0.0408
     },
     "documentation/disposable-email": {
-      "units": 0.0027,
-      "rmeFraction": 0.0039
+      "units": 0.0024,
+      "rmeFraction": 0.0322
     },
     "documentation/emails": {
-      "units": 0.0033,
-      "rmeFraction": 0.0769
+      "units": 0.0028,
+      "rmeFraction": 0.0087
     },
     "documentation/legal-url-unreachable": {
       "units": 0,
-      "rmeFraction": 0.0051
+      "rmeFraction": 0.0514
     },
     "documentation/license-number-without-authority": {
       "units": 0,
-      "rmeFraction": 0.0045
+      "rmeFraction": 0.0533
     },
     "documentation/missing-privacy-policy": {
       "units": 0.0001,
-      "rmeFraction": 0.0024
+      "rmeFraction": 0.0078
     },
     "documentation/missing-terms-of-service": {
       "units": 0.0001,
-      "rmeFraction": 0.002
+      "rmeFraction": 0.009
     },
     "documentation/org-url-matches-domain": {
       "units": 0,
-      "rmeFraction": 0.0024
+      "rmeFraction": 0.0091
     },
     "documentation/phone-e164": {
       "units": 0,
-      "rmeFraction": 0.0042
+      "rmeFraction": 0.0124
     },
     "documentation/present": {
       "units": 0,
-      "rmeFraction": 0.0031
+      "rmeFraction": 0.0101
     },
     "documentation/recommended-fields": {
-      "units": 0.0003,
-      "rmeFraction": 0.0021
+      "units": 0.0002,
+      "rmeFraction": 0.0096
     },
     "documentation/social-handles": {
       "units": 0.0001,
-      "rmeFraction": 0.0031
+      "rmeFraction": 0.0109
     },
     "documentation/unknown-field": {
-      "units": 0.0009,
-      "rmeFraction": 0.0062
+      "units": 0.0006,
+      "rmeFraction": 0.0082
     },
     "documentation/urls": {
-      "units": 0.002,
-      "rmeFraction": 0.0046
+      "units": 0.0018,
+      "rmeFraction": 0.0077
     },
     "fees/contradictory-fee-schedules": {
       "units": 0,
@@ -250,204 +250,204 @@
       "rmeFraction": 0.0577
     },
     "file/max-size": {
-      "units": 0.1248,
-      "rmeFraction": 0.0052
+      "units": 0.5789,
+      "rmeFraction": 0.0104
     },
     "general/accounts": {
       "units": 0,
-      "rmeFraction": 0.0007
+      "rmeFraction": 0.0249
     },
     "general/auth-requires-signing-key": {
       "units": 0,
-      "rmeFraction": 0.0052
+      "rmeFraction": 0.0241
     },
     "general/dead-configuration-key": {
       "units": 0.09,
       "rmeFraction": 0.005
     },
     "general/deprecated-field": {
-      "units": 0.0018,
-      "rmeFraction": 0.0029
+      "units": 0.0014,
+      "rmeFraction": 0.0323
     },
     "general/email-domain-no-mx": {
       "units": 0,
-      "rmeFraction": 0.0259
+      "rmeFraction": 0.0342
     },
     "general/empty-string-value": {
-      "units": 0.0009,
-      "rmeFraction": 0.0078
+      "units": 0.0008,
+      "rmeFraction": 0.0352
     },
     "general/horizon-url": {
-      "units": 0.0019,
-      "rmeFraction": 0.0038
+      "units": 0.0023,
+      "rmeFraction": 0.1564
     },
     "general/https-endpoints": {
-      "units": 0.0068,
-      "rmeFraction": 0.0037
+      "units": 0.0051,
+      "rmeFraction": 0.0152
     },
     "general/insecure-http-url": {
-      "units": 4.1923,
-      "rmeFraction": 0.0169
+      "units": 5.7306,
+      "rmeFraction": 0.0137
     },
     "general/invalid-github-handle": {
-      "units": 0.0004,
-      "rmeFraction": 0.0061
+      "units": 0.0003,
+      "rmeFraction": 0.0088
     },
     "general/invalid-telegram-handle": {
       "units": 0.0001,
-      "rmeFraction": 0.0038
+      "rmeFraction": 0.04
     },
     "general/invalid-twitter-handle": {
-      "units": 0.0003,
-      "rmeFraction": 0.0077
+      "units": 0.0002,
+      "rmeFraction": 0.0392
     },
     "general/kyc-requires-auth": {
       "units": 0,
-      "rmeFraction": 0.0115
+      "rmeFraction": 0.0168
     },
     "general/lowercase-public-key": {
-      "units": 0.6971,
-      "rmeFraction": 0.0041
+      "units": 0.584,
+      "rmeFraction": 0.0076
     },
     "general/network-passphrase-typo": {
       "units": 0.0001,
-      "rmeFraction": 0.0174
+      "rmeFraction": 0.0157
     },
     "general/sep24-requires-auth": {
       "units": 0,
-      "rmeFraction": 0.0037
+      "rmeFraction": 0.0169
     },
     "general/sep31-requires-kyc": {
       "units": 0,
-      "rmeFraction": 0.0011
+      "rmeFraction": 0.3316
     },
     "general/sep38-requires-auth": {
       "units": 0,
-      "rmeFraction": 0.0017
+      "rmeFraction": 0.021
     },
     "general/sep45-completeness": {
       "units": 0,
-      "rmeFraction": 0.0033
+      "rmeFraction": 0.111
     },
     "general/signing-keys": {
-      "units": 0.0081,
-      "rmeFraction": 0.0054
+      "units": 0.0094,
+      "rmeFraction": 0.1358
     },
     "general/trailing-slash-in-endpoint": {
-      "units": 0.006,
-      "rmeFraction": 0.0039
+      "units": 0.0046,
+      "rmeFraction": 0.0176
     },
     "general/transfer-server-needs-currencies": {
       "units": 0,
-      "rmeFraction": 0.0028
+      "rmeFraction": 0.0141
     },
     "general/unknown-field": {
-      "units": 0.0011,
-      "rmeFraction": 0.0052
+      "units": 0.0008,
+      "rmeFraction": 0.0444
     },
     "general/unrecognized-network-passphrase": {
       "units": 0.0001,
-      "rmeFraction": 0.0025
+      "rmeFraction": 0.0142
     },
     "general/untrimmed-string-value": {
-      "units": 5.302,
-      "rmeFraction": 0.0139
+      "units": 6.0878,
+      "rmeFraction": 0.0199
     },
     "general/version": {
-      "units": 0.0002,
-      "rmeFraction": 0.0174
+      "units": 0.0001,
+      "rmeFraction": 0.0793
     },
     "general/web-auth-contract-id": {
       "units": 0,
-      "rmeFraction": 0.005
+      "rmeFraction": 0.0279
     },
     "history/archive-hash-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0059
+      "rmeFraction": 0.0101
     },
     "history/archive-lagging": {
       "units": 0,
-      "rmeFraction": 0.0079
+      "rmeFraction": 0.0129
     },
     "history/broken-checkpoint-chain": {
       "units": 0,
-      "rmeFraction": 0.0027
+      "rmeFraction": 0.0115
     },
     "history/bucket-download-failed": {
       "units": 0,
-      "rmeFraction": 0.0026
+      "rmeFraction": 0.0241
     },
     "history/bucket-hash-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0013
+      "rmeFraction": 0.0119
     },
     "history/bucket-xdr-corrupted": {
       "units": 0,
-      "rmeFraction": 0.0036
+      "rmeFraction": 0.0142
     },
     "history/missing-category-archive": {
       "units": 0,
-      "rmeFraction": 0.0032
+      "rmeFraction": 0.0209
     },
     "ipfs/cid-hash-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0048
+      "rmeFraction": 0.0165
     },
     "ipfs/cid-high-latency": {
       "units": 0,
-      "rmeFraction": 0.0007
+      "rmeFraction": 0.0127
     },
     "ipfs/cid-mime-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0006
+      "rmeFraction": 0.0116
     },
     "ipfs/cid-partial-reachability": {
       "units": 0,
-      "rmeFraction": 0.0026
+      "rmeFraction": 0.1549
     },
     "ipfs/cid-unreachable": {
       "units": 0,
-      "rmeFraction": 0.0032
+      "rmeFraction": 0.0173
     },
     "ipfs/invalid-cid-format": {
       "units": 0,
-      "rmeFraction": 0.0069
+      "rmeFraction": 0.0222
     },
     "monitor/sla-below-threshold": {
       "units": 0,
-      "rmeFraction": 0.0058
+      "rmeFraction": 0.0553
     },
     "network/alpn-negotiation-failed": {
       "units": 0,
-      "rmeFraction": 0.0047
+      "rmeFraction": 0.0225
     },
     "network/cors-preflight-failed": {
       "units": 0,
-      "rmeFraction": 0.0012
+      "rmeFraction": 0.0112
     },
     "network/horizon-protocol-outdated": {
       "units": 0,
-      "rmeFraction": 0.0035
+      "rmeFraction": 0.02
     },
     "network/horizon-unreachable": {
       "units": 0,
-      "rmeFraction": 0.0036
+      "rmeFraction": 0.0365
     },
     "network/image-content-type": {
       "units": 0,
-      "rmeFraction": 0.0009
+      "rmeFraction": 0.0179
     },
     "network/image-cors": {
       "units": 0,
-      "rmeFraction": 0.0038
+      "rmeFraction": 0.0099
     },
     "network/image-max-size": {
       "units": 0,
-      "rmeFraction": 0.0101
+      "rmeFraction": 0.0116
     },
     "network/image-unreachable": {
       "units": 0,
-      "rmeFraction": 0.0057
+      "rmeFraction": 0.0106
     },
     "network/invalid-host-routing": {
       "units": 0,
@@ -455,43 +455,55 @@
     },
     "network/ipv6-connection-failed": {
       "units": 0,
-      "rmeFraction": 0.0034
+      "rmeFraction": 0.0148
     },
     "network/ipv6-connection-timeout": {
       "units": 0,
-      "rmeFraction": 0.0031
+      "rmeFraction": 0.0173
     },
     "network/legacy-http1-only": {
       "units": 0,
-      "rmeFraction": 0.0045
+      "rmeFraction": 0.0139
     },
     "network/missing-allow-headers": {
       "units": 0,
-      "rmeFraction": 0.0047
+      "rmeFraction": 0.0225
     },
     "network/missing-ipv6-aaaa-record": {
       "units": 0,
-      "rmeFraction": 0.0056
+      "rmeFraction": 0.0085
     },
     "network/org-url-unreachable": {
       "units": 0,
-      "rmeFraction": 0.0019
+      "rmeFraction": 0.0106
     },
     "network/passphrase": {
       "units": 0.0001,
-      "rmeFraction": 0.0044
+      "rmeFraction": 0.0103
+    },
+    "network/rpki-invalid-route": {
+      "units": 0,
+      "rmeFraction": 0.0144
     },
     "network/sep6-info-error": {
       "units": 0,
-      "rmeFraction": 0.0038
+      "rmeFraction": 0.0128
     },
     "network/sep6-info-malformed": {
       "units": 0,
-      "rmeFraction": 0.0005
+      "rmeFraction": 0.0199
     },
     "network/sep6-missing-asset": {
       "units": 0,
-      "rmeFraction": 0.0027
+      "rmeFraction": 0.0131
+    },
+    "network/unverified-bgp-announcement": {
+      "units": 0,
+      "rmeFraction": 0.0078
+    },
+    "overlay/disconnected-peer-component": {
+      "units": 0,
+      "rmeFraction": 0.0087
     },
     "network/tenant-cross-contamination": {
       "units": 0,
@@ -499,59 +511,71 @@
     },
     "overlay/handshake-timeout": {
       "units": 0,
-      "rmeFraction": 0.0008
+      "rmeFraction": 0.027
+    },
+    "overlay/high-topological-distance": {
+      "units": 0,
+      "rmeFraction": 0.0295
     },
     "overlay/invalid-crypto-framing": {
       "units": 0,
-      "rmeFraction": 0.0008
+      "rmeFraction": 0.0105
     },
     "overlay/isolated-node-zero-peers": {
       "units": 0,
-      "rmeFraction": 0.0039
+      "rmeFraction": 0.0187
     },
     "overlay/low-peer-count": {
       "units": 0,
-      "rmeFraction": 0.0028
+      "rmeFraction": 0.0129
     },
     "overlay/mac-authentication-failure": {
       "units": 0,
-      "rmeFraction": 0.0016
+      "rmeFraction": 0.01
     },
     "overlay/network-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0043
+      "rmeFraction": 0.0118
+    },
+    "overlay/peer-socket-exhaustion": {
+      "units": 0,
+      "rmeFraction": 0.0106
     },
     "overlay/protocol-version-outdated": {
       "units": 0,
-      "rmeFraction": 0.0028
+      "rmeFraction": 0.0119
     },
     "overlay/public-key-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0052
+      "rmeFraction": 0.0118
+    },
+    "overlay/unprotected-connection-churn": {
+      "units": 0,
+      "rmeFraction": 0.0091
     },
     "principals/disposable-email": {
-      "units": 1.3658,
-      "rmeFraction": 0.0031
+      "units": 1.1449,
+      "rmeFraction": 0.0098
     },
     "principals/entries-are-tables": {
-      "units": 0.0118,
-      "rmeFraction": 0.0413
+      "units": 0.0096,
+      "rmeFraction": 0.059
     },
     "principals/photo-hashes": {
-      "units": 0.191,
-      "rmeFraction": 0.004
+      "units": 0.1929,
+      "rmeFraction": 0.0483
     },
     "principals/required-fields": {
-      "units": 0.4003,
-      "rmeFraction": 0.0041
+      "units": 0.3472,
+      "rmeFraction": 0.0241
     },
     "principals/social-handles": {
-      "units": 0.686,
-      "rmeFraction": 0.0046
+      "units": 0.4876,
+      "rmeFraction": 0.0216
     },
     "principals/unknown-field": {
-      "units": 0.3974,
-      "rmeFraction": 0.0032
+      "units": 0.2743,
+      "rmeFraction": 0.0195
     },
     "crypto/malformed-zkp-proof-data": {
       "units": 0,
@@ -566,8 +590,8 @@
       "rmeFraction": 0.0001
     },
     "security/deprecated-tls-version": {
-      "units": 0.0001,
-      "rmeFraction": 0.0032
+      "units": 0,
+      "rmeFraction": 0.0135
     },
     "security/blocking-frame-ancestors-directive": {
       "units": 0,
@@ -579,11 +603,11 @@
     },
     "security/dns-resolver-divergence": {
       "units": 0,
-      "rmeFraction": 0.0028
+      "rmeFraction": 0.0192
     },
     "security/dnssec-not-enabled": {
       "units": 0,
-      "rmeFraction": 0.0026
+      "rmeFraction": 0.0239
     },
     "security/expired-rrsig-signature": {
       "units": 0,
@@ -591,11 +615,11 @@
     },
     "security/false-immutability-claim": {
       "units": 0,
-      "rmeFraction": 0.0031
+      "rmeFraction": 0.021
     },
     "security/immutability-unverifiable": {
       "units": 0,
-      "rmeFraction": 0.0019
+      "rmeFraction": 0.0109
     },
     "security/insufficient-hsts-max-age": {
       "units": 0,
@@ -603,7 +627,7 @@
     },
     "security/invalid-regex": {
       "units": 0,
-      "rmeFraction": 0.0009
+      "rmeFraction": 0.0233
     },
     "security/insecure-jwt-algorithm": {
       "units": 0,
@@ -611,11 +635,23 @@
     },
     "security/jwt-domain-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0013
+      "rmeFraction": 0.0137
     },
     "security/jwt-rejected-by-transfer-server": {
       "units": 0,
-      "rmeFraction": 0.0007
+      "rmeFraction": 0.0185
+    },
+    "security/lacks-forward-secrecy": {
+      "units": 0,
+      "rmeFraction": 0.0191
+    },
+    "security/missing-caa-records": {
+      "units": 0,
+      "rmeFraction": 0.0125
+    },
+    "security/missing-dmarc-record": {
+      "units": 0,
+      "rmeFraction": 0.0206
     },
     "security/jwt-signature-verification-failed": {
       "units": 0,
@@ -623,7 +659,7 @@
     },
     "security/missing-on-chain-verification-proof": {
       "units": 0,
-      "rmeFraction": 0.0037
+      "rmeFraction": 0.047
     },
     "security/missing-clickjacking-protection": {
       "units": 0,
@@ -635,7 +671,7 @@
     },
     "security/on-chain-toml-hash-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0008
+      "rmeFraction": 0.0173
     },
     "security/origin-ip-exposed": {
       "units": 0,
@@ -643,19 +679,23 @@
     },
     "security/redos-vulnerable-regex": {
       "units": 0,
-      "rmeFraction": 0.003
+      "rmeFraction": 0.0192
+    },
+    "security/session-resumption-insecure": {
+      "units": 0,
+      "rmeFraction": 0.0107
     },
     "security/signing-key-insufficient-weight": {
       "units": 0,
-      "rmeFraction": 0.0011
+      "rmeFraction": 0.014
     },
     "security/signing-key-single-signature": {
       "units": 0,
-      "rmeFraction": 0.0008
+      "rmeFraction": 0.0179
     },
     "security/signing-key-unusable": {
       "units": 0,
-      "rmeFraction": 0.004
+      "rmeFraction": 0.0182
     },
     "security/sni-fallback-information-leak": {
       "units": 0,
@@ -663,15 +703,23 @@
     },
     "security/single-signer-high-threshold": {
       "units": 0,
-      "rmeFraction": 0.0037
+      "rmeFraction": 0.0106
     },
     "security/tls-cert-expired": {
       "units": 0,
-      "rmeFraction": 0.0038
+      "rmeFraction": 0.0104
     },
     "security/tls-cert-expiring-soon": {
       "units": 0,
-      "rmeFraction": 0.001
+      "rmeFraction": 0.0196
+    },
+    "security/unauthorized-issuing-ca": {
+      "units": 0,
+      "rmeFraction": 0.0129
+    },
+    "security/unintended-veto-key": {
+      "units": 0,
+      "rmeFraction": 0.0183
     },
     "security/undisclosed-asset-freezing-capability": {
       "units": 0,
@@ -679,47 +727,55 @@
     },
     "security/unreachable-threshold": {
       "units": 0,
-      "rmeFraction": 0.004
+      "rmeFraction": 0.0183
+    },
+    "security/useless-signer-detected": {
+      "units": 0,
+      "rmeFraction": 0.0138
     },
     "security/weak-cipher-suite": {
       "units": 0,
-      "rmeFraction": 0.0036
+      "rmeFraction": 0.0512
+    },
+    "security/weak-spf-policy": {
+      "units": 0,
+      "rmeFraction": 0.0179
     },
     "sep10/challenge-submission-failed": {
       "units": 0,
-      "rmeFraction": 0.003
+      "rmeFraction": 0.0148
     },
     "sep10/expired-or-missing-timebounds": {
       "units": 0,
-      "rmeFraction": 0.0007
+      "rmeFraction": 0.0213
     },
     "sep10/invalid-sequence-number": {
       "units": 0,
-      "rmeFraction": 0.0026
+      "rmeFraction": 0.0123
     },
     "sep10/invalid-server-signature": {
       "units": 0,
-      "rmeFraction": 0.0007
+      "rmeFraction": 0.0114
     },
     "sep10/invalid-source-account": {
       "units": 0,
-      "rmeFraction": 0.0009
+      "rmeFraction": 0.0113
     },
     "sep10/missing-client-domain-operation": {
       "units": 0,
-      "rmeFraction": 0.0054
+      "rmeFraction": 0.0259
     },
     "sep12/invalid-customer-type-syntax": {
       "units": 0,
-      "rmeFraction": 0.0053
+      "rmeFraction": 0.0143
     },
     "sep12/unknown-kyc-field-name": {
       "units": 0,
-      "rmeFraction": 0.004
+      "rmeFraction": 0.0104
     },
     "sep24/currency-not-supported-in-info": {
       "units": 0,
-      "rmeFraction": 0.0046
+      "rmeFraction": 0.031
     },
     "sep24/illegal-state-transition": {
       "units": 0,
@@ -727,7 +783,7 @@
     },
     "sep24/info-endpoint-unreachable": {
       "units": 0,
-      "rmeFraction": 0.0026
+      "rmeFraction": 0.0424
     },
     "sep24/insecure-postmessage-wildcard": {
       "units": 0,
@@ -735,11 +791,11 @@
     },
     "sep24/interactive-url-insecure": {
       "units": 0,
-      "rmeFraction": 0.0055
+      "rmeFraction": 0.0139
     },
     "sep24/invalid-fee-schema": {
       "units": 0,
-      "rmeFraction": 0.0009
+      "rmeFraction": 0.0813
     },
     "sep24/malformed-postmessage-payload": {
       "units": 0,
@@ -751,75 +807,75 @@
     },
     "sep3/auth-server-unreachable": {
       "units": 0,
-      "rmeFraction": 0.0105
+      "rmeFraction": 0.0139
     },
     "sep3/missing-cors-headers": {
       "units": 0,
-      "rmeFraction": 0.0045
+      "rmeFraction": 0.018
     },
     "sep31/asset-unsupported": {
       "units": 0,
-      "rmeFraction": 0.0079
+      "rmeFraction": 0.0135
     },
     "sep31/info-schema-invalid": {
       "units": 0,
-      "rmeFraction": 0.0028
+      "rmeFraction": 0.0131
     },
     "sep31/missing-kyc-requirements": {
       "units": 0,
-      "rmeFraction": 0.0015
+      "rmeFraction": 0.0119
     },
     "sep31/missing-webhook-signature": {
       "units": 0,
-      "rmeFraction": 0.0061
+      "rmeFraction": 0.0116
     },
     "sep31/webhook-delivery-timeout": {
       "units": 0,
-      "rmeFraction": 0.0051
+      "rmeFraction": 0.0145
     },
     "sep31/webhook-payload-invalid": {
       "units": 0,
-      "rmeFraction": 0.003
+      "rmeFraction": 0.0122
     },
     "sep38/abnormal-exchange-rate-spread": {
       "units": 0,
-      "rmeFraction": 0.0041
+      "rmeFraction": 0.0352
     },
     "sep38/info-schema-invalid": {
       "units": 0,
-      "rmeFraction": 0.0037
+      "rmeFraction": 0.0222
     },
     "sep38/invalid-quote-expiration": {
       "units": 0,
-      "rmeFraction": 0.0041
+      "rmeFraction": 0.033
     },
     "sep38/malformed-price-response": {
       "units": 0,
-      "rmeFraction": 0.0041
+      "rmeFraction": 0.0158
     },
     "sep38/malformed-quote-response": {
       "units": 0,
-      "rmeFraction": 0.0007
+      "rmeFraction": 0.0156
     },
     "sep38/prices-endpoint-error": {
       "units": 0,
-      "rmeFraction": 0.0032
+      "rmeFraction": 0.0132
     },
     "sep38/prices-missing-declared-asset": {
       "units": 0,
-      "rmeFraction": 0.0043
+      "rmeFraction": 0.0122
     },
     "sep38/quote-endpoint-error": {
       "units": 0,
-      "rmeFraction": 0.0012
+      "rmeFraction": 0.0178
     },
     "sep6/deposit-parameter-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0007
+      "rmeFraction": 0.0139
     },
     "sep6/fee-calculation-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0047
+      "rmeFraction": 0.02
     },
     "sep6/fee-exceeds-declared-bounds": {
       "units": 0,
@@ -827,291 +883,299 @@
     },
     "sep6/invalid-transaction-status": {
       "units": 0,
-      "rmeFraction": 0.0021
+      "rmeFraction": 0.0114
     },
     "sep6/non-monotonic-fee-curve": {
       "units": 0,
       "rmeFraction": 0.003
     },
     "sep7/invalid-signature": {
-      "units": 5.4084,
-      "rmeFraction": 0.0039
+      "units": 6.7274,
+      "rmeFraction": 0.0115
     },
     "sep7/invalid-uri-scheme": {
-      "units": 5.4286,
-      "rmeFraction": 0.0163
+      "units": 7.2743,
+      "rmeFraction": 0.0282
     },
     "sep7/unsupported-replacement-field": {
-      "units": 5.3784,
-      "rmeFraction": 0.0039
+      "units": 7.0703,
+      "rmeFraction": 0.0231
     },
     "sep8/approval-server-unresponsive": {
       "units": 0,
-      "rmeFraction": 0.0007
+      "rmeFraction": 0.0172
     },
     "sep8/idempotency-violation": {
       "units": 0,
-      "rmeFraction": 0.0058
+      "rmeFraction": 0.0103
     },
     "sep8/invalid-co-signed-transaction": {
       "units": 0,
-      "rmeFraction": 0.0053
+      "rmeFraction": 0.0116
     },
     "sep8/invalid-response-status": {
       "units": 0,
-      "rmeFraction": 0.0105
+      "rmeFraction": 0.0098
     },
     "sep8/invalid-revised-tx-xdr": {
       "units": 0,
-      "rmeFraction": 0.0043
+      "rmeFraction": 0.0192
     },
     "sep8/invalid-webhook-response": {
       "units": 0,
-      "rmeFraction": 0.0029
+      "rmeFraction": 0.0118
     },
     "sep8/webhook-high-latency": {
       "units": 0,
-      "rmeFraction": 0.0033
+      "rmeFraction": 0.015
     },
     "sep8/webhook-unresponsive": {
       "units": 0,
-      "rmeFraction": 0.0019
+      "rmeFraction": 0.0115
     },
     "soroban/circular-contract-dependency": {
       "units": 0,
-      "rmeFraction": 0.0038
+      "rmeFraction": 0.018
     },
     "soroban/contract-event-undeclared": {
       "units": 0,
-      "rmeFraction": 0.0037
+      "rmeFraction": 0.0387
     },
     "soroban/contract-evicted": {
       "units": 0,
-      "rmeFraction": 0.0039
+      "rmeFraction": 0.0172
     },
     "soroban/contract-expired": {
       "units": 0,
-      "rmeFraction": 0.0025
+      "rmeFraction": 0.0458
     },
     "soroban/contract-function-undeclared": {
       "units": 0,
-      "rmeFraction": 0.0007
+      "rmeFraction": 0.0159
     },
     "soroban/contract-function-undocumented": {
       "units": 0,
-      "rmeFraction": 0.0047
+      "rmeFraction": 0.0304
     },
     "soroban/contract-interface-version-drift": {
       "units": 0,
-      "rmeFraction": 0.0068
+      "rmeFraction": 0.0274
     },
     "soroban/contract-metadata-undecodable": {
       "units": 0,
-      "rmeFraction": 0.0037
+      "rmeFraction": 0.0128
     },
     "soroban/contract-not-found": {
       "units": 0,
-      "rmeFraction": 0.0008
+      "rmeFraction": 0.0128
     },
     "soroban/contract-only-on-testnet": {
       "units": 0,
-      "rmeFraction": 0.0039
+      "rmeFraction": 0.0198
     },
     "soroban/contract-ttl-expiring-soon": {
       "units": 0,
-      "rmeFraction": 0.0007
+      "rmeFraction": 0.0225
     },
     "soroban/contract-ttl-unavailable": {
       "units": 0,
-      "rmeFraction": 0.005
+      "rmeFraction": 0.02
     },
     "soroban/corrupted-instance-storage-entry": {
       "units": 0,
-      "rmeFraction": 0.0024
+      "rmeFraction": 0.0179
     },
     "soroban/decimals-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0041
+      "rmeFraction": 0.0198
     },
     "soroban/deprecated-protocol-version": {
       "units": 0,
-      "rmeFraction": 0.0038
+      "rmeFraction": 0.0199
     },
     "soroban/duplicate-error-code": {
       "units": 0,
-      "rmeFraction": 0.0009
+      "rmeFraction": 0.0177
     },
     "soroban/event-data-type-invalid": {
       "units": 0,
-      "rmeFraction": 0.0016
+      "rmeFraction": 0.0189
     },
     "soroban/event-topic-mismatch": {
       "units": 0,
-      "rmeFraction": 0.009
+      "rmeFraction": 0.0205
     },
     "soroban/excessive-resource-consumption": {
       "units": 0,
-      "rmeFraction": 0.0054
+      "rmeFraction": 0.0121
     },
     "soroban/high-storage-footprint": {
       "units": 0,
-      "rmeFraction": 0.0044
+      "rmeFraction": 0.0166
     },
     "soroban/instance-storage-data-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0048
+      "rmeFraction": 0.0103
     },
     "soroban/invalid-auth-contract-interface": {
       "units": 0,
-      "rmeFraction": 0.0043
+      "rmeFraction": 0.0172
     },
     "soroban/invalid-sep41-signature": {
       "units": 0,
-      "rmeFraction": 0.0007
+      "rmeFraction": 0.0096
     },
     "soroban/locked-admin-key": {
       "units": 0,
-      "rmeFraction": 0.0066
+      "rmeFraction": 0.0183
     },
     "soroban/missing-auth-parameter": {
       "units": 0,
-      "rmeFraction": 0.0028
+      "rmeFraction": 0.012
     },
     "soroban/missing-contract-spec": {
       "units": 0,
-      "rmeFraction": 0.0042
+      "rmeFraction": 0.0182
     },
     "soroban/missing-env-meta": {
       "units": 0,
-      "rmeFraction": 0.0006
+      "rmeFraction": 0.0173
     },
     "soroban/missing-sep41-function": {
       "units": 0,
-      "rmeFraction": 0.0049
+      "rmeFraction": 0.0123
     },
     "soroban/name-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0009
+      "rmeFraction": 0.0269
     },
     "soroban/network-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0046
+      "rmeFraction": 0.0128
     },
     "soroban/simulation-failed": {
       "units": 0,
-      "rmeFraction": 0.0013
+      "rmeFraction": 0.023
     },
     "soroban/single-signer-contract-admin": {
       "units": 0,
-      "rmeFraction": 0.0025
+      "rmeFraction": 0.0143
     },
     "soroban/symbol-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0037
+      "rmeFraction": 0.0147
     },
     "soroban/system-error-code-collision": {
       "units": 0,
-      "rmeFraction": 0.0027
+      "rmeFraction": 0.0099
     },
     "soroban/testnet-contract-on-mainnet": {
-      "units": 0.2202,
-      "rmeFraction": 0.0031
+      "units": 0.1666,
+      "rmeFraction": 0.019
     },
     "soroban/ttl-expiring-soon": {
       "units": 0,
-      "rmeFraction": 0.0051
+      "rmeFraction": 0.0173
     },
     "soroban/unresolved-contract-dependency": {
       "units": 0,
-      "rmeFraction": 0.0028
+      "rmeFraction": 0.018
     },
     "soroban/unsafe-unauthorized-mint": {
       "units": 0,
-      "rmeFraction": 0.0048
+      "rmeFraction": 0.0097
     },
     "soroban/wasm-not-found": {
       "units": 0,
-      "rmeFraction": 0.0028
+      "rmeFraction": 0.0189
     },
     "validators/alias": {
-      "units": 1.6767,
-      "rmeFraction": 0.0114
+      "units": 2.1526,
+      "rmeFraction": 0.0366
     },
     "validators/alias-reserved-keyword": {
-      "units": 0.4306,
-      "rmeFraction": 0.0027
+      "units": 0.4301,
+      "rmeFraction": 0.0151
     },
     "validators/archive-checkpoint-stale": {
       "units": 0,
-      "rmeFraction": 0.0046
+      "rmeFraction": 0.0302
     },
     "validators/archive-metadata-unreadable": {
       "units": 0,
-      "rmeFraction": 0.0017
+      "rmeFraction": 0.0249
     },
     "validators/archive-range-mismatch": {
       "units": 0,
-      "rmeFraction": 0.0018
+      "rmeFraction": 0.0211
     },
     "validators/archive-range-unsupported": {
       "units": 0,
-      "rmeFraction": 0.0053
+      "rmeFraction": 0.0088
     },
     "validators/archive-slow": {
       "units": 0,
-      "rmeFraction": 0.0008
+      "rmeFraction": 0.0154
+    },
+    "validators/dns-srv-record-missing": {
+      "units": 0,
+      "rmeFraction": 0.0158
+    },
+    "validators/dns-srv-target-unreachable": {
+      "units": 0,
+      "rmeFraction": 0.0454
     },
     "validators/duplicate-alias": {
-      "units": 0.3297,
-      "rmeFraction": 0.0032
+      "units": 0.31,
+      "rmeFraction": 0.0265
     },
     "validators/duplicate-host": {
-      "units": 0.3164,
-      "rmeFraction": 0.0056
+      "units": 0.2814,
+      "rmeFraction": 0.0187
     },
     "validators/duplicate-public-key": {
-      "units": 1.0167,
-      "rmeFraction": 0.0102
+      "units": 1.0917,
+      "rmeFraction": 0.0236
     },
     "validators/entries-are-tables": {
-      "units": 0.0118,
-      "rmeFraction": 0.0357
+      "units": 0.0095,
+      "rmeFraction": 0.0573
     },
     "validators/fragile-quorum-set": {
       "units": 0,
-      "rmeFraction": 0.0046
+      "rmeFraction": 0.0433
     },
     "validators/fragile-quorum-threshold": {
       "units": 0,
-      "rmeFraction": 0.0018
+      "rmeFraction": 0.0268
     },
     "validators/history-archive-malformed": {
       "units": 0,
-      "rmeFraction": 0.0313
+      "rmeFraction": 0.0231
     },
     "validators/history-archive-unreachable": {
       "units": 0,
-      "rmeFraction": 0.0325
+      "rmeFraction": 0.019
     },
     "validators/host": {
-      "units": 0.4849,
-      "rmeFraction": 0.004
+      "units": 0.4535,
+      "rmeFraction": 0.0187
     },
     "validators/invalid-history-url": {
-      "units": 2.3862,
-      "rmeFraction": 0.0064
+      "units": 2.3559,
+      "rmeFraction": 0.0118
     },
     "validators/peer-port-unreachable": {
       "units": 0,
-      "rmeFraction": 0.0016
+      "rmeFraction": 0.0278
     },
     "validators/public-key": {
-      "units": 7.1795,
-      "rmeFraction": 0.0059
+      "units": 8.7927,
+      "rmeFraction": 0.0497
     },
     "validators/quorum-intersection-failure": {
       "units": 0,
-      "rmeFraction": 0.001
+      "rmeFraction": 0.0198
     },
     "validators/unknown-field": {
       "units": 0.4636,
