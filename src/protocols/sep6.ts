@@ -10,6 +10,7 @@
 import { Keypair } from '@stellar/stellar-base';
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 import { isString, isUrl } from '../predicates.js';
+import { sep6FeeVerifierRules, verifySep6FeeCurve } from './sep6-fee-verifier.js';
 
 export const DEPOSIT_PARAMETER_MISMATCH_RULE = 'sep6/deposit-parameter-mismatch';
 export const FEE_CALCULATION_MISMATCH_RULE = 'sep6/fee-calculation-mismatch';
@@ -233,6 +234,11 @@ export async function verifySep6Integration(
     // Network errors
   }
 
+  // 6. Sample the whole fee curve, not just the single declared-fee sample
+  // above: a tier boundary that lowers the fee as the amount rises is a
+  // charge the client never agreed to.
+  diagnostics.push(...(await verifySep6FeeCurve(doc, fetchImpl, { rules: options.rules })));
+
   return diagnostics;
 }
 
@@ -260,6 +266,7 @@ export const sep6IntegrationRules: Rule[] = [
     description: 'Transaction status must adhere to valid SEP-6 lifecycle states',
     run() {},
   },
+  ...sep6FeeVerifierRules,
 ];
 
 export const sep6IntegrationRuleIds: readonly string[] = sep6IntegrationRules.map(

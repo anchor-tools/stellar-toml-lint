@@ -190,7 +190,7 @@ Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failur
 | `--check-network`           | Verify accounts, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online                            |
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                       |
 | `--audit-routing`           | Compare host announcements with public RPKI route data (requires `--check-network`)                                     |
-| `--audit-security`          | Audit token binding and CAA endpoint policy (requires `--check-network`)                                                |
+| `--audit-security`          | Audit token binding, CAA policy, and dangling CNAMEs (requires `--check-network`)                                       |
 | `--audit-reserves`          | Compare external-chain collateral reserves with Stellar circulating supply (requires `--check-network`)                 |
 | `--audit-routing`           | Compare host announcements with public RPKI route data (requires `--check-network`)                                     |
 | `--verify-sep6`             | Run end-to-end programmatic SEP-6 integration tester (requires `--check-network`)                                       |
@@ -297,6 +297,7 @@ failure.
 | `--audit-routing`                  | Resolve host routes and check origin ASNs against public RPKI data (requires `--check-network`)                                                                                                                                                                 |
 | `--verify-directory-sync`          | Compare ecosystem directory listings with `stellar.toml` (`ORG_NAME`, `ORG_URL`, `ACCOUNTS`, and SEP-6/24/31/38 capability flags) (requires `--check-network`)                                                                                                  |
 | `--directory-feed <url>`           | Directory registry JSON endpoint to audit with `--verify-directory-sync` (repeatable; defaults to the Stellar Expert SEP-37 directory)                                                                                                                          |
+| `--tenant-host <host>`             | Sibling tenant home domain served by the same cluster; enables the multi-tenant host-header isolation audit under `--check-network` (repeatable)                                                                                                                |
 | `--verify-sep31`                   | Audit SEP-31 cross-border payment lifecycle, schema, and webhook delivery (requires `--check-network`)                                                                                                                                                          |
 | `--verify-sep8`                    | Simulate SEP-8 regulated asset compliance approval server interaction (requires `--check-network`)                                                                                                                                                              |
 | `--verify-sep8-webhook`            | Simulate SEP-8 regulated asset post-signing approval webhook with idempotency and co-signature verification (requires `--check-network`)                                                                                                                        |
@@ -307,6 +308,9 @@ failure.
 | `--verify-sep12`                   | Audit SEP-12 KYC customer verification against the KYC server (requires `--check-network`)                                                                                                                                                                      |
 | `--verify-sep12-deletion`          | Verify SEP-12 DELETE /customer endpoint for GDPR right-to-be-forgotten compliance (requires `--check-network`)                                                                                                                                                  |
 | `--verify-sep24-quote-lock`        | Audit SEP-24 interactive deposit fee quote stability across session (requires `--check-network`)                                                                                                                                                                |
+| `--simulate-sep24`                 | Drive a synthetic SEP-24 deposit through its lifecycle and validate every status transition (requires `--check-network`)                                                                                                                                        |
+| `--migrate-federation`             | Preview the canonical SEP-2 rewrite of a legacy `FEDERATION_SERVER` declaration; add `--write` to apply it                                                                                                                                                      |
+| `--write`                          | With `--migrate-federation`, write the rewritten file back to disk instead of only printing the diff                                                                                                                                                            |
 | `--verify-clawback`                | Verify asset clawback authority (CAP-35) via Horizon and Soroban RPC (requires `--check-network`)                                                                                                                                                               |
 | `--audit-reserves`                 | Compare external-chain collateral reserves (Ethereum, Bitcoin, Solana, Stellar) with Stellar circulating supply; emits `security/collateral-reserve-deficit` and `security/unsupported-collateral-chain` (requires `--check-network`)                           |
 | `--crawl-peers`                    | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                                                                                                                                                         |
@@ -935,6 +939,31 @@ Migrates classic asset declarations to Soroban SAC contract IDs:
 ```bash
 stellar-toml-lint --migrate v2 stellar.toml
 ```
+
+#### `--migrate-federation`
+
+Upgrades legacy federation declarations to the canonical SEP-2 form. SEP-2
+clients append `q` and `type` to the URL themselves, so a declaration that
+embeds a lookup template (`?q={q}&type={type}`), uses `http://`, carries a
+fragment, or ends in a stray slash produces a URL no client can call. The
+codemod rewrites only the `FEDERATION_SERVER` value — comments, key order, and
+every other byte are preserved — and records which lookup directions the legacy
+declaration advertised so reverse lookup (`type=id`) is not silently dropped.
+
+The diff is printed first and nothing is written until `--write` is passed:
+
+```bash
+# Preview the unified diff; the file on disk is untouched
+stellar-toml-lint --migrate-federation stellar.toml
+
+# Apply the rewrite and verify the endpoint answers SEP-2 lookups
+stellar-toml-lint --migrate-federation --write --check-network stellar.toml
+```
+
+With `--check-network`, the rewritten endpoint is probed for both forward
+(`type=name`) and reverse (`type=id`) lookups; an unreachable server emits
+`codemod/federation-server-unreachable` (warning). A declaration that cannot be
+normalized at all emits `codemod/federation-server-invalid` (error).
 
 #### `--dry-run` and `--fix`
 
@@ -2279,6 +2308,13 @@ domain and declared HTTPS endpoints and compares active certificate issuers with
 emits `security/missing-caa-records` (warning); an unauthorized issuer emits
 `security/unauthorized-issuing-ca` (error).
 
+**TLS SNI fallback and subdomain takeover auditors** — With `--check-network`, the SNI probe connects to declared
+HTTPS hosts with and without SNI, and flags internal names or private IP addresses in fallback certificates as
+`security/sni-fallback-information-leak` (warning). With `--check-network --audit-security`, the takeover auditor
+resolves declared endpoint and documentation hostnames, checks known S3, GitHub Pages, and Heroku CNAME targets for
+provider-specific unclaimed-resource responses, and emits `security/dangling-cname-takeover-risk` (error). Network
+failures alone are not treated as findings.
+
 **BGP route and RPKI auditor** (with `--check-network --audit-routing`) — Resolves the anchor domain and declared
 service endpoint addresses, retrieves announced prefixes and origin ASNs from RIPEstat, and checks their ROA state.
 An invalid origin emits `network/rpki-invalid-route` (error); a missing or unknown ROA state emits
@@ -2891,6 +2927,21 @@ matter of appending one object to a list and one fixture to a test.
 
 ## Integrations
 
+### Docker image
+
+The multi-architecture image is published to `ghcr.io/anchor-tools/stellar-toml-lint` for `linux/amd64` and
+`linux/arm64`. Release images are signed with Cosign using GitHub Actions OIDC. Run it with:
+
+```bash
+docker run --rm -v "$(pwd):/work" ghcr.io/anchor-tools/stellar-toml-lint:latest stellar.toml
+```
+
+### CircleCI Orb
+
+The Orb at [integrations/circleci/orb.yml](./integrations/circleci/orb.yml) provides `lint` and `network-audit` jobs.
+Both cache the CLI installation, publish JUnit test results, and store SARIF reports as CircleCI artifacts. Orb releases
+are validated and published from `circleci-orb-v*` tags; configure `CIRCLECI_CLI_TOKEN` in repository secrets.
+
 ### VS Code extension
 
 Official VS Code client for `stellar.toml` files with live SEP-1 diagnostics,
@@ -3294,6 +3345,66 @@ Diagnostics emitted:
 | Rule                          | Severity | When it fires                                                                |
 | ----------------------------- | -------- | ---------------------------------------------------------------------------- |
 | `sep24/quote-fee-instability` | error    | Quoted fee (`fixed`, `percent`, `minimum`, or `maximum`) changes mid-session |
+
+### Multi-tenant host-header isolation (`src/network/multi-tenant.ts`)
+
+Runs automatically under `--check-network` whenever the served domain is known
+(`--domain`, or `DOCUMENTATION.ORG_URL`). Anchor platforms hosting several home
+domains on one cluster must route on `Host` / `X-Forwarded-Host`; a cluster that
+ignores them answers every wallet with one tenant’s `stellar.toml`, leaking
+accounts and signing keys across anchors.
+
+The auditor requests `/.well-known/stellar.toml` once per tenant host with both
+host headers and the tenant’s `Origin`, then compares the identity markers
+(`DOCUMENTATION.ORG_NAME`, `SIGNING_KEY`, `ACCOUNTS`) in each answer:
+
+| Rule                                 | Severity | When it fires                                                                                             |
+| ------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------- |
+| `network/tenant-cross-contamination` | error    | A host is answered with another tenant’s identity markers                                                 |
+| `network/invalid-host-routing`       | warning  | An unknown `Host` receives the primary file, or `Access-Control-Allow-Origin` does not reflect the tenant |
+
+Sibling tenants come from the repeatable `--tenant-host` flag, or the
+programmatic `tenantHosts` option. Isolation between tenants can only be proven
+when at least one sibling is declared; without one the audit still checks that
+the primary host reflects CORS correctly.
+
+### SEP-6 dynamic fee curve (`--verify-sep6`)
+
+`verifySep6Integration` now samples `GET /fee` for each asset `/info` advertises,
+at amounts from 1 to 100,000 units in ascending order (17 samples by default).
+Tiered schedules are fine; a curve that _drops_ when the amount rises is not,
+because a wallet that quotes the smaller amount is charged more than it agreed
+to.
+
+| Rule                               | Severity | When it fires                                                                                       |
+| ---------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `sep6/non-monotonic-fee-curve`     | error    | A larger sample returns a smaller fee than the previous sample                                      |
+| `sep6/fee-exceeds-declared-bounds` | error    | The fee is not positive, exceeds the amount, or falls outside `/info`’s `fee_minimum`/`fee_maximum` |
+
+### SEP-24 transaction lifecycle (`--simulate-sep24`)
+
+Requires `--check-network --simulate-sep24`. The simulator authenticates with
+SEP-10 when `WEB_AUTH_ENDPOINT` and `SIGNING_KEY` are declared, opens a synthetic
+interactive deposit, and polls `GET /transaction?id=…` until a terminal status
+arrives.
+
+    stellar-toml-lint public/.well-known/stellar.toml --check-network --simulate-sep24
+
+Every observed status is validated against the SEP-24 state machine:
+
+- a status that is not one of the SEP-24 statuses is rejected;
+- a terminal status (`completed`, `refunded`, `expired`, `error`, …) may never
+  transition back into a pending state;
+- `started_at` is required once the flow leaves `incomplete`, and `completed_at`
+  is required on `completed` / `refunded`.
+
+| Rule                                 | Severity | When it fires                                                             |
+| ------------------------------------ | -------- | ------------------------------------------------------------------------- |
+| `sep24/illegal-state-transition`     | error    | Unknown status, or a transition that the state machine does not allow     |
+| `sep24/missing-lifecycle-timestamps` | warning  | `started_at` / `completed_at` is missing where the lifecycle requires one |
+
+Transport failures and auth rejections are silence: only spec violations are
+reported.
 
 ### Cryptographic JWT, trustline, vanity, and ZKP auditors
 

@@ -45,7 +45,13 @@ import { dnsIntegrityRules } from '../security/dns-integrity.js';
 import { corpHeaderRules } from '../security/corp-auditor.js';
 import { mpcGovernanceRules } from '../security/mpc-governance.js';
 import { hstsAuditorRules } from '../security/hsts-auditor.js';
-import { dmarcAuditorRules, caaAuditorRules, tlsPfsAuditorRules } from '../security/index.js';
+import {
+  dmarcAuditorRules,
+  caaAuditorRules,
+  tlsPfsAuditorRules,
+  sniAuditorRules,
+  subdomainTakeoverRules,
+} from '../security/index.js';
 import { certExpiryRules } from '../network/cert-expiry.js';
 import { bgpRouteDetectorRules } from '../network/bgp-route-detector.js';
 import { ipv6AuditorRules } from '../network/ipv6-auditor.js';
@@ -68,6 +74,8 @@ import { sep30CoordinatorRules } from '../protocols/sep30-coordinator.js';
 import { sep8Rules } from '../protocols/sep8.js';
 import { sep38QuoteRules } from '../protocols/sep38.js';
 import { sep24Rules } from '../protocols/sep24.js';
+import { sep24LifecycleRules } from '../protocols/sep24-lifecycle.js';
+import { multiTenantRules } from '../network/multi-tenant.js';
 import { wasmAuditorRules } from '../soroban/wasm-auditor.js';
 import { envMetaRules } from '../soroban/env-meta.js';
 import { eventRules } from '../soroban/events.js';
@@ -147,6 +155,7 @@ export const allRules: Rule[] = [
   ...sep8WebhookRules,
   ...sep38QuoteRules,
   ...sep24Rules,
+  ...sep24LifecycleRules,
   ...sep7Rules,
   ...corsPreflightRules,
   ...overlayCrawlerRules,
@@ -166,6 +175,8 @@ export const allRules: Rule[] = [
   ...dmarcAuditorRules,
   ...caaAuditorRules,
   ...tlsPfsAuditorRules,
+  ...sniAuditorRules,
+  ...subdomainTakeoverRules,
   ...bgpRouteDetectorRules,
   ...certExpiryRules,
   ...hstsAuditorRules,
@@ -249,6 +260,8 @@ export {
   sep8Rules,
   sep38QuoteRules,
   sep24Rules,
+  sep24LifecycleRules,
+  multiTenantRules,
   wasmAuditorRules,
   envMetaRules,
   eventRules,

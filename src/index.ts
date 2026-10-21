@@ -114,6 +114,23 @@ export { fix, type TextEdit, type FixResult } from './fix.js';
 export { probeTls } from './tls.js';
 export type { TlsProbe } from './tls.js';
 export {
+  checkSniFallback,
+  sniHandshakeProbe,
+  sniAuditorRules,
+  SECURITY_SNI_FALLBACK_INFORMATION_LEAK,
+} from './security/sni-auditor.js';
+export type { SniCertificateInfo, SniProbe } from './security/sni-auditor.js';
+export {
+  checkSubdomainTakeover,
+  subdomainTakeoverRules,
+  DEFAULT_TAKEOVER_PATTERNS,
+  SECURITY_DANGLING_CNAME_TAKEOVER_RISK,
+} from './security/subdomain-takeover.js';
+export type {
+  CnameTargetPattern,
+  SubdomainTakeoverOptions,
+} from './security/subdomain-takeover.js';
+export {
   checkPeerPortReachability,
   probeTcpPort,
   validatorHostsOf,
@@ -1294,3 +1311,48 @@ export type {
   Sep31AssetInfo,
   Sep31KycMatrixOptions,
 } from './protocols/sep31-kyc-matrix.js';
+
+export {
+  upgradeFederationDeclaration,
+  canonicalFederationServer,
+  legacyLookupFlags,
+  federationUpgradeRules,
+  FEDERATION_UPGRADE_APPLIED_RULE,
+  FEDERATION_UPGRADE_SKIPPED_RULE,
+  FEDERATION_SERVER_INVALID_RULE,
+  FEDERATION_SERVER_UNREACHABLE_RULE,
+} from './codemod/index.js';
+export type {
+  FederationLookupFlags,
+  FederationUpgradeOptions,
+  FederationUpgradeResult,
+} from './codemod/index.js';
+
+export {
+  auditMultiTenantRouting,
+  multiTenantRules,
+  TENANT_CROSS_CONTAMINATION_RULE,
+  INVALID_HOST_ROUTING_RULE,
+} from './network/multi-tenant.js';
+export type { MultiTenantOptions } from './network/multi-tenant.js';
+
+export {
+  verifySep6FeeCurve,
+  sep6FeeVerifierRules,
+  DEFAULT_FEE_SAMPLE_AMOUNTS,
+  NON_MONOTONIC_FEE_CURVE_RULE,
+  FEE_EXCEEDS_DECLARED_BOUNDS_RULE,
+} from './protocols/sep6-fee-verifier.js';
+export type { Sep6FeeVerifierOptions } from './protocols/sep6-fee-verifier.js';
+
+export {
+  simulateSep24Lifecycle,
+  sep24LifecycleRules,
+  isValidTransition,
+  SEP24_LIFECYCLE_STATES,
+  SEP24_TERMINAL_STATES,
+  SEP24_ALLOWED_TRANSITIONS,
+  ILLEGAL_STATE_TRANSITION_RULE,
+  MISSING_LIFECYCLE_TIMESTAMPS_RULE,
+} from './protocols/sep24-lifecycle.js';
+export type { Sep24LifecycleOptions } from './protocols/sep24-lifecycle.js';

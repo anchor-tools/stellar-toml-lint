@@ -29,8 +29,10 @@ describe('package metadata', () => {
     expect(Object.keys(pkg.dependencies).sort()).toEqual([
       '@noble/curves',
       '@noble/hashes',
+      '@relaycorp/dnssec',
       '@stellar/stellar-base',
       '@yao-pkg/pkg',
+      'dohdec',
       'jszip',
       'pdfmake',
       'smol-toml',

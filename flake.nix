@@ -22,7 +22,7 @@
             # that adds or bumps a dependency has to move this line with it.
             # Recompute with:
             #   nix run nixpkgs#prefetch-npm-deps -- package-lock.json
-            npmDepsHash = "sha256-b7V3tAewExBRXj0peJrqzIGimS+KV4sTz5NycaNtVdw=";
+            npmDepsHash = "sha256-Yc2cUpZHgL8dSz9DIt8iW0OBYE5sUKPFGD8Ie+qTLBM=";
             nativeBuildInputs = with pkgs; [
               nodejs_22
               python3

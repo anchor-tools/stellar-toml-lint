@@ -62,8 +62,11 @@ describe('SEP-6 programmatic integration tester', () => {
         );
       }
       if (urlStr.includes('/fee')) {
-        // 5 fixed + (100 * 1%) = 6
-        return new Response(JSON.stringify({ fee: 6 }), { status: 200 });
+        // 6% proportional fee; at the 100-unit check this is 6, matching
+        // fee_fixed 5 + fee_percent 1. The curve verifier samples other
+        // amounts, so the response has to scale with the requested amount.
+        const amount = Number(new URL(urlStr).searchParams.get('amount') ?? '100');
+        return new Response(JSON.stringify({ fee: amount * 0.06 }), { status: 200 });
       }
       if (urlStr.includes('/transaction')) {
         return new Response(
