@@ -25,7 +25,8 @@ export type RuleCategory =
   | 'policy'
   | 'sep12'
   | 'monitor'
-  | 'codemod';
+  | 'codemod'
+  | 'style';
 
 /** A 1-based position in the source file. */
 export interface Position {

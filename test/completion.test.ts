@@ -19,6 +19,7 @@ const LONG_FLAGS = [
   '--verify-overlay',
   '--contract-graph',
   '--mock-fixtures',
+  '--format-style',
   '--completion',
 ];
 

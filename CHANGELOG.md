@@ -9,6 +9,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Indentation normalizer and style enforcement (#303): `--format-style 2|4|tabs` rewrites only the
+  leading whitespace of structural lines via `normalizeIndentation` in `src/cst/indentation.ts`,
+  leaving comments, key order, quoting, and multi-line string contents byte-for-byte intact. The
+  detector reports whether a file is 2-space, 4-space, tabbed, or mixed, and two advisory rules
+  surface the problem in a normal lint run: `style/mixed-indentation` (warning) for tabs and spaces
+  used side by side, and `style/misaligned-table-key` (warning) for a nested header or key-value
+  that does not line up with its siblings. Both are silent on a consistently indented file and
+  neither carries a `--fix`, because reindenting is a whole-document rewrite.
+
 - Interactive code actions and an auto-fix refactoring provider over LSP (#332):
   `src/lsp/code-actions-provider.ts` answers `textDocument/codeAction` with executable
   `WorkspaceEdit`s in three kinds — `quickfix` for every fix-bearing diagnostic (including the

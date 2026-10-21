@@ -193,6 +193,9 @@ import { applyFixes } from './fix.js';
 import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
 import { formatToml } from './format-file.js';
 import type { FormatResult } from './format-file.js';
+import { isIndentStyle, normalizeIndentation } from './cst/indentation.js';
+import type { IndentStyle } from './cst/indentation.js';
+import { parseCst } from './cst/parser.js';
 import { semanticHash } from './cst/semantic-hash.js';
 
 const VERSION = '0.1.0';
@@ -219,6 +222,7 @@ interface Cli {
   domain?: string;
   format: Format;
   formatFile: boolean;
+  formatStyle?: IndentStyle;
   semanticHash: boolean;
   healthCheck?: boolean;
   strict: boolean;
@@ -330,6 +334,9 @@ USAGE
                                          positional path) against file2
   cat stellar.toml | stellar-toml-lint - Lint stdin
   stellar-toml-lint --format-file <file> Rewrite the file in canonical SEP-1 layout
+  stellar-toml-lint --format-style 2 <file>
+                                         Rewrite the indentation as 2 spaces (or
+                                         4, or tabs)
   stellar-toml-lint --semantic-hash <file>
                                          Print a SHA-256 of the file's data that
                                          ignores whitespace, comments, and key order
@@ -346,6 +353,9 @@ OPTIONS
       --format-file       Rewrite files in place: SEP-1 field order, consistent
                           quoting, comments preserved. Distinct from --format
                           (a reporter).
+      --format-style <s>  Rewrite a file's indentation as 2 spaces, 4 spaces, or
+                          tabs, leaving everything else byte-for-byte intact.
+                          Combined with --dry-run it prints the diff instead.
       --strict            Treat warnings as errors
       --max-warnings <n>  Fail if warnings exceed n
       --fail-on <sev>     Exit 1 when any diagnostic meets or exceeds <sev>:
@@ -633,6 +643,7 @@ async function main(argv: string[]): Promise<number> {
   }
 
   if (cli.formatFile) return formatFiles(cli);
+  if (cli.formatStyle !== undefined) return formatStyleFiles(cli);
   if (cli.semanticHash) return printSemanticHashes(cli);
 
   // The explorer is about rules, not about a file, so it runs before any path
@@ -1989,10 +2000,64 @@ async function formatFiles(cli: Cli): Promise<number> {
 }
 
 /**
- * `--semantic-hash`: one `<sha256>  <name>` line per file, in the layout
- * `sha256sum` uses, so a CI step can compare it against an approved value.
- * `--format json` prints the hashes and canonical forms as one JSON array.
+ * `--format-style [2|4|tabs]`: rewrite each file's indentation into one style,
+ * leaving everything else (comments, ordering, quoting, string contents)
+ * byte-for-byte intact. Invalid TOML is reported and left alone, mirroring
+ * `--format-file`. With `--dry-run` the unified diff is printed and nothing is
+ * written, and `-` streams the normalised document to stdout.
  */
+async function formatStyleFiles(cli: Cli): Promise<number> {
+  if (cli.domain) {
+    process.stderr.write(
+      '--format-style rewrites local files, so it cannot be combined with --domain.\n',
+    );
+    return 2;
+  }
+
+  const style = cli.formatStyle as IndentStyle;
+  const paths = cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH];
+  let failed = false;
+
+  for (const path of paths) {
+    try {
+      const source = path === '-' ? await readStdin() : await readFile(path, 'utf8');
+
+      // Refuse to touch a file whose indentation cannot be interpreted, so a
+      // broken file never gets a half-applied rewrite. `parseCst` is tolerant
+      // but reports errors; a first error means "do not rewrite".
+      const parsed = parseCst(source);
+      if (parsed.errors.length > 0) {
+        const error = parsed.errors[0]!;
+        process.stderr.write(
+          `${path === '-' ? 'stdin' : path}:${error.line}:${error.column}: ${error.message}\n`,
+        );
+        failed = true;
+        continue;
+      }
+
+      const { output, changed } = normalizeIndentation(source, style);
+
+      if (path === '-') {
+        process.stdout.write(output);
+        continue;
+      }
+
+      if (cli.dryRun) {
+        if (changed) process.stdout.write(generateDiff(source, output, path));
+        continue;
+      }
+
+      if (changed) await writeFile(path, output, 'utf8');
+      process.stdout.write(`${changed ? 'Reindented' : 'Unchanged'} ${path}\n`);
+    } catch (error) {
+      process.stderr.write(`${message(error)}\n`);
+      failed = true;
+    }
+  }
+
+  return failed ? 2 : 0;
+}
+
 async function printSemanticHashes(cli: Cli): Promise<number> {
   if (cli.domain && cli.paths.length === 0) {
     process.stderr.write('--semantic-hash hashes local files; pass a path or - for stdin.\n');
@@ -2207,6 +2272,15 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--format-file':
         cli.formatFile = true;
         break;
+
+      case '--format-style': {
+        const value = requireValue(argv, ++i, arg);
+        if (!isIndentStyle(value)) {
+          throw new Error(`Unknown indentation style "${value}". Expected 2, 4, or tabs.`);
+        }
+        cli.formatStyle = value;
+        break;
+      }
 
       case '--semantic-hash':
         cli.semanticHash = true;

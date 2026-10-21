@@ -97,6 +97,7 @@ import { corridorRoutingRules } from '../corridors/routingVerifier.js';
 import { redosDetectorRules } from './redos-detector.js';
 import { overlayDosRules } from '../overlay/dos-tester.js';
 import { topologyAnalyzerRules } from '../overlay/topology-analyzer.js';
+import { styleRules } from './style.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -194,6 +195,7 @@ export const allRules: Rule[] = [
   ...ipfsMetadataRules,
   ...accountDataAuditorRules,
   ...redosDetectorRules,
+  ...styleRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -282,4 +284,5 @@ export {
   corpHeaderRules,
   mpcGovernanceRules,
   hstsAuditorRules,
+  styleRules,
 };

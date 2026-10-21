@@ -87,6 +87,11 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--quiet', short: '-q', description: 'Report errors only' },
   { long: '--count', description: 'Print only problem count totals' },
   {
+    long: '--format-style',
+    description: "Rewrite a file's indentation as 2 spaces, 4 spaces, or tabs",
+    values: ['2', '4', 'tabs'],
+  },
+  {
     long: '--semantic-hash',
     description: 'Print a SHA-256 of the data, ignoring formatting and comments',
   },

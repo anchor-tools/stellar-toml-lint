@@ -77,3 +77,13 @@ export {
   type LineDelta,
   type ReparseResult,
 } from './incremental-parser.js';
+
+export {
+  auditIndentation,
+  detectIndentation,
+  INDENT_STYLES,
+  indentUnit,
+  isIndentStyle,
+  normalizeIndentation,
+} from './indentation.js';
+export type { IndentStyle, IndentationFinding, IndentationReport } from './indentation.js';

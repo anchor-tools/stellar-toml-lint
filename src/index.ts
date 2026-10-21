@@ -13,6 +13,15 @@ export { lint, lintDomain } from './lint.js';
 export { formatToml } from './format-file.js';
 export type { FormatResult } from './format-file.js';
 export {
+  auditIndentation,
+  detectIndentation,
+  INDENT_STYLES,
+  indentUnit,
+  isIndentStyle,
+  normalizeIndentation,
+} from './cst/indentation.js';
+export type { IndentStyle, IndentationFinding, IndentationReport } from './cst/indentation.js';
+export {
   semanticHash,
   semanticallyEqual,
   canonicalize,
