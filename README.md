@@ -394,6 +394,8 @@ For every contract a file declares under `[[CURRENCIES]]`, on-chain audits run u
 | `soroban/high-storage-footprint`           | warning  | A contract's total storage footprint exceeds recommended limits                         |
 | `soroban/missing-auth-parameter`           | error    | A state-mutating contract function lacks an Address authorization parameter             |
 | `soroban/unsafe-unauthorized-mint`         | error    | An unparameterized or unauthorized mint function is exposed (SEP-42)                    |
+| `soroban/unauthorized-cross-contract-call` | error    | An authorization call tree authorizes an identity or contract the anchor never approved |
+| `soroban/unbounded-auth-grant`             | warning  | An authorization call tree grants authorization without an address boundary             |
 | `soroban/corrupted-instance-storage-entry` | error    | Contract instance storage contains malformed SCVal (admin not Address, decimal not U32) |
 | `soroban/instance-storage-data-mismatch`   | error    | Instance storage `decimal` disagrees with `display_decimals` in stellar.toml            |
 
@@ -405,9 +407,13 @@ is caught before wallets and indexers miss the balance change. The admin audit r
 `admin`/`owner` instance-storage key, classifies the administrator as an account or another contract,
 and inspects the account's signing weights via Horizon. The authorization security auditor verifies
 that state-mutating methods (`set_admin`, `mint`, `burn`, `transfer`) require explicit `Address`
-authorization parameters adhering to SEP-42 cross-contract authorization standards. The storage footprint
-analyzer measures instance and code entry byte sizes, projects ledger rent costs per 100,000 ledgers,
-and flags entries expiring within 30 days. The simulation sandbox builds
+authorization parameters adhering to SEP-42 cross-contract authorization standards. The
+authorization call-tree simulator dry-runs the SAC `mint` and `clawback` calls and reads the
+`SorobanAuthorizationEntry` tree the RPC returns: the identity behind the root invocation must be
+the account the file publishes as `SIGNING_KEY` or a designated issuer, the tree must not delegate
+into a contract the operation did not call, and every grant must name the address it applies to.
+The storage footprint analyzer measures instance and code entry byte sizes, projects ledger rent
+costs per 100,000 ledgers, and flags entries expiring within 30 days. The simulation sandbox builds
 `InvokeHostFunctionOp` envelopes for `decimals()`, `name()`, `symbol()`, and a zero-value
 `balance(...)` and dry-runs them with `simulateTransaction` — nothing is submitted and no fees are
 spent. Every audit degrades to silence on an RPC or Horizon outage rather than failing the run, and

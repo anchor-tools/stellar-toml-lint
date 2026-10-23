@@ -66,6 +66,7 @@ import { auditTomlContractAdmins } from './soroban/admin-auditor.js';
 import { auditTomlContractSimulation } from './soroban/simulation.js';
 import { auditTomlStorageFootprint } from './soroban/storage-footprint.js';
 import { auditTomlContractAuth } from './soroban/auth-auditor.js';
+import { auditTomlAuthTree } from './soroban/auth-tree-simulator.js';
 import { checkNetworkConsistency } from './soroban/multi-network.js';
 import {
   checkContractDependencies,
@@ -1014,6 +1015,10 @@ async function main(argv: string[]): Promise<number> {
               rules,
               ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
             })),
+            ...(await auditTomlAuthTree(domainResult.parsed, fetchImpl, {
+              rules,
+              ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+            })),
             ...(cli.simulateSoroban
               ? await auditTomlContractSimulation(domainResult.parsed, fetchImpl, {
                   rules,
@@ -1470,6 +1475,10 @@ async function main(argv: string[]): Promise<number> {
                   ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                 })),
                 ...(await auditTomlContractAuth(fileResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })),
+                ...(await auditTomlAuthTree(fileResult.parsed, fetchImpl, {
                   rules,
                   ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                 })),

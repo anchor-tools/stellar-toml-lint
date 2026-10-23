@@ -1277,23 +1277,11 @@
       "units": 0,
       "rmeFraction": 0
     },
-    "crypto/malformed-pkcs11-uri": {
+    "soroban/unauthorized-cross-contract-call": {
       "units": 0,
       "rmeFraction": 0
     },
-    "crypto/insecure-embedded-pkcs11-pin": {
-      "units": 0,
-      "rmeFraction": 0
-    },
-    "crypto/malleable-signature-detected": {
-      "units": 0,
-      "rmeFraction": 0
-    },
-    "security/stale-signing-key-post-rotation": {
-      "units": 0,
-      "rmeFraction": 0
-    },
-    "security/unrecorded-signer-addition": {
+    "soroban/unbounded-auth-grant": {
       "units": 0,
       "rmeFraction": 0
     },

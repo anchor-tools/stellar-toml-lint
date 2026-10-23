@@ -65,6 +65,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (error), `soroban/contract-function-undocumented` (info), `soroban/contract-event-undeclared`,
   `soroban/contract-interface-version-drift` and `soroban/contract-metadata-undecodable` (warnings).
 
+- SEP-42 cross-contract authorization call-tree simulator under `--check-network`
+  (`src/soroban/auth-tree-simulator.ts`): the SAC `mint` and `clawback` calls are dry-run with
+  `simulateTransaction` in recording mode, and the returned `SorobanAuthorizationEntry` tree is
+  traced, emitting `soroban/unauthorized-cross-contract-call` (error) when the tree authorizes an
+  identity other than the account the file publishes as `SIGNING_KEY` or a designated issuer, or
+  delegates into a contract the operation never called, and `soroban/unbounded-auth-grant`
+  (warning) when a grant names no address, lets a contract authorize itself, or re-delegates the
+  authorization further down the tree. Nothing is submitted and no fees are spent.
+
 - SEP-20 history archive auditing under `--check-network` (#402): each `[[VALIDATORS]].HISTORY`
   archive is read for `.well-known/stellar-history.json` and then sent a byte range request,
   emitting `validators/archive-metadata-unreadable`, `validators/archive-range-unsupported` and
