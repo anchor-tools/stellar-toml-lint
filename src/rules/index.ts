@@ -39,13 +39,20 @@ import { archiveDiffRules } from '../history/archive-diff.js';
 import { bucketAuditorRules } from '../history/bucket-auditor.js';
 import { bucketStreamRules } from '../history/bucket-stream-validator.js';
 import { gapAuditorRules } from '../history/gap-auditor.js';
+import { chainCrawlerRules } from '../history/chain-crawler.js';
 import { quorumSolverRules } from '../validators/quorum-solver.js';
 import { quorumAuditRules } from '../validators/quorum.js';
 import { dnsIntegrityRules } from '../security/dns-integrity.js';
 import { corpHeaderRules } from '../security/corp-auditor.js';
 import { mpcGovernanceRules } from '../security/mpc-governance.js';
 import { hstsAuditorRules } from '../security/hsts-auditor.js';
-import { dmarcAuditorRules, caaAuditorRules, tlsPfsAuditorRules } from '../security/index.js';
+import {
+  dmarcAuditorRules,
+  caaAuditorRules,
+  tlsPfsAuditorRules,
+  sniAuditorRules,
+  subdomainTakeoverRules,
+} from '../security/index.js';
 import { certExpiryRules } from '../network/cert-expiry.js';
 import { bgpRouteDetectorRules } from '../network/bgp-route-detector.js';
 import { ipv6AuditorRules } from '../network/ipv6-auditor.js';
@@ -68,8 +75,11 @@ import { sep30CoordinatorRules } from '../protocols/sep30-coordinator.js';
 import { sep8Rules } from '../protocols/sep8.js';
 import { sep38QuoteRules } from '../protocols/sep38.js';
 import { sep24Rules } from '../protocols/sep24.js';
+import { sep24LifecycleRules } from '../protocols/sep24-lifecycle.js';
+import { multiTenantRules } from '../network/multi-tenant.js';
 import { wasmAuditorRules } from '../soroban/wasm-auditor.js';
 import { envMetaRules } from '../soroban/env-meta.js';
+import { parityRules } from '../soroban/parity-verifier.js';
 import { eventRules } from '../soroban/events.js';
 import { adminAuditorRules } from '../soroban/admin-auditor.js';
 import { simulationRules } from '../soroban/simulation.js';
@@ -78,6 +88,7 @@ import { authAuditorRules } from '../soroban/auth-auditor.js';
 import { authTreeSimulatorRules } from '../soroban/auth-tree-simulator.js';
 import { instanceStorageAuditorRules } from '../soroban/instance-storage-auditor.js';
 import { insecureHttpRule } from './insecure-http.js';
+import { deadCodeRules } from './dead-code.js';
 import { multisigRules } from '../security/multisig.js';
 import { ipfsMetadataRules } from '../validators/ipfsMetadata.js';
 import { sep8WebhookRules } from '../sep8/webhookCoordinator.js';
@@ -89,10 +100,12 @@ import { corridorRoutingRules } from '../corridors/routingVerifier.js';
 import { redosDetectorRules } from './redos-detector.js';
 import { overlayDosRules } from '../overlay/dos-tester.js';
 import { topologyAnalyzerRules } from '../overlay/topology-analyzer.js';
+import { styleRules } from './style.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
   ...generalRules,
+  ...deadCodeRules,
   insecureHttpRule,
   ...deprecationRules,
   ...sep10Rules,
@@ -124,6 +137,7 @@ export const allRules: Rule[] = [
   ...contractMetadataRules,
   ...wasmAuditorRules,
   ...envMetaRules,
+  ...parityRules,
   ...eventRules,
   ...adminAuditorRules,
   ...simulationRules,
@@ -147,6 +161,7 @@ export const allRules: Rule[] = [
   ...sep8WebhookRules,
   ...sep38QuoteRules,
   ...sep24Rules,
+  ...sep24LifecycleRules,
   ...sep7Rules,
   ...corsPreflightRules,
   ...overlayCrawlerRules,
@@ -160,12 +175,15 @@ export const allRules: Rule[] = [
   ...bucketAuditorRules,
   ...bucketStreamRules,
   ...gapAuditorRules,
+  ...chainCrawlerRules,
   ...quorumSolverRules,
   ...quorumAuditRules,
   ...dnsIntegrityRules,
   ...dmarcAuditorRules,
   ...caaAuditorRules,
   ...tlsPfsAuditorRules,
+  ...sniAuditorRules,
+  ...subdomainTakeoverRules,
   ...bgpRouteDetectorRules,
   ...certExpiryRules,
   ...hstsAuditorRules,
@@ -183,6 +201,7 @@ export const allRules: Rule[] = [
   ...ipfsMetadataRules,
   ...accountDataAuditorRules,
   ...redosDetectorRules,
+  ...styleRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -226,6 +245,7 @@ export {
   bucketAuditorRules,
   bucketStreamRules,
   gapAuditorRules,
+  chainCrawlerRules,
   quorumSolverRules,
   quorumAuditRules,
   dnsIntegrityRules,
@@ -249,8 +269,11 @@ export {
   sep8Rules,
   sep38QuoteRules,
   sep24Rules,
+  sep24LifecycleRules,
+  multiTenantRules,
   wasmAuditorRules,
   envMetaRules,
+  parityRules,
   eventRules,
   adminAuditorRules,
   simulationRules,
@@ -269,4 +292,5 @@ export {
   corpHeaderRules,
   mpcGovernanceRules,
   hstsAuditorRules,
+  styleRules,
 };

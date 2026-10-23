@@ -261,6 +261,10 @@
       "units": 0,
       "rmeFraction": 0.0052
     },
+    "general/dead-configuration-key": {
+      "units": 0.09,
+      "rmeFraction": 0.005
+    },
     "general/deprecated-field": {
       "units": 0.0018,
       "rmeFraction": 0.0029
@@ -369,6 +373,10 @@
       "units": 0,
       "rmeFraction": 0.0027
     },
+    "history/broken-checkpoint-sequence": {
+      "units": 0,
+      "rmeFraction": 0
+    },
     "history/bucket-download-failed": {
       "units": 0,
       "rmeFraction": 0.0026
@@ -380,6 +388,10 @@
     "history/bucket-xdr-corrupted": {
       "units": 0,
       "rmeFraction": 0.0036
+    },
+    "history/checkpoint-ledger-hash-mismatch": {
+      "units": 0,
+      "rmeFraction": 0
     },
     "history/missing-category-archive": {
       "units": 0,
@@ -445,6 +457,10 @@
       "units": 0,
       "rmeFraction": 0.0057
     },
+    "network/invalid-host-routing": {
+      "units": 0,
+      "rmeFraction": 0.003
+    },
     "network/ipv6-connection-failed": {
       "units": 0,
       "rmeFraction": 0.0034
@@ -484,6 +500,10 @@
     "network/sep6-missing-asset": {
       "units": 0,
       "rmeFraction": 0.0027
+    },
+    "network/tenant-cross-contamination": {
+      "units": 0,
+      "rmeFraction": 0.003
     },
     "overlay/handshake-timeout": {
       "units": 0,
@@ -541,6 +561,18 @@
       "units": 0.3974,
       "rmeFraction": 0.0032
     },
+    "crypto/malformed-zkp-proof-data": {
+      "units": 0,
+      "rmeFraction": 0.0001
+    },
+    "crypto/suspicious-vanity-address": {
+      "units": 0,
+      "rmeFraction": 0.0001
+    },
+    "crypto/zkp-supply-commitment-mismatch": {
+      "units": 0,
+      "rmeFraction": 0.0001
+    },
     "security/deprecated-tls-version": {
       "units": 0.0001,
       "rmeFraction": 0.0032
@@ -549,6 +581,10 @@
       "units": 0,
       "rmeFraction": 0.001
     },
+    "security/dangling-cname-takeover-risk": {
+      "units": 0,
+      "rmeFraction": 0.0028
+    },
     "security/dns-resolver-divergence": {
       "units": 0,
       "rmeFraction": 0.0028
@@ -556,6 +592,10 @@
     "security/dnssec-not-enabled": {
       "units": 0,
       "rmeFraction": 0.0026
+    },
+    "security/expired-rrsig-signature": {
+      "units": 0,
+      "rmeFraction": 0.0499
     },
     "security/false-immutability-claim": {
       "units": 0,
@@ -573,6 +613,10 @@
       "units": 0,
       "rmeFraction": 0.0009
     },
+    "security/insecure-jwt-algorithm": {
+      "units": 0,
+      "rmeFraction": 0.0001
+    },
     "security/jwt-domain-mismatch": {
       "units": 0,
       "rmeFraction": 0.0013
@@ -580,6 +624,10 @@
     "security/jwt-rejected-by-transfer-server": {
       "units": 0,
       "rmeFraction": 0.0007
+    },
+    "security/jwt-signature-verification-failed": {
+      "units": 0,
+      "rmeFraction": 0.0001
     },
     "security/missing-on-chain-verification-proof": {
       "units": 0,
@@ -597,6 +645,10 @@
       "units": 0,
       "rmeFraction": 0.0008
     },
+    "security/origin-ip-exposed": {
+      "units": 0,
+      "rmeFraction": 0.0125
+    },
     "security/redos-vulnerable-regex": {
       "units": 0,
       "rmeFraction": 0.003
@@ -613,6 +665,10 @@
       "units": 0,
       "rmeFraction": 0.004
     },
+    "security/sni-fallback-information-leak": {
+      "units": 0,
+      "rmeFraction": 0.0028
+    },
     "security/single-signer-high-threshold": {
       "units": 0,
       "rmeFraction": 0.0037
@@ -624,6 +680,10 @@
     "security/tls-cert-expiring-soon": {
       "units": 0,
       "rmeFraction": 0.001
+    },
+    "security/undisclosed-asset-freezing-capability": {
+      "units": 0,
+      "rmeFraction": 0.0001
     },
     "security/unreachable-threshold": {
       "units": 0,
@@ -669,6 +729,10 @@
       "units": 0,
       "rmeFraction": 0.0046
     },
+    "sep24/illegal-state-transition": {
+      "units": 0,
+      "rmeFraction": 0.003
+    },
     "sep24/info-endpoint-unreachable": {
       "units": 0,
       "rmeFraction": 0.0026
@@ -688,6 +752,10 @@
     "sep24/malformed-postmessage-payload": {
       "units": 0,
       "rmeFraction": 0.0245
+    },
+    "sep24/missing-lifecycle-timestamps": {
+      "units": 0,
+      "rmeFraction": 0.003
     },
     "sep3/auth-server-unreachable": {
       "units": 0,
@@ -761,9 +829,17 @@
       "units": 0,
       "rmeFraction": 0.0047
     },
+    "sep6/fee-exceeds-declared-bounds": {
+      "units": 0,
+      "rmeFraction": 0.003
+    },
     "sep6/invalid-transaction-status": {
       "units": 0,
       "rmeFraction": 0.0021
+    },
+    "sep6/non-monotonic-fee-curve": {
+      "units": 0,
+      "rmeFraction": 0.003
     },
     "sep7/invalid-signature": {
       "units": 5.4084,
@@ -993,6 +1069,10 @@
       "units": 0,
       "rmeFraction": 0.0008
     },
+    "validators/catastrophic-single-point-of-failure": {
+      "units": 0,
+      "rmeFraction": 0
+    },
     "validators/duplicate-alias": {
       "units": 0.3297,
       "rmeFraction": 0.0032
@@ -1017,6 +1097,10 @@
       "units": 0,
       "rmeFraction": 0.0018
     },
+    "validators/frequent-lost-sync": {
+      "units": 0,
+      "rmeFraction": 0
+    },
     "validators/history-archive-malformed": {
       "units": 0,
       "rmeFraction": 0.0313
@@ -1025,6 +1109,10 @@
       "units": 0,
       "rmeFraction": 0.0325
     },
+    "validators/high-nomination-latency": {
+      "units": 0,
+      "rmeFraction": 0
+    },
     "validators/host": {
       "units": 0.4849,
       "rmeFraction": 0.004
@@ -1032,6 +1120,10 @@
     "validators/invalid-history-url": {
       "units": 2.3862,
       "rmeFraction": 0.0064
+    },
+    "validators/low-byzantine-fault-tolerance": {
+      "units": 0,
+      "rmeFraction": 0
     },
     "validators/peer-port-unreachable": {
       "units": 0,
@@ -1192,6 +1284,30 @@
     "soroban/unbounded-auth-grant": {
       "units": 0,
       "rmeFraction": 0
+    },
+    "style/mixed-indentation": {
+      "units": 103.3,
+      "rmeFraction": 0.1
+    },
+    "style/misaligned-table-key": {
+      "units": 102.6,
+      "rmeFraction": 0.1
+    },
+    "soroban/deprecated-compiler-version": {
+      "units": 0,
+      "rmeFraction": 0.0189
+    },
+    "soroban/malformed-envmeta-xdr": {
+      "units": 0,
+      "rmeFraction": 0.0968
+    },
+    "soroban/multi-network-byte-mismatch": {
+      "units": 0,
+      "rmeFraction": 0.0015
+    },
+    "soroban/spec-interface-drift": {
+      "units": 0,
+      "rmeFraction": 0.0006
     }
   }
 }

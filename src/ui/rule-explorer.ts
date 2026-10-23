@@ -52,6 +52,7 @@ const CATEGORY_ANCHOR: Record<RuleCategory, string> = {
   sep12: 'general-information',
   monitor: 'general-information',
   codemod: 'general-information',
+  style: 'general-information',
 };
 
 export interface RuleExplorerEntry {

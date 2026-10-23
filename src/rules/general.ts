@@ -19,6 +19,8 @@ import { trailingSlashRule } from './trailing-slash.js';
 import { uppercaseKeyRules } from './uppercase-keys.js';
 import { whitespaceRules } from './whitespace.js';
 import { httpVersionAuditorRules } from '../network/http-version-auditor.js';
+import { multiTenantRules } from '../network/multi-tenant.js';
+import { vanityAuditorRules } from '../crypto/vanity-auditor.js';
 import { isPkcs11Uri, pkcs11ValidatorRules } from '../crypto/pkcs11-validator.js';
 
 /**
@@ -36,6 +38,7 @@ export function webAuthContractIdOf(
 
 /** Rules covering file-level constraints and the global (untabled) fields. */
 export const generalRules: Rule[] = [
+  ...vanityAuditorRules,
   ...whitespaceRules,
   ...pkcs11ValidatorRules,
   ...uppercaseKeyRules,
@@ -522,4 +525,7 @@ export const generalRules: Rule[] = [
   // Network-bound rule ids live here so `--list-rules` and `--off` know them;
   // the diagnostics come from `auditHttpVersions` under `--check-network`.
   ...httpVersionAuditorRules,
+  // As above: the ids are registered here, the diagnostics come from
+  // `auditMultiTenantRouting` under `--check-network`.
+  ...multiTenantRules,
 ];

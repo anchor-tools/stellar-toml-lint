@@ -13,6 +13,15 @@ export { lint, lintDomain } from './lint.js';
 export { formatToml } from './format-file.js';
 export type { FormatResult } from './format-file.js';
 export {
+  auditIndentation,
+  detectIndentation,
+  INDENT_STYLES,
+  indentUnit,
+  isIndentStyle,
+  normalizeIndentation,
+} from './cst/indentation.js';
+export type { IndentStyle, IndentationFinding, IndentationReport } from './cst/indentation.js';
+export {
   semanticHash,
   semanticallyEqual,
   canonicalize,
@@ -66,6 +75,23 @@ export type {
   TokenKind,
   TriviaKind,
 } from './cst/lexer.js';
+export {
+  LosslessRewriter,
+  rewrite,
+  countComments,
+  detectCommentLoss,
+  evaluateRewritten,
+  COMMENT_LOSS_RULE,
+} from './cst/lossless-rewrite.js';
+export type { RewriteEdit, RewriteResult } from './cst/lossless-rewrite.js';
+export { IncrementalParser, computeLineDelta } from './cst/incremental-parser.js';
+export type {
+  IncrementalParserOptions,
+  LineDelta,
+  ReparseResult,
+} from './cst/incremental-parser.js';
+export { renderSplitDiff, detectTerminalWidth } from './reporters/split-diff.js';
+export type { Segment, SplitDiffOptions } from './reporters/split-diff.js';
 export { allRules, ruleIds } from './rules/index.js';
 export { PRESETS, PRESET_NAMES, resolvePreset } from './presets.js';
 export type { Preset, PresetName } from './presets.js';
@@ -96,6 +122,23 @@ export type {
 export { fix, type TextEdit, type FixResult } from './fix.js';
 export { probeTls } from './tls.js';
 export type { TlsProbe } from './tls.js';
+export {
+  checkSniFallback,
+  sniHandshakeProbe,
+  sniAuditorRules,
+  SECURITY_SNI_FALLBACK_INFORMATION_LEAK,
+} from './security/sni-auditor.js';
+export type { SniCertificateInfo, SniProbe } from './security/sni-auditor.js';
+export {
+  checkSubdomainTakeover,
+  subdomainTakeoverRules,
+  DEFAULT_TAKEOVER_PATTERNS,
+  SECURITY_DANGLING_CNAME_TAKEOVER_RISK,
+} from './security/subdomain-takeover.js';
+export type {
+  CnameTargetPattern,
+  SubdomainTakeoverOptions,
+} from './security/subdomain-takeover.js';
 export {
   checkPeerPortReachability,
   probeTcpPort,
@@ -400,6 +443,30 @@ export {
 } from './history/gap-auditor.js';
 export type { CheckpointCategory, GapAuditorOptions, LedgerGap } from './history/gap-auditor.js';
 export {
+  checkHistoryChain,
+  checkHistoryArchiveChain,
+  auditHistoryChain,
+  crawlHistoryChain,
+  crawlCheckpointChain,
+  crawlHistoryCheckpoints,
+  parseHistoryCheckpoint,
+  chainCrawlerRules,
+  chainCrawlerRuleIds,
+  BROKEN_CHECKPOINT_SEQUENCE_RULE,
+  CHECKPOINT_LEDGER_HASH_MISMATCH_RULE,
+  CHECKPOINT_CHAIN_HASH_MISMATCH_RULE,
+  HISTORY_BROKEN_CHECKPOINT_SEQUENCE,
+  HISTORY_CHECKPOINT_LEDGER_HASH_MISMATCH,
+  DEFAULT_CRAWLED_CHECKPOINTS,
+} from './history/chain-crawler.js';
+export type {
+  ChainCrawlerOptions,
+  HistoryCheckpointRecord,
+  HistoryChainAudit,
+  HistoryChainIssue,
+  ParsedHistoryCheckpoint,
+} from './history/chain-crawler.js';
+export {
   checkQuorumIntersection,
   quorumSolverRules,
   quorumSolverRuleIds,
@@ -431,6 +498,94 @@ export type {
   BridgeNode,
   ChokePoint,
 } from './validators/split-brain-solver.js';
+export {
+  checkByzantineResilience,
+  auditByzantineResilience,
+  checkByzantineFaults,
+  verifyByzantineResilience,
+  simulateByzantineResilience,
+  simulateByzantineFaults,
+  estimateStallProbability,
+  monteCarloStallProbability,
+  analyseByzantineResilience,
+  quorumSatisfied,
+  isStalled,
+  findCriticalNodes,
+  safetyBufferOf,
+  byzantineMembers,
+  byzantineSimulatorRules,
+  byzantineSimulatorRuleIds,
+  LOW_BYZANTINE_FAULT_TOLERANCE_RULE,
+  CATASTROPHIC_SINGLE_POINT_OF_FAILURE_RULE,
+  LOW_BYZANTINE_FAULT_TOLERANCE,
+  CATASTROPHIC_SINGLE_POINT_OF_FAILURE,
+  DEFAULT_MONTE_CARLO_ITERATIONS,
+  DEFAULT_MAX_EXACT_COMBINATIONS,
+  DEFAULT_BYZANTINE_SEED,
+} from './validators/byzantine-simulator.js';
+export type {
+  ByzantineSimulatorOptions,
+  ByzantineSimulationResult,
+  StallProbabilityOptions,
+  StallProbability,
+  ProbabilityMethod,
+} from './validators/byzantine-simulator.js';
+export {
+  checkValidatorTelemetry,
+  auditTelemetry,
+  checkScpTelemetry,
+  verifyTelemetry,
+  resolveTelemetryEndpoint,
+  fetchTelemetrySnapshot,
+  evaluateTelemetry,
+  parsePrometheusMetrics,
+  normalizeMetricName,
+  extractLostSync,
+  extractLedgerCloseLatencyMs,
+  extractTelemetryFromInfo,
+  extractTelemetryFromMetrics,
+  telemetryAuditorRules,
+  telemetryAuditorRuleIds,
+  HIGH_NOMINATION_LATENCY_RULE,
+  FREQUENT_LOST_SYNC_RULE,
+  VALIDATORS_HIGH_NOMINATION_LATENCY,
+  VALIDATORS_FREQUENT_LOST_SYNC,
+  DEFAULT_LEDGER_CLOSE_LATENCY_MS,
+  DEFAULT_MAX_LOST_SYNC,
+} from './validators/telemetry-auditor.js';
+export type {
+  TelemetryAuditorOptions,
+  TelemetryEvaluationOptions,
+  TelemetrySnapshot,
+  PrometheusSample,
+} from './validators/telemetry-auditor.js';
+export {
+  generateQuorumGraph,
+  quorumGraphForDocument,
+  buildQuorumGraph,
+  buildQuorumGraphForDocument,
+  minimalQuorumSlices,
+  renderQuorumGraph,
+  renderQuorumMermaid,
+  renderQuorumGraphMermaid,
+  renderMermaid,
+  renderQuorumAscii,
+  renderQuorumGraphAscii,
+  renderAscii,
+  renderQuorumSvg,
+  renderQuorumGraphSvg,
+  renderSvg,
+  isQuorumGraphFormat,
+  QUORUM_GRAPH_FORMATS,
+} from './ui/quorum-graph.js';
+export type {
+  QuorumGraphFormat,
+  QuorumGraphOptions,
+  QuorumGraph,
+  QuorumGraphNode,
+  QuorumGraphEdge,
+  QuorumGraphValidator,
+} from './ui/quorum-graph.js';
 export {
   checkDnsIntegrity,
   checkDnsIntegrityForDomain,
@@ -671,32 +826,83 @@ export {
 export type { AuthAuditorOptions, ContractFunctionSpec } from './soroban/auth-auditor.js';
 
 export {
-  auditTomlAuthTree,
-  simulateAuthTree,
-  analyzeAuthTree,
-  buildAuthTreeTransaction,
-  parseAuthEntry,
-  parseAuthEntries,
-  authorizedIdentitiesOf,
-  allowedContractsOf,
-  canonicalIdentity,
-  authTreeSimulatorRules,
-  authTreeSimulatorRuleIds,
-  AUTH_TREE_OPERATIONS,
-  AUTH_MARKER_FUNCTIONS,
-  VALUE_MOVING_FUNCTIONS,
-  RECORDING_AUTH_MODE,
-  UNAUTHORIZED_CROSS_CONTRACT_RULE,
-  UNBOUNDED_AUTH_GRANT_RULE,
-} from './soroban/auth-tree-simulator.js';
+  auditJwtCrypto,
+  verifyJwtCrypto,
+  checkJwtCrypto,
+  parseJwt,
+  decodeBase64Url,
+  jwtCryptoAuditorRules,
+  jwtCryptoRuleIds,
+  INSECURE_JWT_ALGORITHM_RULE,
+  JWT_SIGNATURE_VERIFICATION_FAILED_RULE,
+} from './security/jwt-crypto-auditor.js';
 export type {
-  AuthTreeOptions,
-  AuthTreeOperation,
-  AuthTreeNode,
-  AuthTreeEntry,
-  AuthTreeFinding,
-  AuthTreeContext,
-} from './soroban/auth-tree-simulator.js';
+  JwtCryptoAuditorOptions,
+  JwtHeader,
+  JwtJwk,
+  JwtPayload,
+  ParsedJwt,
+} from './security/jwt-crypto-auditor.js';
+
+export {
+  auditZkpAttestations,
+  validateZkpAttestations,
+  checkZkpAttestations,
+  zkpAttestationRules,
+  zkpAttestationRuleIds,
+  MALFORMED_ZKP_PROOF_RULE,
+  MALFORMED_ZKP_PROOF_DATA_RULE,
+  ZKP_SUPPLY_COMMITMENT_MISMATCH_RULE,
+} from './crypto/zkp-attestation.js';
+export type { ZkpAttestationOptions } from './crypto/zkp-attestation.js';
+
+export {
+  simulateTrustlineFreezing,
+  simulateTrustLineFreeze,
+  simulateTrustlineRevocation,
+  simulateTrustlineAuthorization,
+  auditTrustlineSimulator,
+  checkTrustlineSimulator,
+  checkTrustlineFreezing,
+  auditTrustlineFreezing,
+  auditTrustlineAuthorization,
+  fetchIssuerAuthorization,
+  buildTrustLineFreezeTransaction,
+  hasFreezeDisclosure,
+  trustlineSimulatorRules,
+  trustlineSimulatorRuleIds,
+  UNDISCLOSED_FREEZING_RULE,
+  UNDISCLOSED_ASSET_FREEZING_RULE,
+} from './security/trustline-simulator.js';
+export type {
+  HorizonIssuerAuthorization,
+  TrustlineSimulatorOptions,
+} from './security/trustline-simulator.js';
+
+export {
+  auditVanityAddresses,
+  auditVanityAddress,
+  checkVanityAddresses,
+  analyzeVanityAddress,
+  vanityAuditorRules,
+  vanityAuditorRuleIds,
+  SUSPICIOUS_VANITY_ADDRESS_RULE,
+  VANITY_SECURITY_ADVISORY_URL,
+} from './crypto/vanity-auditor.js';
+export type { VanityAnalysis } from './crypto/vanity-auditor.js';
+
+export {
+  verifySep10,
+  sep10Rules,
+  sep10RuleIds,
+  INVALID_SOURCE_RULE,
+  INVALID_SEQUENCE_RULE,
+  EXPIRED_TIMEBOUNDS_RULE,
+  INVALID_SERVER_SIGNATURE_RULE,
+  MISSING_CLIENT_DOMAIN_RULE,
+  CHALLENGE_SUBMISSION_FAILED_RULE,
+} from './protocols/sep10.js';
+export type { Sep10Options } from './protocols/sep10.js';
 
 export type {
   Diagnostic,
@@ -716,8 +922,14 @@ export type {
 export { SPEC_URL } from './spec.js';
 export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
-export { codeActionsFor } from './lsp/code-actions.js';
-export type { LspCodeAction, LspRange, LspTextEdit, LspWorkspaceEdit } from './lsp/code-actions.js';
+export { codeActionsFor } from './lsp/code-actions-provider.js';
+export type {
+  LspCodeAction,
+  LspCodeActionKind,
+  LspRange,
+  LspTextEdit,
+  LspWorkspaceEdit,
+} from './lsp/code-actions-provider.js';
 
 export {
   checkSignatureStateMachine,
@@ -1226,3 +1438,48 @@ export type {
   Sep31AssetInfo,
   Sep31KycMatrixOptions,
 } from './protocols/sep31-kyc-matrix.js';
+
+export {
+  upgradeFederationDeclaration,
+  canonicalFederationServer,
+  legacyLookupFlags,
+  federationUpgradeRules,
+  FEDERATION_UPGRADE_APPLIED_RULE,
+  FEDERATION_UPGRADE_SKIPPED_RULE,
+  FEDERATION_SERVER_INVALID_RULE,
+  FEDERATION_SERVER_UNREACHABLE_RULE,
+} from './codemod/index.js';
+export type {
+  FederationLookupFlags,
+  FederationUpgradeOptions,
+  FederationUpgradeResult,
+} from './codemod/index.js';
+
+export {
+  auditMultiTenantRouting,
+  multiTenantRules,
+  TENANT_CROSS_CONTAMINATION_RULE,
+  INVALID_HOST_ROUTING_RULE,
+} from './network/multi-tenant.js';
+export type { MultiTenantOptions } from './network/multi-tenant.js';
+
+export {
+  verifySep6FeeCurve,
+  sep6FeeVerifierRules,
+  DEFAULT_FEE_SAMPLE_AMOUNTS,
+  NON_MONOTONIC_FEE_CURVE_RULE,
+  FEE_EXCEEDS_DECLARED_BOUNDS_RULE,
+} from './protocols/sep6-fee-verifier.js';
+export type { Sep6FeeVerifierOptions } from './protocols/sep6-fee-verifier.js';
+
+export {
+  simulateSep24Lifecycle,
+  sep24LifecycleRules,
+  isValidTransition,
+  SEP24_LIFECYCLE_STATES,
+  SEP24_TERMINAL_STATES,
+  SEP24_ALLOWED_TRANSITIONS,
+  ILLEGAL_STATE_TRANSITION_RULE,
+  MISSING_LIFECYCLE_TIMESTAMPS_RULE,
+} from './protocols/sep24-lifecycle.js';
+export type { Sep24LifecycleOptions } from './protocols/sep24-lifecycle.js';

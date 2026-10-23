@@ -24,6 +24,16 @@ const NODE_BUILTINS = [
     exports: ['connect'],
   },
   {
+    module: /^node:https$/,
+    message: 'Direct origin HTTPS probes are not supported in browser environments.',
+    exports: ['request'],
+  },
+  {
+    module: /^node:dns\/promises$/,
+    message: 'DNS lookups are not supported in browser environments.',
+    exports: ['resolve4', 'resolveMx', 'resolveTxt'],
+  },
+  {
     module: /^node:net$/,
     message: 'Overlay TCP connections are not supported in browser environments.',
     exports: ['connect', 'createConnection', 'Socket'],

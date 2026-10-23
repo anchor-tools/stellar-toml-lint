@@ -5,6 +5,8 @@ import { assetCodeFormatRules } from './asset-code-format.js';
 import { collateralSigFormatRules } from './collateral-sig-format.js';
 import { duplicateCurrencyRules } from './duplicate-currency.js';
 import { immutabilityAuditorRules } from '../security/immutability-auditor.js';
+import { trustlineSimulatorRules } from '../security/trustline-simulator.js';
+import { zkpAttestationRules } from '../crypto/zkp-attestation.js';
 import { verifyCollateralSignature } from '../crypto/collateral.js';
 import { malleabilityAuditorRules } from '../crypto/malleability-auditor.js';
 import { isPkcs11Uri } from '../crypto/pkcs11-validator.js';
@@ -282,6 +284,8 @@ export const currencyRules: Rule[] = [
   ...malleabilityAuditorRules,
   ...duplicateCurrencyRules,
   ...immutabilityAuditorRules,
+  ...trustlineSimulatorRules,
+  ...zkpAttestationRules,
 
   {
     id: 'currencies/entries-are-tables',

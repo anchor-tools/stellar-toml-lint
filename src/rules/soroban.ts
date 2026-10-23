@@ -4,6 +4,7 @@
 
 export * from '../soroban/wasm-auditor.js';
 export * from '../soroban/env-meta.js';
+export * from '../soroban/parity-verifier.js';
 export * from '../soroban/events.js';
 export * from '../soroban/admin-auditor.js';
 export * from '../soroban/simulation.js';

@@ -25,7 +25,8 @@ export type RuleCategory =
   | 'policy'
   | 'sep12'
   | 'monitor'
-  | 'codemod';
+  | 'codemod'
+  | 'style';
 
 /** A 1-based position in the source file. */
 export interface Position {
@@ -149,6 +150,13 @@ export interface LintOptions {
   strict?: boolean;
   /** Verify network-dependent account and currency metadata checks. */
   checkNetwork?: boolean;
+  /**
+   * Serve network checks from recorded fixtures instead of the network.
+   *
+   * When set, rules must not open sockets of their own: DNS, TLS, and raw
+   * probes are skipped, exactly as the CLI's fixture transport skips HTTP.
+   */
+  mockFixtures?: string;
   /**
    * Fetch and lint the `toml` pointers referenced by `CURRENCIES` entries.
    *

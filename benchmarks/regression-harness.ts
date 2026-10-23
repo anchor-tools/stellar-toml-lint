@@ -154,6 +154,20 @@ export const RULE_ALLOWANCES: Readonly<Record<string, RuleAllowance>> = {
     tolerance: 0.5,
     reason: 'validates the ALIAS format of all 1,000 VALIDATORS entries',
   },
+  // The two style rules each walk every line of the synthetic document (822 KB,
+  // 26k lines) to locate structural lines, and each does so independently
+  // because a rule may not rely on another having run. Sharing one scan through
+  // a per-document cache would remove both entries.
+  'style/mixed-indentation': {
+    budgetMs: 25,
+    tolerance: 0.5,
+    reason: 'walks every line of the 822 KB synthetic document for mixed tab/space indents',
+  },
+  'style/misaligned-table-key': {
+    budgetMs: 25,
+    tolerance: 0.5,
+    reason: 'walks every line of the 822 KB synthetic document comparing sibling indentation',
+  },
 };
 
 /** Fractional rise over baseline that counts as a regression. */

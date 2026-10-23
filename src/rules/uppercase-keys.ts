@@ -9,7 +9,8 @@ import { specUrl } from '../spec.js';
  * decodes to the same 32 bytes — but wallets and exchanges compare the
  * string form when matching keys, and a case mismatch there looks like a
  * different account. The fix is mechanical (uppercase the letters), so the
- * diagnostic hands back the corrected value as its suggestion.
+ * diagnostic hands back the corrected value as its `fix` — `--fix` and the
+ * LSP quick fix apply it without ever guessing.
  */
 
 const RULE_ID = 'general/lowercase-public-key';
@@ -28,6 +29,7 @@ function reportLowercase(ctx: RuleContext, path: string, value: string): void {
     position: ctx.locate(path),
     helpUri: specUrl('general-information'),
     suggestion: `Replace it with: ${value.toUpperCase()}`,
+    fix: { value: value.toUpperCase() },
   });
 }
 

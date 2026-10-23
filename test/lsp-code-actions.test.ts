@@ -106,7 +106,9 @@ describe('codeActionsFor', () => {
       end: { line: 6, character: 0 },
     });
 
-    expect(actions).toEqual([]);
+    // Quick fixes stay range-scoped; the document-wide source.fixAll action
+    // (#332) deliberately ignores the requested range, as editors expect.
+    expect(actions.filter((a) => a.kind === 'quickfix')).toEqual([]);
   });
 });
 

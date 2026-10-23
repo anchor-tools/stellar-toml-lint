@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFile, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, delimiter, dirname, join } from 'node:path';
 import {
   BACKUP_SUFFIX,
   DEFAULT_COMMAND,
@@ -16,6 +17,17 @@ import {
 } from '../../src/cli/git-hooks.js';
 
 const exec = promisify(execFile);
+
+/**
+ * Git for Windows ships the `sh` it uses for hooks, but does not necessarily
+ * put it on PATH. Resolve that copy before falling back to a bare name.
+ */
+const SH =
+  process.platform === 'win32'
+    ? (['bin', 'usr\\bin']
+        .map((dir) => join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', dir, 'sh.exe'))
+        .find((candidate) => existsSync(candidate)) ?? 'sh')
+    : 'sh';
 
 const ZERO = '0000000000000000000000000000000000000000';
 
@@ -55,6 +67,21 @@ async function stubLinter(dir: string, name: string, body: string): Promise<stri
   return path;
 }
 
+/**
+ * Points the hook at the stub by bare name, with its directory on PATH.
+ *
+ * The generated hook deliberately leaves `$LINTER` unquoted so callers can bake
+ * in commands with arguments (the default is `npx --yes ...`). Passing an
+ * absolute path containing spaces therefore splits it; a PATH lookup avoids
+ * that without changing the script's documented contract.
+ */
+function linterEnv(stub: string): Record<string, string> {
+  return {
+    STELLAR_TOML_LINT: basename(stub),
+    PATH: `${dirname(stub)}${delimiter}${process.env.PATH ?? ''}`,
+  };
+}
+
 /** Runs a hook exactly as git would: `/bin/sh <hook>` with the refs on stdin. */
 function runHook(
   hookPath: string,
@@ -62,7 +89,7 @@ function runHook(
   options: { stdin?: string; env?: Record<string, string> } = {},
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const child = spawn('sh', [hookPath], {
+    const child = spawn(SH, [hookPath], {
       cwd,
       env: { ...process.env, ...options.env },
     });
@@ -243,7 +270,7 @@ describe('pre-commit hook execution', () => {
 
     const stub = await stubLinter(repo, 'fail.sh', 'exit 1');
     const { path } = await installHook('pre-commit', { cwd: repo });
-    const run = await runHook(path, repo, { env: { STELLAR_TOML_LINT: stub } });
+    const run = await runHook(path, repo, { env: linterEnv(stub) });
 
     expect(run.code).toBe(1);
     expect(run.stderr).toContain('commit aborted');
@@ -257,7 +284,7 @@ describe('pre-commit hook execution', () => {
 
     const stub = await stubLinter(repo, 'ok.sh', 'exit 0');
     const { path } = await installHook('pre-commit', { cwd: repo });
-    const run = await runHook(path, repo, { env: { STELLAR_TOML_LINT: stub } });
+    const run = await runHook(path, repo, { env: linterEnv(stub) });
 
     expect(run.code).toBe(0);
   });
@@ -270,7 +297,7 @@ describe('pre-commit hook execution', () => {
     const sentinel = join(repo, 'called');
     const stub = await stubLinter(repo, 'record.sh', `echo called > ${sentinel}\nexit 1`);
     const { path } = await installHook('pre-commit', { cwd: repo });
-    const run = await runHook(path, repo, { env: { STELLAR_TOML_LINT: stub } });
+    const run = await runHook(path, repo, { env: linterEnv(stub) });
 
     expect(run.code).toBe(0);
     await expect(stat(sentinel)).rejects.toThrow();
@@ -294,7 +321,7 @@ describe('pre-push hook execution', () => {
 
     const run = await runHook(path, repo, {
       stdin: `refs/heads/main ${sha} refs/heads/main ${ZERO}\n`,
-      env: { STELLAR_TOML_LINT: stub },
+      env: linterEnv(stub),
     });
 
     expect(run.code).toBe(1);
@@ -308,7 +335,7 @@ describe('pre-push hook execution', () => {
 
     const run = await runHook(path, repo, {
       stdin: `refs/heads/main ${sha} refs/heads/main ${ZERO}\n`,
-      env: { STELLAR_TOML_LINT: stub },
+      env: linterEnv(stub),
     });
 
     expect(run.code).toBe(0);
@@ -327,7 +354,7 @@ describe('pre-push hook execution', () => {
 
     const run = await runHook(path, repo, {
       stdin: `refs/heads/main ${sha} refs/heads/main ${ZERO}\n`,
-      env: { STELLAR_TOML_LINT: stub },
+      env: linterEnv(stub),
     });
 
     expect(run.code).toBe(0);
@@ -343,7 +370,7 @@ describe('pre-push hook execution', () => {
 
     const run = await runHook(path, repo, {
       stdin: `(delete) ${ZERO} refs/heads/old ${ZERO}\n`,
-      env: { STELLAR_TOML_LINT: stub },
+      env: linterEnv(stub),
     });
 
     expect(run.code).toBe(0);

@@ -83,6 +83,7 @@ describe('cli', () => {
     expect(stdout).toContain('USAGE');
     expect(stdout).toContain('EXIT CODES');
     expect(stdout).toContain('--check-contracts');
+    expect(stdout).toContain('--check-parity');
     expect(stdout).toContain('--soroban-rpc');
     expect(stdout).toContain('--evm-rpc');
     expect(stdout).toContain('checkstyle');
@@ -134,6 +135,10 @@ describe('cli', () => {
     expect(stdout).toContain('soroban/network-mismatch');
     expect(stdout).toContain('soroban/unresolved-contract-dependency');
     expect(stdout).toContain('soroban/circular-contract-dependency');
+    expect(stdout).toContain('soroban/deprecated-compiler-version');
+    expect(stdout).toContain('soroban/malformed-envmeta-xdr');
+    expect(stdout).toContain('soroban/multi-network-byte-mismatch');
+    expect(stdout).toContain('soroban/spec-interface-drift');
     expect(stdout).toContain('overlay/handshake-timeout');
     expect(stdout).toContain('overlay/network-mismatch');
     expect(stdout).toContain('overlay/public-key-mismatch');
@@ -174,6 +179,12 @@ describe('cli', () => {
     const { code, stderr } = await cli(['--check-contracts', '--rpc-url']);
     expect(code).toBe(2);
     expect(stderr).toContain('expects a value');
+  });
+
+  it('requires --check-network for --check-parity', async () => {
+    const { code, stderr } = await cli(['--check-parity']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--check-parity requires --check-network');
   });
 
   it('rejects --soroban-rpc without a value', async () => {
@@ -524,7 +535,7 @@ describe('cli --count', () => {
     // Must emit only the single problem count line without diagnostic text
     const lines = stdout.trimEnd().split('\n');
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe('45 problems (29 errors, 16 warnings)');
+    expect(lines[0]).toBe('50 problems (31 errors, 19 warnings)');
 
     // Suppresses diagnostic lists, file headers, suggestions, and rule ids
     expect(stdout).not.toContain('broken.toml');
@@ -552,7 +563,7 @@ describe('cli --count', () => {
     expect(code).toBe(1);
     const lines = stdout.trimEnd().split('\n');
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe('45 problems (29 errors, 16 warnings)');
+    expect(lines[0]).toBe('50 problems (31 errors, 19 warnings)');
     expect(stdout).not.toContain('valid.toml');
     expect(stdout).not.toContain('broken.toml');
     expect(stdout).not.toContain('Checked');

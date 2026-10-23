@@ -3,7 +3,8 @@ import { xdr } from '@stellar/stellar-base';
 import { lint } from '../src/lint.js';
 import {
   DEFAULT_PROTOCOL_VERSION,
-  DEPRECATED_PROTOCOL_RULE,
+  DEPRECATED_COMPILER_RULE,
+  MALFORMED_ENVMETA_RULE,
   MISSING_ENV_META_RULE,
   auditTomlContractEnvMeta,
   envMetaRules,
@@ -16,6 +17,7 @@ import {
   instanceEntryXdr,
   rpcFetch,
   specWasm,
+  wasmWithCustomSection,
 } from './soroban-fixtures.js';
 
 const CONTRACT = 'CACTZSQPCQSSZ5YG3PI3N7WO6JEERKEUHTPILKB4MBANF2K4D2UHKDDU';
@@ -45,14 +47,22 @@ describe('soroban env-meta extractor (#80)', () => {
     expect(diagnostics).toEqual([]);
   });
 
-  it('asserts soroban/deprecated-protocol-version on an outdated protocol', () => {
+  it('asserts soroban/deprecated-compiler-version on an outdated protocol', () => {
     const diagnostics = verifyEnvMeta(envMetaBytes(20), CONTRACT, { protocolVersion: 22 });
     expect(diagnostics).toContainEqual(
       expect.objectContaining({
-        rule: DEPRECATED_PROTOCOL_RULE,
-        severity: 'error',
+        rule: DEPRECATED_COMPILER_RULE,
+        severity: 'warning',
         message: expect.stringContaining('protocol 20'),
       }),
+    );
+  });
+
+  it('asserts soroban/malformed-envmeta-xdr when the section is not valid XDR', () => {
+    const wasm = wasmWithCustomSection('contractenvmetav0', Buffer.from([0xff, 0x00]));
+    const diagnostics = verifyEnvMeta(wasm, CONTRACT, { protocolVersion: 22 });
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({ rule: MALFORMED_ENVMETA_RULE, severity: 'error' }),
     );
   });
 
@@ -82,10 +92,11 @@ describe('soroban env-meta extractor (#80)', () => {
     expect(diagnostics).toEqual([]);
   });
 
-  it('registers both rule definitions', () => {
+  it('registers every env-meta rule definition', () => {
     expect(envMetaRules.map((r) => ({ id: r.id, severity: r.severity }))).toEqual([
       { id: MISSING_ENV_META_RULE, severity: 'warning' },
-      { id: DEPRECATED_PROTOCOL_RULE, severity: 'error' },
+      { id: DEPRECATED_COMPILER_RULE, severity: 'warning' },
+      { id: MALFORMED_ENVMETA_RULE, severity: 'error' },
     ]);
   });
 });

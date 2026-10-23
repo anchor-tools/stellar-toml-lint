@@ -83,6 +83,7 @@ describe('broken fixture', () => {
     'general/sep31-requires-kyc',
     'general/auth-requires-signing-key',
     'general/deprecated-field',
+    'general/dead-configuration-key',
     'general/unknown-field',
     'general/invalid-twitter-handle',
     'documentation/urls',

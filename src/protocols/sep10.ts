@@ -19,6 +19,11 @@
 import { Keypair, StrKey, TransactionBuilder } from '@stellar/stellar-base';
 import type { Transaction } from '@stellar/stellar-base';
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
+import {
+  auditJwtCrypto,
+  jwtCryptoAuditorRules,
+  type JwtJwk,
+} from '../security/jwt-crypto-auditor.js';
 
 export const INVALID_SOURCE_RULE = 'sep10/invalid-source-account';
 export const INVALID_SEQUENCE_RULE = 'sep10/invalid-sequence-number';
@@ -44,6 +49,10 @@ export interface Sep10Options {
   clientKeypair?: Keypair;
   /** Override "now" (seconds) for deterministic time checks (tests). */
   nowSeconds?: number;
+  /** JWKS keys used to verify RS256 tokens. */
+  jwtJwks?: readonly JwtJwk[];
+  /** JWKS endpoint used to fetch RSA keys for RS256 tokens. */
+  jwksUri?: string;
 }
 
 function severityForRule(
@@ -323,11 +332,22 @@ export async function verifySep10(
     );
   }
 
+  diagnostics.push(
+    ...(await auditJwtCrypto(token, {
+      rules: options.rules,
+      signingKey: serverSigningKey,
+      ...(options.jwtJwks === undefined ? {} : { jwks: options.jwtJwks }),
+      ...(options.jwksUri === undefined ? {} : { jwksUri: options.jwksUri }),
+      ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+    })),
+  );
+
   return diagnostics;
 }
 
 /** Registered so `--list-rules` and `--off`/`--warn`/`--error` know these ids. */
 export const sep10Rules: Rule[] = [
+  ...jwtCryptoAuditorRules,
   {
     id: INVALID_SOURCE_RULE,
     category: 'network',

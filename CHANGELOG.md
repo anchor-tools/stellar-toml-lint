@@ -9,6 +9,37 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Indentation normalizer and style enforcement (#303): `--format-style 2|4|tabs` rewrites only the
+  leading whitespace of structural lines via `normalizeIndentation` in `src/cst/indentation.ts`,
+  leaving comments, key order, quoting, and multi-line string contents byte-for-byte intact. The
+  detector reports whether a file is 2-space, 4-space, tabbed, or mixed, and two advisory rules
+  surface the problem in a normal lint run: `style/mixed-indentation` (warning) for tabs and spaces
+  used side by side, and `style/misaligned-table-key` (warning) for a nested header or key-value
+  that does not line up with its siblings. Both are silent on a consistently indented file and
+  neither carries a `--fix`, because reindenting is a whole-document rewrite.
+
+- Interactive code actions and an auto-fix refactoring provider over LSP (#332):
+  `src/lsp/code-actions-provider.ts` answers `textDocument/codeAction` with executable
+  `WorkspaceEdit`s in three kinds — `quickfix` for every fix-bearing diagnostic (including the
+  newly auto-fixable `general/lowercase-public-key` and previously untitled
+  `general/insecure-http-url` and `general/untrimmed-string-value`), a `quickfix` that inserts a
+  missing recommended `[DOCUMENTATION]` field such as `ORG_NAME` under the table header, and a
+  `refactor.rewrite` that derives the Stellar Asset Contract ID for the `[[CURRENCIES]]` entry
+  under the cursor from its `code`/`issuer` via `Asset.contractId`. `source.fixAll` merges every
+  value rewrite in the file into one "Fix all auto-fixable problems in file" edit — the same
+  answer `--fix` gives — and the server advertises all three kinds, honouring `context.only`
+  filtering with LSP's `.` subtype semantics.
+
+- `contractenvmetav0` environment-metadata auditing (#285): `src/soroban/envmeta-extractor.ts`
+  decodes the `SCEnvMetaEntry` XDR stream and emits `soroban/deprecated-compiler-version`
+  (warning) for an outdated toolchain or `soroban/malformed-envmeta-xdr` (error) when the
+  section cannot be decoded, alongside the existing `soroban/missing-env-meta` warning.
+
+- Multi-network contract parity (#284): `--check-network --check-parity` compares each declared
+  contract's deployed WASM byte hash and exported function signatures across Mainnet, Testnet, and
+  Futurenet, emitting `soroban/multi-network-byte-mismatch` (warning) and
+  `soroban/spec-interface-drift` (error).
+
 - Playground share links (#372): `encodeShareLink` / `decodeShareLink` in
   `src/browser/share-state.ts` put the edited file, the rule overrides and `--strict` into the URL
   fragment as a DEFLATE-compressed, base64url-encoded payload with a SHA-256 checksum, and the
@@ -315,6 +346,36 @@ main
   unaffected, and both rules can be tuned with `--off`, `--warn`, and `--error` like any other.
 - `lintDomain` accepts an optional `tlsProbe` so embedders and tests can supply the session instead of
   having one opened for them. `probeTls` is exported for callers that need to measure it themselves.
+
+- `--diff` gains `--diff-style side-by-side` (#302): synchronized columns with line numbers, `-`/`+`
+  markers, red/green word-level highlights inside changed lines, and a `... N unchanged lines ...`
+  fold across long runs of context, rendered by `renderSplitDiff(base, target, options)` in
+  `src/reporters/split-diff.ts`. `--diff` also accepts a single value — `stellar-toml-lint --diff
+other.toml` compares `./stellar.toml` (or the first positional path) against `other.toml` — while
+  the two-value form and the exit code, which comes from the semantic comparison either way, are
+  unchanged.
+
+- `--fix` rewrites through a lossless CST rewrite (`src/cst/lossless-rewrite.ts`, #300): comments,
+  blank lines, and formatting survive a fix byte-for-byte except for the text the fix actually
+  touches. A rewrite that would drop a comment is refused — `--fix --dry-run` reports
+  `cst/comment-loss-detected` and exits 2, and a real run skips the write and names the file it
+  spared — so review history is never silently deleted. Exported as `rewrite`, `countComments`,
+  `detectCommentLoss`, `evaluateRewritten`, and the `LosslessRewriter` class.
+
+- The LSP updates diagnostics incrementally (`src/cst/incremental-parser.ts`, #305): each keystroke
+  computes the changed line/offset region, reparses only that slice, and re-runs only the rules whose
+  category covers the touched table, carrying diagnostics below the edit forward with their line
+  numbers shifted. Any edit the path cannot handle safely — a syntax error, comments in the region,
+  a shifted suppressions map — falls back to a full reparse, so the incremental path is an
+  optimisation and never a second source of truth: the diagnostics a keystroke publishes are the
+  diagnostics a full lint would. Exported as `IncrementalParser` and `computeLineDelta`.
+
+- `general/dead-configuration-key` (warning, #307) flags configuration that cannot be doing anything:
+  an `approval_server`/`approval_criteria` pair on a `[[CURRENCIES]]` entry that does not declare
+  `regulated = true`, and `collateral_addresses`/`collateral_address_messages`/
+  `collateral_address_signatures` on an entry that is explicitly `is_asset_anchored = false`. An
+  absent flag never fires — only an explicit `false` does — so files that say nothing are
+  unaffected.
 
 ## [0.1.0]
 

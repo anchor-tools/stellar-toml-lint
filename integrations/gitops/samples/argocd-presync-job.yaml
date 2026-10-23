@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: validate-stellar-toml
+  namespace: anchors
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: validate
+          image: curlimages/curl:8.10.1
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              response="$(curl --silent --show-error --fail --cacert /ca/ca.crt \
+                -H 'content-type: application/json' \
+                --data '{"apiVersion":"admission.k8s.io/v1","kind":"AdmissionReview","request":{"uid":"argocd-presync","object":{"data":{"stellar.toml":"VERSION = \"2.0.0\"\nNETWORK_PASSPHRASE = \"Public Global Stellar Network ; September 2015\"\n"}}}}' \
+                https://stellar-toml-admission.stellar-system.svc/validate)"
+              printf '%s' "$response" | grep -q '"allowed":true' || {
+                printf '%s\n' "$response" >&2
+                exit 1
+              }
+          volumeMounts:
+            - name: ca
+              mountPath: /ca
+              readOnly: true
+      volumes:
+        - name: ca
+          secret:
+            secretName: stellar-toml-admission-ca
