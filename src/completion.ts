@@ -76,6 +76,7 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--no-suggestions', description: 'Hide diagnostic suggestions' },
   { long: '--check-network', description: 'Verify accounts and endpoints online' },
   { long: '--verify-sep10', description: 'Verify SEP-10 nonce replay resistance' },
+  { long: '--audit-quotes', description: 'Verify SEP-38 quote execution through SEP-6' },
   { long: '--crawl-peers', description: 'Discover and audit overlay peers' },
   { long: '--verify-dnssec', description: 'Compare DNSSEC-validating DNS resolvers' },
   { long: '--check-contracts', description: 'Verify Soroban contract TTL liveliness' },

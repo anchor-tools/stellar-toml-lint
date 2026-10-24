@@ -119,6 +119,7 @@ it was before.
 | `--max-warnings <n>`        | Fail if warnings exceed `n`                                                                                             |
 | `--check-network`           | Verify accounts, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online |
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                       |
+| `--audit-quotes`            | Book an ANCHOR_QUOTE_SERVER SEP-38 quote and execute it on TRANSFER_SERVER (requires `--check-network`)                  |
 | `--crawl-peers`             | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                 |
 | `--verify-dnssec`           | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                  |
 | `--follow-links`            | Fetch and lint the `toml` pointers in `CURRENCIES` (implied by `--domain`)                                              |
@@ -790,6 +791,29 @@ entry that appears in neither map — keyed by bare asset code or `CODE:issuer` 
 `network/sep6-missing-asset` (warning), because the file would otherwise advertise a deposit the
 anchor cannot service. An unreachable endpoint, a non-200, or a body that is not JSON degrades to
 `network/sep6-info-error` or `network/sep6-info-malformed` (warnings) rather than failing the run.
+
+**SEP-10 client domain attribution** (with `--check-network --verify-sep10`) — SEP-10 v3 lets a wallet
+prove its home domain: the challenge request carries `client_domain`, the anchor resolves
+`https://<client_domain>/.well-known/stellar.toml`, and the challenge must carry a `manageData`
+operation named `client_domain` sourced by the signing key that document publishes. The audit walks the
+whole attributed handshake with a mock wallet account and client domain keypair, co-signs the challenge
+with both, and decodes the JWT the anchor returns. A challenge that omits the operation, or a token that
+omits or misstates the `client_domain` claim, is an anchor that ignored the attribution the wallet
+proved and emits `sep10/missing-client-domain-claim` (error). An envelope that does not decode under the
+advertised network passphrase, or whose `client_domain` value is not `auth` or is sourced by a foreign
+key, emits `sep10/invalid-client-domain-operation` (error). A file without `WEB_AUTH_ENDPOINT` or
+`SIGNING_KEY`, and an endpoint that cannot be reached, stay silent — reachability is already reported by
+the other network rules.
+
+**Cross-SEP quote binding** (with `--check-network --audit-quotes`) — an anchor that declares both
+`ANCHOR_QUOTE_SERVER` and `TRANSFER_SERVER` is expected to bind them. The audit POSTs `/quote` for the
+first classic currency the file declares, passes the returned `quote_id` to `GET /deposit`, and asserts
+the firm quote survives the trip. A `total_fee` that differs from the sum of the declared SEP-38 `fees`,
+a price that is not the quoted one, or an execution window that closes before the quoted `expire_after`
+emits `quotes/mismatched-quote-fee` (error), because the wallet committed to terms the anchor no longer
+honours. A `/deposit` that refuses the `quote_id` advertises programmatic conversion it cannot execute
+and emits `quotes/quote-binding-unsupported` (warning). Either endpoint missing, unusable, or
+unreachable keeps this audit silent.
 
 For every `[[CURRENCIES]]` entry marked `regulated=true` with a classic `issuer`, the issuer's
 account flags are read from Horizon: a missing `AUTH_REQUIRED_FLAG` emits

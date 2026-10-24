@@ -86,6 +86,23 @@ describe('cli', () => {
     expect(stdout).toMatch(/^\d+ rules/);
   });
 
+  it('lists the client domain attribution and quote binding rules', async () => {
+    const { code, stdout } = await cli(['--list-rules']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('sep10/missing-client-domain-claim');
+    expect(stdout).toContain('sep10/invalid-client-domain-operation');
+    expect(stdout).toContain('quotes/mismatched-quote-fee');
+    expect(stdout).toContain('quotes/quote-binding-unsupported');
+  });
+
+  it('documents --audit-quotes and accepts it without a network run', async () => {
+    const { stdout } = await cli(['--help']);
+    expect(stdout).toContain('--audit-quotes');
+
+    const { code } = await cli([fixture('valid.toml'), '--audit-quotes']);
+    expect(code).toBe(0);
+  });
+
   it('accepts severity overrides on the network-bound rules', async () => {
     const accepted = await cli([
       fixture('valid.toml'),

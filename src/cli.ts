@@ -34,6 +34,8 @@ import { checkRegulatedIssuerFlags } from './rules/currencies.js';
 import { checkContracts } from './rules/soroban.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
+import { checkSep10ClientDomain } from './protocols/sep10-client-domain.js';
+import { auditQuoteBinding } from './protocols/quote-binding-auditor.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
@@ -80,6 +82,7 @@ interface Cli {
   checkNetwork: boolean;
   followLinks: boolean;
   verifySep10: boolean;
+  auditQuotes: boolean;
   crawlPeers: boolean;
   verifyDnssec: boolean;
   badgeSvg?: string;
@@ -136,6 +139,8 @@ OPTIONS
                           regulated issuer flags, and ANCHOR_QUOTE_SERVER
                           against the network
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
+      --audit-quotes      Book an ANCHOR_QUOTE_SERVER SEP-38 quote and execute it on
+                          TRANSFER_SERVER to verify atomic price and fee execution
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
@@ -334,8 +339,18 @@ async function main(argv: string[]): Promise<number> {
                     rules,
                     fetchImpl,
                   })),
+                  ...(await checkSep10ClientDomain(signingKey, webAuthEndpoint, {
+                    rules,
+                    fetchImpl,
+                  })),
                 );
               }
+            }
+
+            if (cli.auditQuotes && cli.checkNetwork) {
+              networkDiagnostics.push(
+                ...(await auditQuoteBinding(fileResult.parsed, fetchImpl, { rules })),
+              );
             }
             if (cli.checkNetwork) {
               networkDiagnostics.push(
@@ -657,6 +672,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     checkNetwork: false,
     followLinks: false,
     verifySep10: false,
+    auditQuotes: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -745,6 +761,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-sep10':
         cli.verifySep10 = true;
+        break;
+
+      case '--audit-quotes':
+        cli.auditQuotes = true;
         break;
 
       case '--crawl-peers':

@@ -20,6 +20,8 @@ import { overlayCrawlerRules } from '../overlay/crawler-rules.js';
 import { cryptoAuditorRules } from '../overlay/crypto-auditor.js';
 import { historyPublishRules } from '../history/publish-validator.js';
 import { dnsIntegrityRules } from '../security/dns-integrity.js';
+import { sep10ClientDomainRules } from '../protocols/sep10-client-domain.js';
+import { quoteBindingRules } from '../protocols/quote-binding-auditor.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -46,6 +48,8 @@ export const allRules: Rule[] = [
   ...cryptoAuditorRules,
   ...historyPublishRules,
   ...dnsIntegrityRules,
+  ...sep10ClientDomainRules,
+  ...quoteBindingRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -71,4 +75,6 @@ export {
   cryptoAuditorRules,
   historyPublishRules,
   dnsIntegrityRules,
+  sep10ClientDomainRules,
+  quoteBindingRules,
 };
