@@ -25,6 +25,14 @@ export default tseslint.config(
     },
   },
   {
+    // CST utility files use any types for CST manipulation
+    files: ['src/cst/table-sorter.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+    },
+  },
+  {
     // LSP module has parameters that are intentionally unused in function signatures.
     files: ['src/lsp.ts'],
     rules: {
