@@ -61,7 +61,23 @@ npx stellar-toml-lint                      # or just run it
 brew install anchor-tools/tap/stellar-toml-lint
 ```
 
-Requires Node.js 20 or newer. Two runtime dependencies: `smol-toml` and `@stellar/stellar-base`.
+Homebrew installs a self-contained binary; Node.js is not required at runtime.
+
+### Standalone binaries
+
+Download the asset for your platform from the [GitHub Releases](https://github.com/anchor-tools/stellar-toml-lint/releases) page, verify it against `SHA256SUMS.txt`, and place it on your `PATH`:
+
+```bash
+curl -fLO https://github.com/anchor-tools/stellar-toml-lint/releases/latest/download/stellar-toml-lint-linux-x64
+curl -fLO https://github.com/anchor-tools/stellar-toml-lint/releases/latest/download/SHA256SUMS.txt
+sha256sum --check --ignore-missing SHA256SUMS.txt
+chmod +x stellar-toml-lint-linux-x64
+sudo install -m 0755 stellar-toml-lint-linux-x64 /usr/local/bin/stellar-toml-lint
+```
+
+Assets are published for Linux x64 (glibc and musl), Linux ARM64, macOS Intel, macOS Apple Silicon, and Windows x64. These binaries have no Node.js runtime dependency. The npm package remains available for Node.js 20+ users. Runtime dependencies for the npm package are `smol-toml`, `@stellar/stellar-base`, and the pure-JS `@noble/curves` and `@noble/hashes` that `@stellar/stellar-base` already installs.
+
+Releases are generated from Conventional Commits on `main`: `fix:` creates a patch release, `feat:` creates a minor release, and `BREAKING CHANGE:` creates a major release. The release workflow updates the npm and VS Code versions, changelog, GitHub release, and npm provenance.
 Commit a `.stellartomlrc.json` next to your `stellar.toml` to record the project's rule policy once
 instead of repeating `--off`/`--warn` flags in every workflow (see [Usage](#usage)).
 

@@ -11,6 +11,26 @@
 export const SPEC_URL =
   'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md';
 
+export const CWE_BY_RULE: Readonly<Record<string, readonly string[]>> = {
+  'security/tls-cert-expired': ['CWE-295'],
+  'security/tls-cert-expiring-soon': ['CWE-295'],
+  'security/weak-cipher-suite': ['CWE-326'],
+  'security/deprecated-tls-version': ['CWE-326'],
+};
+
+export const CWE_TAXA = [
+  {
+    id: 'CWE-295',
+    name: 'Improper Certificate Validation',
+    helpUri: 'https://cwe.mitre.org/data/definitions/295.html',
+  },
+  {
+    id: 'CWE-326',
+    name: 'Inadequate Encryption Strength',
+    helpUri: 'https://cwe.mitre.org/data/definitions/326.html',
+  },
+] as const;
+
 /** Anchor a diagnostic to a named section of the spec. */
 export function specUrl(anchor?: string): string {
   return anchor ? `${SPEC_URL}#${anchor}` : SPEC_URL;

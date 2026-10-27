@@ -246,7 +246,7 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
 
-    const results: { name: string; result: LintResult }[] = [];
+    const results: { name: string; result: LintResult; source?: string }[] = [];
     // Project defaults from .stellartomlrc.json, overridden by any CLI flag.
     let strict = cli.strict;
     let maxWarnings = cli.maxWarnings;
@@ -419,6 +419,7 @@ async function main(argv: string[]): Promise<number> {
           results.push({
             name: path === '-' ? 'stdin' : path,
             result: fileResult,
+            source,
           });
         }
       }
@@ -523,12 +524,11 @@ async function main(argv: string[]): Promise<number> {
         { color, ...(cli.quiet ? { filter: 'error' as const } : {}) },
       );
     } else if (!cli.exportApConfig) {
-      for (const { name, result } of results) {
+      for (const { name, result, source } of results) {
         const filtered = cli.quiet
           ? { ...result, diagnostics: result.diagnostics.filter((d) => d.severity === 'error') }
           : result;
-
-        process.stdout.write(render(filtered, name, cli, color));
+        process.stdout.write(render(filtered, name, cli, color, source));
       }
 
       // One line closing a multi-file run, so a CI log answers "did the whole
@@ -612,14 +612,20 @@ async function expandInputs(inputs: string[]): Promise<string[]> {
   return [...new Set(paths)];
 }
 
-function render(result: LintResult, name: string, cli: Cli, color: boolean): string {
+function render(
+  result: LintResult,
+  name: string,
+  cli: Cli,
+  color: boolean,
+  source?: string,
+): string {
   switch (cli.format) {
     case 'json':
       return formatJson(result, name);
     case 'ndjson':
       return formatNdjson(result, name);
     case 'sarif':
-      return formatSarif(result, name, VERSION);
+      return formatSarif(result, name, VERSION, source);
     case 'github':
       return formatGithub(result, name);
     case 'junit':

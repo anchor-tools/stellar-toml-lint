@@ -1,4 +1,5 @@
 import type { Diagnostic, LintResult, Severity } from './types.js';
+import { CWE_BY_RULE, CWE_TAXA } from './spec.js';
 
 export { formatHtml } from './reporters/html.js';
 
@@ -211,6 +212,7 @@ export function formatSarif(
   result: LintResult,
   filename = 'stellar.toml',
   version = '0.1.0',
+  source?: string,
 ): string {
   const rules = new Map<string, Diagnostic>();
   for (const d of result.diagnostics) {
@@ -232,11 +234,40 @@ export function formatSarif(
               id,
               name: id,
               shortDescription: { text: `SEP-1: ${id}` },
+              fullDescription: { text: d.message },
+              help: {
+                text: [d.message, d.suggestion].filter(hasText).join('\n\n'),
+                markdown: [
+                  `### ${id}`,
+                  d.message,
+                  ...(d.suggestion ? [`**Remediation:** ${d.suggestion}`] : []),
+                  ...(d.helpUri ? [`[SEP-1 documentation](${d.helpUri})`] : []),
+                ].join('\n\n'),
+              },
               ...(d.helpUri ? { helpUri: d.helpUri } : {}),
-              properties: { category: d.category },
+              properties: {
+                category: d.category,
+                ...(CWE_BY_RULE[id]
+                  ? { tags: CWE_BY_RULE[id].map((cwe) => `external/cwe/${cwe.toLowerCase()}`) }
+                  : {}),
+              },
             })),
           },
         },
+        taxonomies: [
+          {
+            name: 'Common Weakness Enumeration',
+            organization: 'MITRE',
+            shortDescription: { text: 'Common Weakness Enumeration' },
+            informationUri: 'https://cwe.mitre.org/',
+            taxa: CWE_TAXA.map((cwe) => ({
+              id: cwe.id,
+              name: cwe.name,
+              shortDescription: { text: cwe.name },
+              helpUri: cwe.helpUri,
+            })),
+          },
+        ],
         results: result.diagnostics.map((d) => ({
           ruleId: d.rule,
           ruleIndex: ruleIndex.get(d.rule) ?? 0,
@@ -250,6 +281,13 @@ export function formatSarif(
                   // SARIF requires 1-based positive integers.
                   startLine: Math.max(d.position?.line ?? 1, 1),
                   startColumn: Math.max(d.position?.column ?? 1, 1),
+                  ...(source === undefined
+                    ? {}
+                    : {
+                        snippet: {
+                          text: source.split(/\r?\n/)[(d.position?.line ?? 1) - 1] ?? '',
+                        },
+                      }),
                 },
               },
             },
