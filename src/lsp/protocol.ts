@@ -15,32 +15,28 @@ export interface RpcMessage {
   error?: { code: number; message: string; data?: unknown };
 }
 
-export interface SemanticTokensLegend {
-  tokenTypes: string[];
-  tokenModifiers: string[];
-}
-
 export interface LspInitializeResult {
   capabilities: {
     textDocumentSync?: { openClose: boolean; change: number };
     codeActionProvider?: boolean | { codeActionKinds?: string[] };
-    completionProvider?: { resolveProvider: boolean; triggerCharacters?: string[] };
     hoverProvider?: boolean;
-    semanticTokensProvider?: {
-      legend: SemanticTokensLegend;
-      full?: boolean | { delta?: boolean };
-      range?: boolean;
-    };
+    documentSymbolProvider?: boolean;
   };
   serverInfo?: { name: string; version: string };
 }
 
-export interface SemanticTokensParams {
-  textDocument: { uri: string };
+/**
+ * Server settings an editor may pass in `initialize`. Contract lookups open
+ * network connections, so they stay off unless `checkContracts` is `true`,
+ * mirroring the CLI's `--check-contracts` / `--soroban-rpc`.
+ */
+export interface InitializationOptions {
+  checkContracts?: boolean;
+  sorobanRpc?: string;
 }
 
-export interface SemanticTokens {
-  data: number[];
+export interface InitializeParams {
+  initializationOptions?: InitializationOptions | null;
 }
 
 export interface TextDocumentItem {
@@ -73,7 +69,7 @@ export interface CodeActionParams {
     start: { line: number; character: number };
     end: { line: number; character: number };
   };
-  context?: { diagnostics?: unknown[]; only?: string[] };
+  context: { diagnostics: unknown[] };
 }
 
 export interface HoverParams {
@@ -81,9 +77,8 @@ export interface HoverParams {
   position: { line: number; character: number };
 }
 
-export interface CompletionParams {
+export interface DocumentSymbolParams {
   textDocument: { uri: string };
-  position: { line: number; character: number };
 }
 
 /** JSON-RPC error codes used by this server. */

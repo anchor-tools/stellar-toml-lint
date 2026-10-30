@@ -26,9 +26,8 @@ describe('Homebrew formula', () => {
     expect(content).toMatch(/stellar-toml-lint.*--version/);
   });
 
-  it('installs a standalone release binary without a node dependency', () => {
+  it('declares the node dependency', () => {
     const content = readFileSync(formulaPath, 'utf8');
-    expect(content).toContain('bin.install Dir["stellar-toml-lint-*"]');
-    expect(content).not.toContain('depends_on "node"');
+    expect(content).toContain('depends_on "node"');
   });
 });

@@ -1,8 +1,6 @@
 import type { Rule } from '../types.js';
 import { TLS_SECURITY_DOC_URL } from '../spec.js';
 import { isDeprecatedTlsVersion, weakCipherSuiteIn } from '../tls.js';
-import { thresholdOptimizerRules } from '../security/threshold-optimizer.js';
-import { rotationDetectorRules } from '../security/rotation-detector.js';
 
 /**
  * Network-transport rules.
@@ -13,8 +11,6 @@ import { rotationDetectorRules } from '../security/rotation-detector.js';
  * configuration cannot be judged from a file on disk.
  */
 export const securityRules: Rule[] = [
-  ...thresholdOptimizerRules,
-  ...rotationDetectorRules,
   {
     id: 'security/deprecated-tls-version',
     category: 'network',
@@ -57,26 +53,7 @@ export const securityRules: Rule[] = [
       });
     },
   },
-
-  {
-    id: 'security/jwt-rejected-by-transfer-server',
-    category: 'network',
-    severity: 'error',
-    description: 'Downstream anchor service must accept JWT issued by WEB_AUTH_ENDPOINT',
-    run() {},
-  },
-
-  {
-    id: 'security/jwt-domain-mismatch',
-    category: 'network',
-    severity: 'error',
-    description: 'JWT iss claim must match the anchor home domain',
-    run() {},
-  },
 ];
 
 /** Rule ids that require a live TLS session. Used to skip the probe when off. */
-export const securityRuleIds: readonly string[] = [
-  'security/deprecated-tls-version',
-  'security/weak-cipher-suite',
-];
+export const securityRuleIds: readonly string[] = securityRules.map((rule) => rule.id);

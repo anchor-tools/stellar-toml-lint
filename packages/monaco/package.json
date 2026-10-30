@@ -1,0 +1,55 @@
+{
+  "name": "stellar-toml-lint-monaco",
+  "version": "0.1.0",
+  "description": "Drop-in Monaco Editor integration with live SEP-1 validation and SEP-1 hover documentation",
+  "keywords": [
+    "stellar",
+    "stellar.toml",
+    "sep-1",
+    "monaco",
+    "monaco-editor",
+    "linter"
+  ],
+  "license": "Apache-2.0",
+  "author": "anchor-tools <anchortools23@gmail.com> (https://github.com/anchor-tools)",
+  "type": "module",
+  "main": "./dist/monaco/index.js",
+  "module": "./dist/monaco/index.js",
+  "types": "./dist/monaco/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/monaco/index.d.ts",
+      "import": "./dist/monaco/index.js",
+      "default": "./dist/monaco/index.js"
+    },
+    "./worker": {
+      "types": "./dist/monaco/worker.d.ts",
+      "import": "./dist/monaco/worker.js",
+      "default": "./dist/monaco/worker.js"
+    }
+  },
+  "files": [
+    "dist/monaco",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/build-monaco.mjs"
+  },
+  "peerDependencies": {
+    "monaco-editor": ">=0.40.0"
+  },
+  "peerDependenciesMeta": {
+    "monaco-editor": {
+      "optional": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anchor-tools/stellar-toml-lint.git",
+    "directory": "packages/monaco"
+  },
+  "homepage": "https://github.com/anchor-tools/stellar-toml-lint#readme",
+  "bugs": {
+    "url": "https://github.com/anchor-tools/stellar-toml-lint/issues"
+  }
+}

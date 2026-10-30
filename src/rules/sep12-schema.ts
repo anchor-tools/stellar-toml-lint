@@ -1,6 +1,5 @@
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 import { isString, isUrl } from '../predicates.js';
-import { adaptiveFetch } from '../network/adaptive-client.js';
 
 /**
  * Opt-in validation of the SEP-12 customer type schemas an anchor declares.
@@ -270,7 +269,7 @@ function checkTypeDeclarations(
  */
 export async function checkSep12Schema(
   doc: Record<string, unknown>,
-  fetchImpl: typeof fetch = adaptiveFetch,
+  fetchImpl: typeof fetch = fetch,
   options: AuditOptions = {},
 ): Promise<Diagnostic[]> {
   const kycServer = doc.KYC_SERVER;

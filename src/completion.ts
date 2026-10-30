@@ -22,9 +22,6 @@ export type CompletionShell = 'bash' | 'zsh' | 'fish';
 /** Every shell the CLI can generate completions for, in help order. */
 export const COMPLETION_SHELLS: readonly CompletionShell[] = ['bash', 'zsh', 'fish'];
 
-/** `--install-hook` / `--uninstall-hook` choices. */
-const HOOK_NAMES = ['pre-commit', 'pre-push'] as const;
-
 /** True when `value` names a shell `--completion` supports. */
 export function isCompletionShell(value: string): value is CompletionShell {
   return (COMPLETION_SHELLS as readonly string[]).includes(value);
@@ -33,7 +30,6 @@ export function isCompletionShell(value: string): value is CompletionShell {
 /** `--format` choices, kept in step with the `Format` union in `cli.ts`. */
 const FORMATS = [
   'text',
-  'summary',
   'json',
   'ndjson',
   'sarif',
@@ -42,14 +38,10 @@ const FORMATS = [
   'html',
   'checkstyle',
   'markdown',
-  'pr-comment',
 ] as const;
 
 /** `--graph` choices. */
 const GRAPH_FORMATS = ['mermaid', 'dot'] as const;
-
-/** `--contract-graph` choices. */
-const CONTRACT_GRAPH_FORMATS = ['json', 'mermaid'] as const;
 
 interface FlagSpec {
   /** Long form, e.g. `--format`. */
@@ -73,11 +65,6 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--format', short: '-f', description: 'Output format', values: FORMATS },
   { long: '--strict', description: 'Treat warnings as errors' },
   { long: '--max-warnings', description: 'Fail if warnings exceed n', takesValue: true },
-  {
-    long: '--fail-on',
-    description: 'Exit 1 at this severity or above',
-    values: ['error', 'warning', 'info'],
-  },
   { long: '--off', description: 'Disable a rule' },
   { long: '--error', description: 'Raise a rule to error' },
   { long: '--warn', description: 'Lower a rule to warning' },
@@ -85,81 +72,16 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--interactive', short: '-i', description: 'Full-screen dashboard of the findings' },
   { long: '--lsp', description: 'Run as a Language Server on stdio' },
   { long: '--quiet', short: '-q', description: 'Report errors only' },
-  { long: '--count', description: 'Print only problem count totals' },
-  {
-    long: '--format-style',
-    description: "Rewrite a file's indentation as 2 spaces, 4 spaces, or tabs",
-    values: ['2', '4', 'tabs'],
-  },
-  {
-    long: '--semantic-hash',
-    description: 'Print a SHA-256 of the data, ignoring formatting and comments',
-  },
-  { long: '--silent-success', description: 'Print nothing when a run has no diagnostics' },
-  { long: '--quiet-success', description: 'Alias for --silent-success' },
   { long: '--show-help-urls', description: 'Print the spec link for each finding' },
   { long: '--no-suggestions', description: 'Hide diagnostic suggestions' },
   { long: '--check-network', description: 'Verify accounts and endpoints online' },
-  { long: '--audit-routing', description: 'Compare host routes with public RPKI data' },
-  { long: '--expected-asn', description: 'Expected BGP origin ASN (repeatable)' },
-  { long: '--audit-quorum', description: 'Solve declared quorum sets for split-brain risk' },
-  { long: '--audit-multisig', description: 'Optimize signer threshold coalitions' },
-  { long: '--audit-dos', description: 'Test overlay connection throttling and resilience' },
-  { long: '--crawl-topology', description: 'Analyze overlay peer hop distances' },
-  { long: '--audit-diversity', description: 'Flag ASN/geographic validator concentration' },
   { long: '--verify-sep10', description: 'Verify SEP-10 nonce replay resistance' },
-  { long: '--audit-security', description: 'Audit token binding, TLS, and CAA security' },
-  { long: '--audit-reserves', description: 'Compare collateral reserves with Stellar supply' },
-  { long: '--verify-sep6', description: 'Run SEP-6 programmatic integration tester' },
-  { long: '--verify-sep30', description: 'Coordinate multi-party recovery signing' },
-  { long: '--verify-sep31', description: 'Audit SEP-31 cross-border payment lifecycle' },
-  { long: '--verify-sep38', description: 'Audit SEP-38 quotes, spreads, and expirations' },
+  { long: '--audit-quotes', description: 'Verify SEP-38 quote execution through SEP-6' },
   { long: '--crawl-peers', description: 'Discover and audit overlay peers' },
-  { long: '--verify-buckets', description: 'Hash- and XDR-verify published archive buckets' },
-  {
-    long: '--verify-history-gaps',
-    description: 'Check every recent archive checkpoint is downloadable',
-  },
-  {
-    long: '--crawl-history',
-    description: 'Crawl previous HAS checkpoints and verify the ledger hash chain',
-  },
-  { long: '--verify-overlay', description: 'Handshake with each validator over the overlay' },
   { long: '--verify-dnssec', description: 'Compare DNSSEC-validating DNS resolvers' },
-  { long: '--check-contracts', description: 'Verify Soroban contracts on chain' },
-  { long: '--check-parity', description: 'Compare contracts across networks' },
-  { long: '--rpc-url', description: 'Soroban RPC endpoint', takesValue: true },
-  { long: '--soroban-rpc', description: 'Soroban RPC endpoint (alias)', takesValue: true },
-  { long: '--simulate-soroban', description: 'Dry-run SEP-41 calls against Soroban RPC' },
-  {
-    long: '--soroban-rent-audit',
-    description: 'Audit Soroban contract storage footprint and rent',
-  },
+  { long: '--check-contracts', description: 'Verify Soroban contract TTL liveliness' },
+  { long: '--soroban-rpc', description: 'Soroban RPC endpoint', takesValue: true },
   { long: '--mock-fixtures', description: 'Serve network checks from fixtures', takesValue: true },
-  { long: '--serve-mock', description: 'Run a local mock anchor server' },
-  { long: '--monitor', description: 'Poll a URL or file for changes' },
-  { long: '--interval', description: 'Polling interval in milliseconds', takesValue: true },
-  { long: '--serve-metrics', description: 'Serve Prometheus metrics on /metrics' },
-  {
-    long: '--sla-store',
-    description: 'Record probe history into a JSON SLA database',
-    takesValue: true,
-  },
-  {
-    long: '--otel-endpoint',
-    description: 'Export OTLP traces and metrics to an OpenTelemetry collector',
-    takesValue: true,
-  },
-  {
-    long: '--otel-service-name',
-    description: 'service.name reported to the OpenTelemetry collector',
-    takesValue: true,
-  },
-  {
-    long: '--generate-jsonld',
-    description: 'Generate Schema.org JSON-LD for search indexing',
-    takesValue: true,
-  },
   { long: '--webhook-slack', description: 'Slack webhook URL', takesValue: true },
   { long: '--webhook-discord', description: 'Discord webhook URL', takesValue: true },
   { long: '--badge-svg', description: 'Write an SVG compliance badge', takesValue: true },
@@ -168,23 +90,8 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--generate-openapi', description: 'Write an OpenAPI 3.1 spec', takesValue: true },
   { long: '--graph', description: 'Generate an architecture diagram', values: GRAPH_FORMATS },
   { long: '--graph-contracts', description: 'Include Soroban contracts in the diagram' },
-  {
-    long: '--contract-graph',
-    description: 'Print which declared contract calls which',
-    values: CONTRACT_GRAPH_FORMATS,
-  },
   { long: '--graph-validators', description: 'Include validators in the diagram' },
   { long: '--graph-color', description: 'Color diagram nodes by protocol type' },
-  {
-    long: '--graph-quorum',
-    description: 'Render declared quorum slices as ascii, mermaid, or svg',
-    values: ['ascii', 'mermaid', 'svg'],
-  },
-  {
-    long: '--graph-quorum-format',
-    description: 'Select the quorum graph renderer',
-    values: ['ascii', 'mermaid', 'svg'],
-  },
   { long: '--policy', description: 'Evaluate an enterprise policy file', takesValue: true },
   { long: '--json-schema', description: 'Print a JSON Schema for stellar.toml' },
   { long: '--color', description: 'Force colour on' },
@@ -195,26 +102,8 @@ const FLAGS: readonly FlagSpec[] = [
     description: 'Print a shell completion script',
     values: COMPLETION_SHELLS,
   },
-  {
-    long: '--install-hook',
-    description: 'Install a native Git hook that lints stellar.toml',
-    values: HOOK_NAMES,
-  },
-  {
-    long: '--uninstall-hook',
-    description: 'Remove a stellar-toml-lint Git hook',
-    values: HOOK_NAMES,
-  },
   { long: '--version', short: '-v', description: 'Print the version' },
   { long: '--help', short: '-h', description: 'Print usage' },
-  { long: '--fix', description: 'Apply safe autofixes to files' },
-  { long: '--dry-run', description: 'Preview autofix or migration diff without modifying files' },
-  { long: '--diff', description: 'Compare two versions for breaking changes', takesValue: true },
-  {
-    long: '--diff-style',
-    description: 'Render --diff as unified or side-by-side',
-    values: ['unified', 'side-by-side'],
-  },
 ];
 
 /** Rule-override flags, which complete to the registered rule ids. */

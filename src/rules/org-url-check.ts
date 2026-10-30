@@ -1,7 +1,6 @@
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 import { isString, isUrl } from '../predicates.js';
 import { specUrl } from '../spec.js';
-import { adaptiveFetch } from '../network/adaptive-client.js';
 
 /**
  * Opt-in-with-domain probe of the `ORG_URL` a SEP-1 file advertises.
@@ -79,7 +78,7 @@ async function probeEndpoint(url: string, fetchImpl: typeof fetch): Promise<stri
  */
 export async function checkOrgUrl(
   doc: Record<string, unknown>,
-  fetchImpl: typeof fetch = adaptiveFetch,
+  fetchImpl: typeof fetch = fetch,
   options: AuditOptions = {},
 ): Promise<Diagnostic[]> {
   const severity = severityFor(UNREACHABLE_RULE, 'error', options.rules);

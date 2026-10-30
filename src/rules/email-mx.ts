@@ -6,10 +6,8 @@ export const emailMxRule: Rule = {
   severity: 'warning',
   description: 'ORG_OFFICIAL_EMAIL domain must have MX records for email deliverability',
   run: async (ctx) => {
-    // Guard: only run under --check-network, and never with fixture mode on:
-    // DNS has no fixture transport, so opening a resolver would leak a real
-    // request out of an otherwise hermetic run.
-    if (!ctx.options.checkNetwork || ctx.options.mockFixtures !== undefined) return;
+    // Guard: only run under --check-network
+    if (!ctx.options.checkNetwork) return;
 
     const documentation = ctx.doc.DOCUMENTATION;
     if (!documentation) return;

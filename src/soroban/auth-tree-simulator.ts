@@ -33,16 +33,34 @@ import {
   nativeToScVal,
   xdr,
 } from '@stellar/stellar-base';
-import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
+import type { Diagnostic, Rule, RuleOverrides, Severity } from '../types.js';
 import { isString } from '../predicates.js';
 import { rpcUrlFor } from '../rules/display-decimals-audit.js';
 import { contractCurrenciesOf } from '../rules/currencies.js';
-import { SEP42_SPEC_URL } from './auth-auditor.js';
-import { RPC_TIMEOUT_MS, severityFor } from './rpc.js';
-import { DEFAULT_SOURCE_ACCOUNT } from './simulation.js';
 
 export const UNAUTHORIZED_CROSS_CONTRACT_RULE = 'soroban/unauthorized-cross-contract-call';
 export const UNBOUNDED_AUTH_GRANT_RULE = 'soroban/unbounded-auth-grant';
+
+export const SEP42_SPEC_URL =
+  'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0042.md';
+
+/** Default RPC request timeout in milliseconds. */
+export const RPC_TIMEOUT_MS = 10_000;
+
+/** A valid account used as the transaction source when the caller has none. */
+export const DEFAULT_SOURCE_ACCOUNT = 'GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57';
+
+function severityFor(
+  rule: string,
+  fallback: 'error' | 'warning',
+  rules?: RuleOverrides,
+): Severity | undefined {
+  const override = rules?.[rule];
+  if (override === 'off') return undefined;
+  return override === 'error' || override === 'warning' || override === 'info'
+    ? override
+    : fallback;
+}
 
 /** The token operations the simulator dry-runs. */
 export const AUTH_TREE_OPERATIONS = ['mint', 'clawback'] as const;

@@ -1,12 +1,5 @@
 node_modules/
 dist/
-docs/stellar-toml-lint.browser.js
-editors/vscode/out/
-*.vsix
-
-# Desktop app: compiled main process, bundled preload, and packaged installers.
-apps/desktop/out/
-apps/desktop/node_modules/
 coverage/
 *.tsbuildinfo
 
@@ -21,7 +14,3 @@ npm-debug.log*
 .env
 .env.*
 !.env.example
-
-# Corpus harness: local fetch cache and the snapshot diff it writes for CI.
-test/corpus/.cache/
-test/corpus/.diff/

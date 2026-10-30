@@ -1,7 +1,0 @@
-# Built extensions (regenerate with `npm run build:extension`).
-dist-chrome/
-dist-firefox/
-
-# Playwright artifacts.
-playwright-report/
-test-results/

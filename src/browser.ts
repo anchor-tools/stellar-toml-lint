@@ -22,37 +22,6 @@
 import { lint, lintDomain } from './lint.js';
 import { UNKNOWN_TLS_SESSION } from './tls.js';
 import type { LintOptions, LintResult } from './types.js';
-import './browser/pdf-exporter.js';
-export {
-  WorkerPool,
-  lintBrowserPool,
-  type PoolOptions,
-  type PoolTask,
-  type PoolEntry,
-  type Progress,
-} from './browser/worker-pool.js';
-export {
-  SHARE_STATE_KEY,
-  SHARE_LINK_LABEL,
-  MAX_SHARE_URL_LENGTH,
-  encodeShareLink,
-  decodeShareLink,
-  toMarkdownLink,
-  shareLinkNotice,
-  toBase64Url,
-  fromBase64Url,
-  deflateCompress,
-  inflateDecompress,
-  sha256Digest,
-  type ShareState,
-  type ShareStateOptions,
-  type ShareLink,
-  type ShareMode,
-  type ShareDecode,
-  type ShareCompressor,
-  type ShareDecompressor,
-  type ShareDigest,
-} from './browser/share-state.js';
 
 /** What this entry point can and cannot do, for callers that branch on it. */
 export const browserCapabilities = {
@@ -172,18 +141,3 @@ export async function lintBrowserDomain(
     async () => UNKNOWN_TLS_SESSION,
   );
 }
-
-export {
-  generateCompliancePDF,
-  downloadCompliancePDF,
-  type ComplianceReportData,
-  type PDFExportOptions,
-} from './browser/pdf-exporter.js';
-
-export {
-  validateZip,
-  type BatchSummary,
-  type CommonError,
-  type ZipFileResult,
-  type ZipValidatorOptions,
-} from './browser/zip-validator.js';

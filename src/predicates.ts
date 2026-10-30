@@ -18,30 +18,6 @@ export const KNOWN_PASSPHRASES: Record<string, string> = {
   [Networks.FUTURENET]: 'Futurenet',
 };
 
-/**
- * `value` with the whitespace around its first `;` collapsed to exactly ` ; `.
- *
- * Every network passphrase has the shape `<name> ; <month> <year>`, and
- * whitespace typed around that separator is the classic hand-edited mistake —
- * it breaks signature verification while looking identical in an editor. So
- * three rules normalise the separator before deciding whether a passphrase is
- * a known one spelled badly or an unknown one spelled fine.
- *
- * Written with `indexOf` rather than the obvious replace against a
- * whitespace-semicolon-whitespace pattern, because that pattern is quadratic:
- * with no `;` in the value, `String.replace`
- * retries the unanchored match at every offset and each attempt rescans the
- * whitespace run. `NETWORK_PASSPHRASE` is a document value, so its length is
- * the file author's choice — 20,000 spaces cost 200ms per rule, measured.
- * `benchmarks/regression-harness.ts` is what caught it and what keeps it from
- * coming back.
- */
-export function normalizePassphraseSeparator(value: string): string {
-  const semicolon = value.indexOf(';');
-  if (semicolon === -1) return value;
-  return `${value.slice(0, semicolon).trimEnd()} ; ${value.slice(semicolon + 1).trimStart()}`;
-}
-
 export function isString(v: unknown): v is string {
   return typeof v === 'string';
 }
@@ -101,66 +77,6 @@ export function isHttpsUrl(v: unknown): boolean {
  */
 export function isEmail(v: unknown): boolean {
   return isString(v) && /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(v);
-}
-
-/**
- * Curated denylist of disposable / throwaway email providers.
- *
- * A ten-minute inbox is a strong signal of a low-quality or fraudulent issuer:
- * wallets, exchanges, and directory maintainers reach out to the contacts in
- * `[DOCUMENTATION]` and `[[PRINCIPALS]]` to verify an anchor, and an address
- * that expires before the reply arrives makes that impossible — listing
- * applications get rejected for it. Deliberately a small static set: the
- * linter runs offline, so no runtime package or network lookup may back it.
- */
-export const DISPOSABLE_EMAIL_DOMAINS: ReadonlySet<string> = new Set([
-  '10minutemail.com',
-  '10minutemail.net',
-  'dispostable.com',
-  'fakeinbox.com',
-  'getnada.com',
-  'guerrillamail.com',
-  'guerrillamailblock.com',
-  'guerrillamail.info',
-  'mailcatch.com',
-  'maildrop.cc',
-  'mailinator.com',
-  'mailinator.org',
-  'mailnesia.com',
-  'minuteinbox.com',
-  'mytemp.email',
-  'sharklasers.com',
-  'temp-mail.org',
-  'tempmail.com',
-  'tempmail.plus',
-  'throwawayemail.com',
-  'throwawaymail.com',
-  'trash-mail.com',
-  'trashmail.com',
-  'yopmail.com',
-  'yopmail.fr',
-]);
-
-/**
- * True when `email` is hosted at a known disposable provider.
- *
- * Subdomains count, because providers hand out `user@random.mailinator.com`
- * style aliases, and the comparison is case-insensitive so
- * `user@MAILINATOR.COM` is caught too. Syntax is not this predicate's job —
- * callers guard with {@link isEmail} so a malformed address is reported once,
- * by the rule that owns validity.
- */
-export function isDisposableEmail(email: string): boolean {
-  const at = email.lastIndexOf('@');
-  if (at < 0) return false;
-  const host = email
-    .slice(at + 1)
-    .toLowerCase()
-    .replace(/\.$/, '');
-  for (const domain of DISPOSABLE_EMAIL_DOMAINS) {
-    if (host === domain || host.endsWith(`.${domain}`)) return true;
-  }
-  return false;
 }
 
 /** E.164: a leading `+`, then 2–15 digits, no separators. */

@@ -1,11 +1,8 @@
 {
-  "headers": { "strict-transport-security": "max-age=31536000; includeSubDomains; preload" },
-  "body": {
-    "horizon_version": "22.0.0",
-    "core_version": "stellar-core 22.0.0",
-    "network_passphrase": "Public Global Stellar Network ; September 2015",
-    "current_protocol_version": 22,
-    "supported_protocol_version": 22,
-    "core_supported_protocol_version": 22
-  }
+  "horizon_version": "22.0.0",
+  "core_version": "stellar-core 22.0.0",
+  "network_passphrase": "Public Global Stellar Network ; September 2015",
+  "current_protocol_version": 22,
+  "supported_protocol_version": 22,
+  "core_supported_protocol_version": 22
 }

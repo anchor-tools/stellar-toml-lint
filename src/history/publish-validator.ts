@@ -64,7 +64,7 @@ function severityFor(
   return override === 'error' || override === 'warning' ? override : fallback;
 }
 
-export function archiveBase(history: string): string | undefined {
+function archiveBase(history: string): string | undefined {
   try {
     const url = new URL(history.replace(/\{[^}]*\}/g, ''));
     url.search = '';
@@ -198,7 +198,7 @@ function latestSequence(value: unknown): number | undefined {
   return undefined;
 }
 
-export async function readJson(url: string, fetchImpl: typeof fetch): Promise<unknown> {
+async function readJson(url: string, fetchImpl: typeof fetch): Promise<unknown> {
   try {
     const response = await fetchImpl(url);
     if (!response.ok) return undefined;

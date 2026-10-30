@@ -6,8 +6,6 @@
  * produces diagnostics or a reporter that formats them.
  */
 
-import type { CstDocument } from './cst/parser.js';
-
 /** How much a violation matters. Only `error` affects the default exit code. */
 export type Severity = 'error' | 'warning' | 'info';
 
@@ -20,27 +18,13 @@ export type RuleCategory =
   | 'currencies'
   | 'validators'
   | 'network'
-  | 'fees'
-  | 'sep24'
   | 'policy'
-  | 'sep12'
-  | 'monitor'
-  | 'codemod'
-  | 'style';
+  | 'sep12';
 
 /** A 1-based position in the source file. */
 export interface Position {
   line: number;
   column: number;
-}
-
-/**
- * A mechanically safe rewrite `--fix` can apply by itself. Present only when
- * there is exactly one unambiguous correction, so the tool never guesses.
- */
-export interface Fix {
-  /** The corrected value, unencoded, to put in place of the offending one. */
-  value: string;
 }
 
 /** One rule violation at one place in the file. */
@@ -97,46 +81,6 @@ export interface TlsSession {
   cipherStandard?: string | null;
 }
 
-/**
- * What one rule invocation did, reported to {@link LintOptions.instrumentRule}.
- *
- * `'error'` means the rule threw and the run recorded `internal/rule-error` in
- * its place — the same outcome a caller sees in the diagnostics, without the
- * caller having to re-scan them to work out which rule misbehaved.
- */
-export type RuleOutcome = 'ok' | 'error';
-
-/**
- * Called around every rule with the work as a thunk.
- *
- * Used for timing and spans. It receives a function to *call*, not a duration,
- * so an instrumenter that measures can wrap the invocation rather than guess
- * when it started.
- */
-export type RuleInstrumenter = (ruleId: string, run: () => RuleOutcome) => void;
-
-/**
- * One regex matcher a caller configured, and where it came from.
- *
- * The enterprise policy engine and embedders that add their own rules both
- * accept patterns typed by a human, and a backtracking pattern hangs the
- * linter thread rather than merely reporting the wrong thing. Declaring them
- * on the run means `security/redos-vulnerable-regex` can screen every one
- * before anything compiles it; see `src/rules/redos-detector.ts`.
- */
-export interface CustomRegexMatcher {
-  /** The pattern, without delimiters — what `RegExp.prototype.source` gives. */
-  pattern: string;
-  /** Flags, when known. They do not change whether a pattern backtracks. */
-  flags?: string;
-  /** Dotted path to the value holding it, e.g. `rules[2].match.regex`. */
-  path?: string;
-  /** Human-readable provenance, e.g. `policy "enterprise-compliance"`. */
-  origin?: string;
-  /** Position in the file that declared it, when known. */
-  position?: Position;
-}
-
 export interface LintOptions {
   /**
    * The domain the file is (or will be) served from, without scheme.
@@ -150,13 +94,6 @@ export interface LintOptions {
   strict?: boolean;
   /** Verify network-dependent account and currency metadata checks. */
   checkNetwork?: boolean;
-  /**
-   * Serve network checks from recorded fixtures instead of the network.
-   *
-   * When set, rules must not open sockets of their own: DNS, TLS, and raw
-   * probes are skipped, exactly as the CLI's fixture transport skips HTTP.
-   */
-  mockFixtures?: string;
   /**
    * Fetch and lint the `toml` pointers referenced by `CURRENCIES` entries.
    *
@@ -173,23 +110,6 @@ export interface LintOptions {
    * exercised without opening a socket.
    */
   tls?: TlsSession;
-  /**
-   * Called around every rule invocation.
-   *
-   * Optional and called with a thunk, so an embedder that wants per-rule
-   * durations can wrap the run — and one that does not pass this pays nothing.
-   * The instrumenter must not throw: a broken observer would otherwise replace
-   * a rule's findings with an `internal/rule-error`.
-   */
-  instrumentRule?: RuleInstrumenter;
-  /**
-   * Custom regex matchers this run should screen for ReDoS.
-   *
-   * Populated by the policy engine from a `--policy` file, and by embedders
-   * that extend the rule set. Absent on an ordinary run, in which case the
-   * `security/redos-*` rules report nothing and cost one property read.
-   */
-  customRegexes?: readonly CustomRegexMatcher[];
 }
 
 export interface LintResult {
@@ -208,7 +128,6 @@ export interface StellarToml {
   ACCOUNTS?: string[];
   WEB_AUTH_CONTRACT_ID?: string;
   SIGNING_KEY?: string;
-  MPC_GOVERNANCE?: Record<string, unknown>;
   URI_REQUEST_SIGNING_KEY?: string;
   FEDERATION_SERVER?: string;
   AUTH_SERVER?: string;
@@ -219,8 +138,6 @@ export interface StellarToml {
   WEB_AUTH_FOR_CONTRACTS_ENDPOINT?: string;
   DIRECT_PAYMENT_SERVER?: string;
   ANCHOR_QUOTE_SERVER?: string;
-  RECOVERY_SERVER?: string;
-  RECOVERY_SERVERS?: string[];
   DOCUMENTATION?: {
     ORG_NAME?: string;
     ORG_DBA?: string;
@@ -301,15 +218,6 @@ export interface StellarToml {
 export interface RuleContext {
   /** The parsed TOML document. */
   doc: Record<string, unknown>;
-  /**
-   * The lossless Concrete Syntax Tree the document was parsed into.
-   *
-   * Optional so a hand-built context in a test keeps compiling, but every run
-   * through {@link lint} supplies one. Rules that need comments, whitespace, or
-   * exact token spans rather than decoded values can walk it with `walk` from
-   * `cst/visitor.js`.
-   */
-  cst?: CstDocument;
   /** Raw source, for rules that care about bytes or formatting. */
   source: string;
   options: LintOptions;

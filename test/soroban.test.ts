@@ -1,15 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Address, xdr } from '@stellar/stellar-base';
 import { lint } from '../src/lint.js';
-import { allRules } from '../src/rules/index.js';
 import {
   checkContractTtl,
   checkContracts,
-  fetchSep41Metadata,
-  sep41MetadataOf,
   specFunctionNames,
   sorobanRules,
-  verifyContractOnChain,
   verifySep45ContractInterface,
 } from '../src/soroban.js';
 
@@ -141,8 +137,6 @@ function rpcMock(options: RpcOptions): { fetchImpl: typeof fetch; calls: () => n
 const EXPIRING_RULE = 'soroban/contract-ttl-expiring-soon';
 const EXPIRED_RULE = 'soroban/contract-expired';
 const UNAVAILABLE_RULE = 'soroban/contract-ttl-unavailable';
-const NOT_FOUND_RULE = 'soroban/contract-not-found';
-const EVICTED_RULE = 'soroban/contract-evicted';
 
 describe('Soroban contract TTL audit', () => {
   it('is silent while the TTL is ample', async () => {
@@ -184,16 +178,16 @@ describe('Soroban contract TTL audit', () => {
     );
   });
 
-  it('reports a contract with no instance entry as not found', async () => {
+  it('errors when the instance entry is missing (archived)', async () => {
     const { fetchImpl } = rpcMock({ latestLedger: 100_000, missingInstance: true });
 
     const diagnostics = await checkContractTtl(CONTRACT, RPC, fetchImpl);
     expect(diagnostics).toContainEqual(
-      expect.objectContaining({ rule: NOT_FOUND_RULE, severity: 'error' }),
+      expect.objectContaining({ rule: EXPIRED_RULE, severity: 'error' }),
     );
   });
 
-  it('reports a contract whose WASM entry is missing as evicted', async () => {
+  it('errors when the WASM entry is missing (archived)', async () => {
     const { fetchImpl } = rpcMock({
       latestLedger: 100_000,
       instanceLive: 200_000,
@@ -203,7 +197,7 @@ describe('Soroban contract TTL audit', () => {
 
     const diagnostics = await checkContractTtl(CONTRACT, RPC, fetchImpl);
     expect(diagnostics).toContainEqual(
-      expect.objectContaining({ rule: EVICTED_RULE, severity: 'error' }),
+      expect.objectContaining({ rule: EXPIRED_RULE, severity: 'error' }),
     );
   });
 
@@ -248,105 +242,13 @@ describe('Soroban contract TTL audit', () => {
       { id: EXPIRING_RULE, severity: 'warning' },
       { id: EXPIRED_RULE, severity: 'error' },
       { id: UNAVAILABLE_RULE, severity: 'warning' },
-      { id: NOT_FOUND_RULE, severity: 'error' },
-      { id: EVICTED_RULE, severity: 'error' },
       { id: 'soroban/invalid-auth-contract-interface', severity: 'error' },
+      { id: 'soroban/unprotected-upgrade-function', severity: 'error' },
+      { id: 'soroban/single-signer-upgrade-admin', severity: 'warning' },
+      { id: 'soroban/supply-invariant-violation', severity: 'error' },
+      { id: 'soroban/excessive-static-memory-pages', severity: 'warning' },
+      { id: 'soroban/high-cyclomatic-complexity', severity: 'warning' },
     ]);
-  });
-});
-
-describe('verifyContractOnChain', () => {
-  it('is clean for a deployed contract whose instance and WASM exist', async () => {
-    const { fetchImpl, calls } = rpcMock({
-      latestLedger: 100_000,
-      instanceLive: 200_000,
-      codeLive: 200_000,
-    });
-
-    expect(await verifyContractOnChain(CONTRACT, RPC, fetchImpl)).toEqual([]);
-    expect(calls()).toBe(2);
-  });
-
-  it("ignores TTL, which is checkContractTtl's concern", async () => {
-    const { fetchImpl } = rpcMock({
-      latestLedger: 100_000,
-      instanceLive: 100_010,
-      codeLive: 200_000,
-    });
-
-    expect(await verifyContractOnChain(CONTRACT, RPC, fetchImpl)).toEqual([]);
-  });
-
-  it('reports soroban/contract-not-found for a missing instance entry', async () => {
-    const { fetchImpl, calls } = rpcMock({ latestLedger: 100_000, missingInstance: true });
-
-    const diagnostics = await verifyContractOnChain(CONTRACT, RPC, fetchImpl, {
-      path: 'CURRENCIES[0].contract',
-    });
-    expect(diagnostics).toEqual([
-      expect.objectContaining({
-        rule: NOT_FOUND_RULE,
-        severity: 'error',
-        category: 'network',
-        path: 'CURRENCIES[0].contract',
-      }),
-    ]);
-    expect(diagnostics[0]?.message).toContain(CONTRACT);
-    // No WASM lookup without an instance to name it.
-    expect(calls()).toBe(1);
-  });
-
-  it('reports soroban/contract-evicted when the WASM is gone', async () => {
-    const { fetchImpl } = rpcMock({
-      latestLedger: 100_000,
-      instanceLive: 200_000,
-      codeLive: 200_000,
-      missingCode: true,
-    });
-
-    expect(await verifyContractOnChain(CONTRACT, RPC, fetchImpl)).toEqual([
-      expect.objectContaining({ rule: EVICTED_RULE, severity: 'error' }),
-    ]);
-  });
-
-  it('degrades an RPC timeout to a warning instead of throwing', async () => {
-    const fetchImpl = (async () => {
-      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
-    }) as unknown as typeof fetch;
-
-    const diagnostics = await verifyContractOnChain(CONTRACT, RPC, fetchImpl);
-    expect(diagnostics).toEqual([
-      expect.objectContaining({ rule: UNAVAILABLE_RULE, severity: 'warning' }),
-    ]);
-  });
-
-  it('bounds every RPC request with an abort signal', async () => {
-    let signal: AbortSignal | null | undefined;
-    const fetchImpl = (async (_url: string, init?: RequestInit) => {
-      signal = init?.signal;
-      throw new Error('offline');
-    }) as unknown as typeof fetch;
-
-    await verifyContractOnChain(CONTRACT, RPC, fetchImpl);
-    expect(signal).toBeInstanceOf(AbortSignal);
-  });
-
-  it('degrades a non-200 RPC answer to a warning', async () => {
-    const fetchImpl = (async () =>
-      new Response('bad gateway', { status: 502 })) as unknown as typeof fetch;
-
-    expect(await verifyContractOnChain(CONTRACT, RPC, fetchImpl)).toEqual([
-      expect.objectContaining({ rule: UNAVAILABLE_RULE, severity: 'warning' }),
-    ]);
-  });
-
-  it('honours --off on the not-found rule', async () => {
-    const { fetchImpl } = rpcMock({ latestLedger: 100_000, missingInstance: true });
-
-    const diagnostics = await verifyContractOnChain(CONTRACT, RPC, fetchImpl, {
-      rules: { [NOT_FOUND_RULE]: 'off' },
-    });
-    expect(diagnostics).toEqual([]);
   });
 });
 
@@ -374,20 +276,9 @@ describe('checkContracts', () => {
     const diagnostics = await checkContracts(parsed, fetchImpl);
     expect(diagnostics).toEqual([]);
     // TTL: two targets (CURRENCIES contract and WEB_AUTH_CONTRACT_ID) x two
-    // lookups, the currency's SEP-41 metadata read, plus the auth contract's
-    // instance and code reads for the SEP-45 interface check.
-    expect(calls()).toBe(7);
-  });
-
-  it('points each not-found finding at the field that declared the contract', async () => {
-    const parsed = lint(contractsSource()).parsed ?? {};
-    const { fetchImpl } = rpcMock({ latestLedger: 100_000, missingInstance: true });
-
-    const diagnostics = await checkContracts(parsed, fetchImpl);
-    expect(diagnostics.map((d) => [d.rule, d.path])).toEqual([
-      [NOT_FOUND_RULE, 'CURRENCIES[0].contract'],
-      [NOT_FOUND_RULE, 'WEB_AUTH_CONTRACT_ID'],
-    ]);
+    // lookups, plus the auth contract's instance and code reads for the SEP-45
+    // interface check.
+    expect(calls()).toBe(6);
   });
 
   it('is silent with no contracts declared', async () => {
@@ -545,62 +436,36 @@ describe('specFunctionNames', () => {
   });
 });
 
-interface TokenMetadata {
-  decimal?: number;
-  name?: string;
-  symbol?: string;
-}
+import {
+  auditUpgradeSecurity,
+  UNPROTECTED_UPGRADE_RULE,
+  SINGLE_SIGNER_UPGRADE_ADMIN_RULE,
+} from '../src/soroban/upgrade-auditor.js';
 
-/** SEP-41 metadata as the token SDK stores it: a `METADATA` map of symbol keys. */
-function metadataMap(metadata: TokenMetadata): xdr.ScMapEntry[] {
-  const entries: xdr.ScMapEntry[] = [];
-  // ScMap keys are kept sorted, as the host requires.
-  if (metadata.decimal !== undefined) {
-    entries.push(
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol('decimal'),
-        val: xdr.ScVal.scvU32(metadata.decimal),
-      }),
-    );
-  }
-  if (metadata.name !== undefined) {
-    entries.push(
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol('name'),
-        val: xdr.ScVal.scvString(metadata.name),
-      }),
-    );
-  }
-  if (metadata.symbol !== undefined) {
-    entries.push(
-      new xdr.ScMapEntry({
-        key: xdr.ScVal.scvSymbol('symbol'),
-        val: xdr.ScVal.scvString(metadata.symbol),
-      }),
-    );
-  }
-  return entries;
-}
+import {
+  auditSupplyInvariant,
+  SUPPLY_INVARIANT_RULE,
+  horizonAmountToStroops,
+  stroopsToAmountString,
+} from '../src/soroban/supply-invariant.js';
 
-function tokenInstanceXdr(
-  metadata: TokenMetadata,
-  options: { stellarAsset?: boolean; topLevel?: boolean } = {},
-): string {
-  const executable = options.stellarAsset
-    ? xdr.ContractExecutable.contractExecutableStellarAsset()
-    : xdr.ContractExecutable.contractExecutableWasm(WASM);
-  const storage = options.topLevel
-    ? metadataMap(metadata)
-    : [
-        new xdr.ScMapEntry({
-          key: xdr.ScVal.scvSymbol('METADATA'),
-          val: xdr.ScVal.scvMap(metadataMap(metadata)),
-        }),
-      ];
+const ADMIN_ACCOUNT = 'GCM5YCQPFIW4ICBPPSKACX56ZTGG6KZ7A53JGUWWAFRZW462YFIK4BZS';
+
+function instanceEntryXdrWithAdmin(contractId: string, adminAddr?: string): string {
+  const executable = xdr.ContractExecutable.contractExecutableWasm(WASM);
+  const storage: xdr.ScMapEntry[] = [];
+  if (adminAddr) {
+    storage.push(
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol('admin'),
+        val: xdr.ScVal.scvAddress(new Address(adminAddr).toScAddress()),
+      }),
+    );
+  }
   const entry = xdr.LedgerEntryData.contractData(
     new xdr.ContractDataEntry({
       ext: xdr.ExtensionPoint.fromXDR(Buffer.alloc(4), 'raw'),
-      contract: new Address(CONTRACT).toScAddress(),
+      contract: new Address(contractId).toScAddress(),
       key: xdr.ScVal.scvLedgerKeyContractInstance(),
       durability: xdr.ContractDataDurability.persistent(),
       val: xdr.ScVal.scvContractInstance(new xdr.ScContractInstance({ executable, storage })),
@@ -609,168 +474,349 @@ function tokenInstanceXdr(
   return entry.toXDR('base64');
 }
 
-/** An RPC whose contract instance carries `instanceXdr`, live well past the latest ledger. */
-function tokenRpc(instanceXdr: string): typeof fetch {
-  return (async (_url: string | URL | globalThis.Request, init?: RequestInit) => {
-    const body = JSON.parse(String(init?.body)) as { params: { keys: string[] } };
-    const key = body.params.keys[0] as string;
-    const isCode = xdr.LedgerKey.fromXDR(key, 'base64').switch().name === 'contractCode';
-    const entry = {
-      key,
-      xdr: isCode ? codeEntryXdr(wasmWithoutSpec()) : instanceXdr,
-      lastModifiedLedgerSeq: 1,
-      liveUntilLedgerSeq: 200_000,
-    };
-    return new Response(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        result: { latestLedger: 100_000, entries: [entry] },
-      }),
-      { status: 200, headers: { 'content-type': 'application/json' } },
-    );
-  }) as unknown as typeof fetch;
+function supplyEntryXdr(contractId: string, stroops: bigint): string {
+  const hi = new xdr.Int64(stroops >> 64n);
+  const lo = new xdr.Uint64(stroops & 0xffffffffffffffffn);
+  const val = xdr.ScVal.scvI128(new xdr.Int128Parts({ hi, lo }));
+  const entry = xdr.LedgerEntryData.contractData(
+    new xdr.ContractDataEntry({
+      ext: xdr.ExtensionPoint.fromXDR(Buffer.alloc(4), 'raw'),
+      contract: new Address(contractId).toScAddress(),
+      key: xdr.ScVal.scvSymbol('Supply'),
+      durability: xdr.ContractDataDurability.persistent(),
+      val,
+    }),
+  );
+  return entry.toXDR('base64');
 }
 
-function tokenSource(fields: string[]): Record<string, unknown> {
-  const source = [
-    `NETWORK_PASSPHRASE="${NETWORK}"`,
-    '',
-    '[[CURRENCIES]]',
-    `contract="${CONTRACT}"`,
-    ...fields,
-  ].join('\n');
-  return lint(source).parsed ?? {};
-}
-
-const SYMBOL_RULE = 'soroban/symbol-mismatch';
-const DECIMALS_RULE = 'soroban/decimals-mismatch';
-const NAME_RULE = 'soroban/name-mismatch';
-
-describe('SEP-41 metadata', () => {
-  it('reads the METADATA map from instance storage', () => {
-    expect(
-      sep41MetadataOf(tokenInstanceXdr({ decimal: 7, name: 'USD Coin', symbol: 'USDC' })),
-    ).toEqual({
-      decimal: 7,
-      name: 'USD Coin',
-      symbol: 'USDC',
-      stellarAsset: false,
-    });
-  });
-
-  it('reads metadata stored at the top level of instance storage', () => {
-    expect(
-      sep41MetadataOf(tokenInstanceXdr({ decimal: 6, symbol: 'XYZ' }, { topLevel: true })),
-    ).toEqual({ decimal: 6, symbol: 'XYZ', stellarAsset: false });
-  });
-
-  it('returns undefined for an instance with no metadata or unparseable XDR', () => {
-    expect(sep41MetadataOf(instanceEntryXdr(CONTRACT))).toBeUndefined();
-    expect(sep41MetadataOf('not xdr')).toBeUndefined();
-    expect(sep41MetadataOf(undefined)).toBeUndefined();
-  });
-
-  it('fetches metadata over getLedgerEntries', async () => {
-    const fetchImpl = tokenRpc(tokenInstanceXdr({ decimal: 7, symbol: 'USDC' }));
-    expect(await fetchSep41Metadata(CONTRACT, RPC, fetchImpl)).toEqual({
-      decimal: 7,
-      symbol: 'USDC',
-      stellarAsset: false,
-    });
-  });
-
-  it('returns undefined when the RPC is unreachable', async () => {
-    const fetchImpl = (async () => {
-      throw new Error('offline');
+describe('Smart Contract Upgrade Auditor', () => {
+  it('is silent when contract has no upgrade functions', async () => {
+    const fetchImpl = (async (url: string | URL | globalThis.Request) => {
+      const u = url.toString();
+      if (u.includes('getLedgerEntries')) {
+        return new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              latestLedger: 100_000,
+              entries: [
+                {
+                  key: 'k',
+                  xdr: instanceEntryXdrWithAdmin(CONTRACT, ADMIN_ACCOUNT),
+                  liveUntilLedgerSeq: 200_000,
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 404 });
     }) as unknown as typeof fetch;
-    expect(await fetchSep41Metadata(CONTRACT, RPC, fetchImpl)).toBeUndefined();
-  });
 
-  it('passes cleanly when symbol, decimal, and name match the file', async () => {
-    const doc = tokenSource(['code="USDC"', 'display_decimals=7', 'name="USD Coin"']);
-    const fetchImpl = tokenRpc(tokenInstanceXdr({ decimal: 7, name: 'USD Coin', symbol: 'USDC' }));
-
-    expect(await checkContracts(doc, fetchImpl)).toEqual([]);
-  });
-
-  it('reports soroban/decimals-mismatch when decimal disagrees with display_decimals', async () => {
-    const doc = tokenSource(['code="USDC"', 'display_decimals=7']);
-    const fetchImpl = tokenRpc(tokenInstanceXdr({ decimal: 6, symbol: 'USDC' }));
-
-    const diagnostics = await checkContracts(doc, fetchImpl);
-    expect(diagnostics).toEqual([
-      expect.objectContaining({
-        rule: DECIMALS_RULE,
-        severity: 'error',
-        path: 'CURRENCIES[0].display_decimals',
-        message: `CURRENCIES[0].display_decimals is 7, but contract ${CONTRACT} reports decimal 6`,
-      }),
-    ]);
-    expect(diagnostics[0]?.suggestion).toContain('Set display_decimals to 6');
-  });
-
-  it('reports soroban/symbol-mismatch when symbol disagrees with code', async () => {
-    const doc = tokenSource(['code="USDC"', 'display_decimals=7']);
-    const fetchImpl = tokenRpc(tokenInstanceXdr({ decimal: 7, symbol: 'XYZ' }));
-
-    const diagnostics = await checkContracts(doc, fetchImpl);
-    expect(diagnostics).toEqual([
-      expect.objectContaining({
-        rule: SYMBOL_RULE,
-        severity: 'error',
-        path: 'CURRENCIES[0].code',
-        message: `CURRENCIES[0].code is "USDC", but contract ${CONTRACT} reports symbol "XYZ"`,
-      }),
-    ]);
-  });
-
-  it('warns with soroban/name-mismatch when name disagrees', async () => {
-    const doc = tokenSource(['code="USDC"', 'name="USD Coin"']);
-    const fetchImpl = tokenRpc(tokenInstanceXdr({ name: 'Test Token', symbol: 'USDC' }));
-
-    expect(await checkContracts(doc, fetchImpl)).toEqual([
-      expect.objectContaining({ rule: NAME_RULE, severity: 'warning', path: 'CURRENCIES[0].name' }),
-    ]);
-  });
-
-  it('does not compare name for a Stellar Asset Contract, whose name is CODE:ISSUER', async () => {
-    const doc = tokenSource(['code="USDC"', 'name="USD Coin"', 'display_decimals=7']);
-    const fetchImpl = tokenRpc(
-      tokenInstanceXdr(
-        {
-          decimal: 7,
-          name: 'USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
-          symbol: 'USDC',
-        },
-        { stellarAsset: true },
-      ),
+    const diagnostics = await auditUpgradeSecurity(
+      CONTRACT,
+      RPC,
+      'https://horizon.stellar.org',
+      fetchImpl,
     );
-
-    expect(await checkContracts(doc, fetchImpl)).toEqual([]);
+    expect(diagnostics).toEqual([]);
   });
 
-  it('skips fields the file leaves unset', async () => {
-    const doc = tokenSource(['code="USDC"']);
-    const fetchImpl = tokenRpc(tokenInstanceXdr({ decimal: 6, name: 'Other', symbol: 'USDC' }));
+  it('emits unprotected-upgrade-function when upgrade function is present but no admin set', async () => {
+    const fetchImpl = (async (url: string | URL | globalThis.Request, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { params?: { keys?: string[] } };
+      const key = body.params?.keys?.[0] ?? '';
+      const isCode = key.includes('contractCode') || key.length < 50;
 
-    expect(await checkContracts(doc, fetchImpl)).toEqual([]);
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            latestLedger: 100_000,
+            entries: [
+              {
+                key,
+                xdr: isCode
+                  ? codeEntryXdr(wasmWithSpec(['upgrade', 'transfer']))
+                  : instanceEntryXdrWithAdmin(CONTRACT),
+                liveUntilLedgerSeq: 200_000,
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const diagnostics = await auditUpgradeSecurity(
+      CONTRACT,
+      RPC,
+      'https://horizon.stellar.org',
+      fetchImpl,
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.rule).toBe(UNPROTECTED_UPGRADE_RULE);
+    expect(diagnostics[0]?.severity).toBe('error');
   });
 
-  it('honours severity overrides', async () => {
-    const doc = tokenSource(['code="USDC"', 'display_decimals=7', 'name="USD Coin"']);
-    const fetchImpl = tokenRpc(tokenInstanceXdr({ decimal: 6, name: 'Other', symbol: 'USDC' }));
+  it('emits single-signer-upgrade-admin when upgrade admin is single signer', async () => {
+    const fetchImpl = (async (url: string | URL | globalThis.Request, init?: RequestInit) => {
+      const u = url.toString();
+      if (u.includes('/accounts/')) {
+        return new Response(
+          JSON.stringify({
+            num_signers: 1,
+            thresholds: { high_threshold: 1 },
+          }),
+          { status: 200 },
+        );
+      }
+      const body = JSON.parse(String(init?.body ?? '{}')) as { params?: { keys?: string[] } };
+      const key = body.params?.keys?.[0] ?? '';
+      const isCode = key.includes('contractCode') || key.length < 50;
 
-    const diagnostics = await checkContracts(doc, fetchImpl, {
-      rules: { [DECIMALS_RULE]: 'warning', [NAME_RULE]: 'off' },
-    });
-    expect(diagnostics).toEqual([
-      expect.objectContaining({ rule: DECIMALS_RULE, severity: 'warning' }),
-    ]);
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            latestLedger: 100_000,
+            entries: [
+              {
+                key,
+                xdr: isCode
+                  ? codeEntryXdr(wasmWithSpec(['upgrade', 'transfer']))
+                  : instanceEntryXdrWithAdmin(CONTRACT, ADMIN_ACCOUNT),
+                liveUntilLedgerSeq: 200_000,
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const diagnostics = await auditUpgradeSecurity(
+      CONTRACT,
+      RPC,
+      'https://horizon.stellar.org',
+      fetchImpl,
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.rule).toBe(SINGLE_SIGNER_UPGRADE_ADMIN_RULE);
+    expect(diagnostics[0]?.severity).toBe('warning');
   });
 
-  it('registers the metadata rules for --list-rules', () => {
-    const ids = allRules.map((rule) => rule.id);
-    expect(ids).toEqual(expect.arrayContaining([SYMBOL_RULE, DECIMALS_RULE, NAME_RULE]));
+  it('is silent when upgrade admin is multisig', async () => {
+    const fetchImpl = (async (url: string | URL | globalThis.Request, init?: RequestInit) => {
+      const u = url.toString();
+      if (u.includes('/accounts/')) {
+        return new Response(
+          JSON.stringify({
+            num_signers: 3,
+            thresholds: { high_threshold: 2 },
+          }),
+          { status: 200 },
+        );
+      }
+      const body = JSON.parse(String(init?.body ?? '{}')) as { params?: { keys?: string[] } };
+      const key = body.params?.keys?.[0] ?? '';
+      const isCode = key.includes('contractCode') || key.length < 50;
+
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            latestLedger: 100_000,
+            entries: [
+              {
+                key,
+                xdr: isCode
+                  ? codeEntryXdr(wasmWithSpec(['set_wasm', 'transfer']))
+                  : instanceEntryXdrWithAdmin(CONTRACT, ADMIN_ACCOUNT),
+                liveUntilLedgerSeq: 200_000,
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const diagnostics = await auditUpgradeSecurity(
+      CONTRACT,
+      RPC,
+      'https://horizon.stellar.org',
+      fetchImpl,
+    );
+    expect(diagnostics).toEqual([]);
+  });
+});
+
+describe('Token Supply Invariant Verifier', () => {
+  it('converts amounts to stroops correctly', () => {
+    expect(horizonAmountToStroops('100.0000000')).toBe(1_000_000_000n);
+    expect(stroopsToAmountString(1_000_000_000n)).toBe('100.0000000');
+  });
+
+  it('is silent when Soroban SAC supply matches Horizon classic asset supply within consistent ledger window', async () => {
+    const fetchImpl = (async (url: string | URL | globalThis.Request) => {
+      const u = url.toString();
+      if (u.includes('/assets')) {
+        return new Response(
+          JSON.stringify({
+            _embedded: { records: [{ amount: '1000.0000000' }] },
+          }),
+          { status: 200 },
+        );
+      }
+      if (u === 'https://horizon.stellar.org') {
+        return new Response(JSON.stringify({ history_latest_ledger: 100_002 }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            latestLedger: 100_000,
+            entries: [
+              {
+                key: 'k',
+                xdr: supplyEntryXdr(CONTRACT, 10_000_000_000n),
+                liveUntilLedgerSeq: 200_000,
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const diagnostics = await auditSupplyInvariant(
+      CONTRACT,
+      'USDC',
+      ADMIN_ACCOUNT,
+      RPC,
+      'https://horizon.stellar.org',
+      fetchImpl,
+    );
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('emits supply-invariant-violation when SAC supply diverges from Horizon issued amount', async () => {
+    const fetchImpl = (async (url: string | URL | globalThis.Request) => {
+      const u = url.toString();
+      if (u.includes('/assets')) {
+        return new Response(
+          JSON.stringify({
+            _embedded: { records: [{ amount: '500.0000000' }] },
+          }),
+          { status: 200 },
+        );
+      }
+      if (u === 'https://horizon.stellar.org') {
+        return new Response(JSON.stringify({ history_latest_ledger: 100_001 }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            latestLedger: 100_000,
+            entries: [
+              {
+                key: 'k',
+                xdr: supplyEntryXdr(CONTRACT, 10_000_000_000n), // 1000.0000000 vs 500.0000000
+                liveUntilLedgerSeq: 200_000,
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const diagnostics = await auditSupplyInvariant(
+      CONTRACT,
+      'USDC',
+      ADMIN_ACCOUNT,
+      RPC,
+      'https://horizon.stellar.org',
+      fetchImpl,
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.rule).toBe(SUPPLY_INVARIANT_RULE);
+    expect(diagnostics[0]?.severity).toBe('error');
+    expect(diagnostics[0]?.message).toContain(
+      'Soroban SAC total_supply (1000.0000000) does not match Horizon classic issued supply (500.0000000)',
+    );
+  });
+
+  it('fails safely when ledger close window consistency cannot be established', async () => {
+    const fetchImpl = (async (url: string | URL | globalThis.Request) => {
+      const u = url.toString();
+      if (u.includes('/assets')) {
+        return new Response(
+          JSON.stringify({
+            _embedded: { records: [{ amount: '500.0000000' }] },
+          }),
+          { status: 200 },
+        );
+      }
+      if (u === 'https://horizon.stellar.org') {
+        return new Response(
+          JSON.stringify({ history_latest_ledger: 105_000 }), // 5000 ledgers apart!
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {
+            latestLedger: 100_000,
+            entries: [
+              {
+                key: 'k',
+                xdr: supplyEntryXdr(CONTRACT, 10_000_000_000n),
+                liveUntilLedgerSeq: 200_000,
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const diagnostics = await auditSupplyInvariant(
+      CONTRACT,
+      'USDC',
+      ADMIN_ACCOUNT,
+      RPC,
+      'https://horizon.stellar.org',
+      fetchImpl,
+    );
+    expect(diagnostics).toEqual([]);
+  });
+
+  it('fails safely on Horizon or RPC network failures', async () => {
+    const fetchImpl = (async () => {
+      throw new Error('Network error');
+    }) as unknown as typeof fetch;
+
+    const diagnostics = await auditSupplyInvariant(
+      CONTRACT,
+      'USDC',
+      ADMIN_ACCOUNT,
+      RPC,
+      'https://horizon.stellar.org',
+      fetchImpl,
+    );
+    expect(diagnostics).toEqual([]);
   });
 });

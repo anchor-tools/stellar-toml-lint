@@ -10,3 +10,7 @@ apps/pwa/public/data/
 apps/pwa/lighthouse-report/
 apps/extension/playwright-report/
 apps/extension/test-results/
+
+# Tree-sitter CLI output; regenerate with `tree-sitter generate`.
+grammars/*/src/grammar.json
+grammars/*/src/node-types.json
