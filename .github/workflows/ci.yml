@@ -82,3 +82,108 @@ jobs:
             echo "::error::broken.toml unexpectedly passed — a rule has stopped firing"
             exit 1
           fi
+
+  malware-and-supply-chain:
+    name: Malware and supply-chain check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Verify lockfile integrity and install scripts
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            const forbiddenLifecycle = ["preinstall", "install", "postinstall", "preuninstall", "postuninstall"];
+            for (const hook of forbiddenLifecycle) {
+              if (pkg.scripts && pkg.scripts[hook]) {
+                throw new Error(`Forbidden lifecycle script "${hook}" found in package.json`);
+              }
+            }
+            const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+            const allowedRegistry = "https://registry.npmjs.org/";
+            const allowedInstallScripts = new Set(["esbuild", "fsevents"]);
+            for (const [pkgPath, meta] of Object.entries(lock.packages || {})) {
+              if (!pkgPath) continue;
+              if (meta.resolved && !meta.resolved.startsWith(allowedRegistry)) {
+                throw new Error(`Untrusted registry URL for ${pkgPath}: ${meta.resolved}`);
+              }
+              if (meta.resolved && !meta.integrity) {
+                throw new Error(`Missing integrity hash for ${pkgPath}`);
+              }
+              if (meta.hasInstallScript) {
+                const name = pkgPath.split("node_modules/").pop();
+                if (!allowedInstallScripts.has(name)) {
+                  throw new Error(`Unexpected install script in ${pkgPath} (${name})`);
+                }
+              }
+            }
+          '
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Dependency Review
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+
+      - name: Install ClamAV
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clamav clamav-daemon
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam || true
+
+      - name: Run ClamAV malware scan
+        run: clamscan --recursive --infected --exclude-dir='^\.git$' .
+
+  codeql:
+    name: CodeQL security analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  scorecard:
+    name: OSSF Scorecard supply-chain analysis
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run OSSF Scorecard analysis
+        uses: ossf/scorecard-action@v2.4.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload Scorecard SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
