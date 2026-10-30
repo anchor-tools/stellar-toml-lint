@@ -222,20 +222,37 @@ export async function checkRegulatedIssuerFlags(
   return diagnostics;
 }
 
+/** A `[[CURRENCIES]]` entry backed by a Soroban contract. */
+export interface ContractCurrency {
+  entry: Record<string, unknown>;
+  index: number;
+  id: string;
+  path: string;
+}
+
+/**
+ * The currency entries that name a Soroban contract, for network checks.
+ * Native assets and `toml` pointers are not contracts this file owns, so they
+ * are skipped.
+ */
+export function contractCurrenciesOf(doc: Record<string, unknown>): ContractCurrency[] {
+  const contracts: ContractCurrency[] = [];
+  currenciesOf(doc).forEach((entry, index) => {
+    if (isTomlPointer(entry) || isNativeAsset(entry)) return;
+    if (isString(entry.contract) && isContractId(entry.contract)) {
+      contracts.push({ entry, index, id: entry.contract, path: `CURRENCIES[${index}].contract` });
+    }
+  });
+  return contracts;
+}
+
 /**
  * The Soroban contract ids declared in `[[CURRENCIES]]`, with the path each
  * came from, for network checks. Native assets and `toml` pointers are not
  * contracts this file owns, so they are skipped.
  */
 export function contractIdsOf(doc: Record<string, unknown>): { id: string; path: string }[] {
-  const contracts: { id: string; path: string }[] = [];
-  currenciesOf(doc).forEach((entry, index) => {
-    if (isTomlPointer(entry) || isNativeAsset(entry)) return;
-    if (isString(entry.contract) && isContractId(entry.contract)) {
-      contracts.push({ id: entry.contract, path: `CURRENCIES[${index}].contract` });
-    }
-  });
-  return contracts;
+  return contractCurrenciesOf(doc).map(({ id, path }) => ({ id, path }));
 }
 
 /** Rules covering the `[[CURRENCIES]]` list. */

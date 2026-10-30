@@ -13,6 +13,7 @@ import { horizonRules } from './horizon-check.js';
 import { orgUrlRules } from './org-url-check.js';
 import { sep38Rules } from './sep38-endpoints.js';
 import { sorobanRules } from './soroban.js';
+import { authTreeSimulatorRules } from '../soroban/auth-tree-simulator.js';
 import { sep12Rules } from './sep12-schema.js';
 import { sep6Rules } from '../cross-sep/sep6.js';
 import { corsPreflightRules } from '../network/cors-preflight.js';
@@ -41,6 +42,7 @@ export const allRules: Rule[] = [
   ...orgUrlRules,
   ...sep38Rules,
   ...sorobanRules,
+  ...authTreeSimulatorRules,
   ...sep12Rules,
   ...sep6Rules,
   ...corsPreflightRules,
@@ -68,6 +70,7 @@ export {
   horizonRules,
   sep38Rules,
   sorobanRules,
+  authTreeSimulatorRules,
   sep12Rules,
   sep6Rules,
   corsPreflightRules,

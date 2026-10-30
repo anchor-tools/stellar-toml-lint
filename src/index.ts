@@ -141,3 +141,30 @@ export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
 export { codeActionsFor } from './lsp/code-actions.js';
 export type { LspCodeAction, LspRange, LspTextEdit, LspWorkspaceEdit } from './lsp/code-actions.js';
+export {
+  auditTomlAuthTree,
+  simulateAuthTree,
+  analyzeAuthTree,
+  buildAuthTreeTransaction,
+  parseAuthEntry,
+  parseAuthEntries,
+  authorizedIdentitiesOf,
+  allowedContractsOf,
+  canonicalIdentity,
+  authTreeSimulatorRules,
+  authTreeSimulatorRuleIds,
+  AUTH_TREE_OPERATIONS,
+  AUTH_MARKER_FUNCTIONS,
+  VALUE_MOVING_FUNCTIONS,
+  RECORDING_AUTH_MODE,
+  UNAUTHORIZED_CROSS_CONTRACT_RULE,
+  UNBOUNDED_AUTH_GRANT_RULE,
+} from './soroban/auth-tree-simulator.js';
+export type {
+  AuthTreeOptions,
+  AuthTreeOperation,
+  AuthTreeNode,
+  AuthTreeEntry,
+  AuthTreeFinding,
+  AuthTreeContext,
+} from './soroban/auth-tree-simulator.js';

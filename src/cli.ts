@@ -32,6 +32,7 @@ import { checkHorizon } from './rules/horizon-check.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
 import { checkRegulatedIssuerFlags } from './rules/currencies.js';
 import { checkContracts } from './rules/soroban.js';
+import { auditTomlAuthTree } from './soroban/auth-tree-simulator.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkSep10ClientDomain } from './protocols/sep10-client-domain.js';
@@ -275,6 +276,10 @@ async function main(argv: string[]): Promise<number> {
         if (domainResult.parsed && cli.checkNetwork) {
           const networkDiagnostics: Diagnostic[] = [
             ...(await checkHistoryPublish(domainResult.parsed, fetchImpl, { rules })),
+            ...(await auditTomlAuthTree(domainResult.parsed, fetchImpl, {
+              rules,
+              ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+            })),
             ...(cli.verifyDnssec
               ? await checkDnsIntegrity(domainResult.parsed, fetchImpl, {
                   rules,
@@ -382,6 +387,10 @@ async function main(argv: string[]): Promise<number> {
                   fetchImpl,
                 })),
                 ...(await checkContracts(fileResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })),
+                ...(await auditTomlAuthTree(fileResult.parsed, fetchImpl, {
                   rules,
                   ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                 })),

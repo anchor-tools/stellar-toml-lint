@@ -9,6 +9,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- SEP-42 cross-contract authorization call-tree simulator under `--check-network`
+  (`src/soroban/auth-tree-simulator.ts`): the SAC `mint` and `clawback` calls are dry-run with
+  `simulateTransaction` in recording mode, and the returned `SorobanAuthorizationEntry` tree is
+  traced, emitting `soroban/unauthorized-cross-contract-call` (error) when the tree authorizes an
+  identity other than the account the file publishes as `SIGNING_KEY` or a designated issuer, or
+  delegates into a contract the operation never called, and `soroban/unbounded-auth-grant`
+  (warning) when a grant names no address, lets a contract authorize itself, or re-delegates the
+  authorization further down the tree. Nothing is submitted and no fees are spent.
+
 - Follow and lint `toml` currency pointers. A `[[CURRENCIES]]` entry that points at a separate
   document via `toml` now has that document fetched and linted as part of the same run, so an
   anchor cannot pass with a broken linked asset. Enabled by `--follow-links` and implied by

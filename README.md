@@ -888,6 +888,13 @@ In addition, under `--check-network`, Soroban Stellar Asset Contracts (SAC) tota
 verified against the classic asset's issued supply from Horizon `/assets`. If the supplies diverge within a
 consistent ledger-close window, `soroban/supply-invariant-violation` (error) is emitted.
 
+Also under `--check-network`, the authorization call-tree simulator dry-runs the SAC `mint` and `clawback` calls with
+`simulateTransaction` in recording mode and traces the `SorobanAuthorizationEntry` tree the RPC
+returns: a tree that authorizes an identity other than the account the file publishes as
+`SIGNING_KEY` or a designated issuer, or delegates into an unapproved contract, emits
+`soroban/unauthorized-cross-contract-call` (error), and a grant that names no address boundary or
+lets the contract authorize itself emits `soroban/unbounded-auth-grant` (warning).
+
 **SEP-12 customer schemas** (with `--check-network`) — queries `KYC_SERVER/customer` and checks the
 customer type schemas the anchor declares (`sep31-sender`, `sep31-receiver`, `sep6-deposit`, …).
 Required field keys that are not standard [SEP-9][sep9] names (`first_name`, `last_name`,
