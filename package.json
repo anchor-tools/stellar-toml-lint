@@ -83,7 +83,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^26.6.6",
     "@vitest/coverage-v8": "^2.1.8",
-    "@yao-pkg/pkg": "^5.16.1",
+    "@yao-pkg/pkg": "^6.24.0",
     "esbuild": "^0.25.12",
     "eslint": "^10.13.0",
     "fast-xml-parser": "^5.11.1",
