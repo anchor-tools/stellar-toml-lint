@@ -64,7 +64,7 @@ jobs:
           archive="${{ matrix.asset }}.tar.gz"
           tar -czf "release/$archive" -C release "$(basename "$binary")"
           tar -tzf "release/$archive"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: release/*
