@@ -41,7 +41,7 @@ jobs:
             target: node20-win-x64
             asset: stellar-toml-lint-windows-x64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -64,7 +64,7 @@ jobs:
           archive="${{ matrix.asset }}.tar.gz"
           tar -czf "release/$archive" -C release "$(basename "$binary")"
           tar -tzf "release/$archive"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: release/*
@@ -74,7 +74,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: release
           merge-multiple: true
