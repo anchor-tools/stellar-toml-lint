@@ -832,7 +832,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         return 'handled';
 
       case '--completion': {
-        const shell = requireValue(argv, ++i, arg);
+        const shell = requireValue(argv, i + 1, arg);
         if (!isCompletionShell(shell)) {
           throw new Error(`Unknown shell "${shell}". Expected bash, zsh, or fish.`);
         }

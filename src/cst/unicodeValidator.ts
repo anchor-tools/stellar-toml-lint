@@ -22,7 +22,10 @@ const SPEC = 'https://www.unicode.org/reports/tr36/';
 /** Embeddings, overrides, isolates and marks that reorder displayed text. */
 const BIDI_CONTROLS = /[؜‎‏‪-‮⁦-⁩]/u;
 /** Zero-width and other invisible formatting characters. */
-const INVISIBLE = /[­͏᠎​-‍⁠-⁤﻿]/u;
+const INVISIBLE_CODE_POINTS = new Set([
+  0x00ad, 0x034f, 0x180e, 0x200b, 0x200c, 0x200d, 0x2060, 0x2061, 0x2062, 0x2063, 0x2064, 0xfeff,
+]);
+const INVISIBLE = { test: (ch: string): boolean => INVISIBLE_CODE_POINTS.has(ch.codePointAt(0)!) };
 
 /** Cyrillic and Greek letters that render identically to a Latin letter. */
 const CONFUSABLE = /[Ͱ-ϿЀ-ӿ]/u;
