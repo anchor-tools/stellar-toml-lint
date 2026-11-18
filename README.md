@@ -138,6 +138,7 @@ it was before.
 | `--audit-quotes`              | Book an ANCHOR_QUOTE_SERVER SEP-38 quote and execute it on TRANSFER_SERVER (requires `--check-network`)                 |
 | `--audit-unicode-security`    | Detect bidi overrides, invisible characters, Cyrillic/Greek homoglyphs, and bad language tags in string values          |
 | `--audit-consumer-protection` | Verify `ORG_COMPLAINTS_EMAIL`, `ORG_DISPUTE_RESOLUTION_URL`, `ORG_JURISDICTION`, `ORG_LICENSES` and print a scorecard   |
+| `--audit-kyc-fsm`             | Audit SEP-12 customer status state machines for stuck or circular onboarding (use with `--domain`)                      |
 | `--crawl-peers`               | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                 |
 | `--verify-dnssec`             | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                  |
 | `--follow-links`              | Fetch and lint the `toml` pointers in `CURRENCIES` (implied by `--domain`)                                              |

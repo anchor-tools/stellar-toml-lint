@@ -9,6 +9,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--audit-kyc-fsm --domain <domain>` (`src/protocols/kycTierAuditor.ts`): reads the customer
+  types advertised by SEP-31 `/info`, observes the SEP-12 `/customer` status for each, and audits the
+  status state machine against the four SEP-12 statuses: `sep12/unknown-customer-status`,
+  `sep12/status-missing-next-action`, `sep12/circular-status-transition`,
+  `sep12/nondeterministic-status-transition` and `sep12/unreachable-status`. Transition diagrams are
+  printed to stderr.
+
 - `--audit-consumer-protection` (`src/protocols/consumerProtectionVerifier.ts`): checks that
   `[DOCUMENTATION.ORG_LEGAL]` (or `[DOCUMENTATION]`) declares `ORG_COMPLAINTS_EMAIL`,
   `ORG_DISPUTE_RESOLUTION_URL`, `ORG_JURISDICTION` and `ORG_LICENSES`

@@ -24,6 +24,7 @@ import { dnsIntegrityRules } from '../security/dns-integrity.js';
 import { sep10ClientDomainRules } from '../protocols/sep10-client-domain.js';
 import { quoteBindingRules } from '../protocols/quote-binding-auditor.js';
 import { consumerProtectionRules } from '../protocols/consumerProtectionVerifier.js';
+import { kycTierRules } from '../protocols/kycTierAuditor.js';
 import { unicodeRules } from '../cst/unicodeValidator.js';
 
 /** Every rule, in report order. */
@@ -56,6 +57,7 @@ export const allRules: Rule[] = [
   ...quoteBindingRules,
   ...unicodeRules,
   ...consumerProtectionRules,
+  ...kycTierRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -86,4 +88,5 @@ export {
   quoteBindingRules,
   unicodeRules,
   consumerProtectionRules,
+  kycTierRules,
 };

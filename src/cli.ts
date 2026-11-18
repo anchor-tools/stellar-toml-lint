@@ -37,6 +37,7 @@ import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkSep10ClientDomain } from './protocols/sep10-client-domain.js';
 import { auditQuoteBinding } from './protocols/quote-binding-auditor.js';
+import { auditKycStateMachines, renderKycDiagram } from './protocols/kycTierAuditor.js';
 import { validateUnicode } from './cst/unicodeValidator.js';
 import {
   auditConsumerProtection,
@@ -91,6 +92,7 @@ interface Cli {
   auditQuotes: boolean;
   auditUnicodeSecurity: boolean;
   auditConsumerProtection: boolean;
+  auditKycFsm: boolean;
   crawlPeers: boolean;
   verifyDnssec: boolean;
   badgeSvg?: string;
@@ -156,6 +158,8 @@ OPTIONS
                           Verify complaints, dispute, jurisdiction and license
                           disclosures and print a scorecard (add --check-network
                           to probe the dispute URL)
+      --audit-kyc-fsm     Audit SEP-12 customer status state machines advertised by
+                          KYC_SERVER and DIRECT_PAYMENT_SERVER (use with --domain)
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
@@ -255,6 +259,11 @@ async function runExtraAudits(
     out.push(...result.diagnostics);
     // stderr keeps machine-readable stdout formats parseable.
     process.stderr.write(renderScorecard(result.scorecard));
+  }
+  if (cli.auditKycFsm) {
+    const result = await auditKycStateMachines(parsed, fetchImpl, { rules });
+    out.push(...result.diagnostics);
+    for (const model of result.models) process.stderr.write(renderKycDiagram(model));
   }
   return out;
 }
@@ -746,6 +755,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditQuotes: false,
     auditUnicodeSecurity: false,
     auditConsumerProtection: false,
+    auditKycFsm: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -846,6 +856,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-consumer-protection':
         cli.auditConsumerProtection = true;
+        break;
+
+      case '--audit-kyc-fsm':
+        cli.auditKycFsm = true;
         break;
 
       case '--crawl-peers':
