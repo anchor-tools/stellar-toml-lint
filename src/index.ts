@@ -364,3 +364,76 @@ export type {
   AuthTreeFinding,
   AuthTreeContext,
 } from './soroban/auth-tree-simulator.js';
+export {
+  MAX_WASM_MEMORY_BYTES,
+  MAX_WASM_PAGES,
+  WASM_PAGE_SIZE,
+  WasmPointerError,
+  WasmPointerProtector,
+} from './wasm/pointerProtector.js';
+export type {
+  GrowthResult,
+  PointerProtectorOptions,
+  PointerWindow,
+  WasmMemoryHandle,
+  WasmPointerCode,
+  WasmPointerDetails,
+} from './wasm/pointerProtector.js';
+export {
+  SIMD_PROBE_MODULE,
+  WasmScanError,
+  auditWasmBinary,
+  detectSimdSupport,
+  renderSimdFallback,
+  renderSimdReport,
+  scanWasmBinary,
+} from './wasm/simdAuditor.js';
+export type {
+  MemoryGrowthAudit,
+  SimdAuditOptions,
+  SimdAuditReport,
+  SimdFinding,
+  SimdFindingCode,
+  SimdInstruction,
+  SimdRuntimeLike,
+  WasmScanResult,
+} from './wasm/simdAuditor.js';
+export {
+  WasmStreamingVerifier,
+  renderStreamingFixes,
+  renderStreamingReport,
+  supportsStreamingCompilation,
+} from './wasm/streamingVerifier.js';
+export type {
+  StreamingBenchmark,
+  StreamingFinding,
+  StreamingFindingCode,
+  StreamingRuntimeLike,
+  StreamingVerificationResult,
+  StreamingVerifierOptions,
+} from './wasm/streamingVerifier.js';
+export {
+  DirectorySyncVerifier,
+  SERVICE_KEYS,
+  diffAnchor,
+  extractPublishedAnchor,
+  mapPool,
+  normalizeAsset,
+  normalizeDomain,
+  normalizeServiceKey,
+  normalizeUrl,
+  parseDirectoryFeed,
+  renderDirectorySyncReport,
+} from './protocols/directorySyncVerifier.js';
+export type {
+  AnchorSyncResult,
+  DirectoryAnchorRecord,
+  DirectoryFeedParseResult,
+  DirectorySyncFinding,
+  DirectorySyncFindingCode,
+  DirectorySyncOptions,
+  DirectorySyncReport,
+  DirectorySyncStatus,
+  DriftField,
+  PublishedAnchor,
+} from './protocols/directorySyncVerifier.js';
