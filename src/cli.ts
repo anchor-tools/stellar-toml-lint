@@ -54,6 +54,14 @@ import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
+import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
+import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
+import {
+  IncidentWebhookDispatcher,
+  renderIncidentReport,
+  type IncidentChannel,
+  type IncidentSeverity,
+} from './gitops/incidentDispatcher.js';
 import { allRules } from './rules/index.js';
 import { PRESETS, resolvePreset, type PresetName } from './presets.js';
 import { generateBadgeSvg, generateShieldsEndpoint } from './generators/badge.js';
@@ -104,6 +112,8 @@ interface Cli {
   auditUnicodeSecurity: boolean;
   auditConsumerProtection: boolean;
   auditKycFsm: boolean;
+  auditOfflinePwa?: string;
+  auditEdgeCompatibility?: string;
   crawlPeers: boolean;
   verifyDnssec: boolean;
   badgeSvg?: string;
@@ -134,6 +144,9 @@ USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
   stellar-toml-lint audit-clawbacks --asset <code:issuer> [--horizon <url>] [--format json|markdown]
                                          Generate a clawback audit trail from Horizon
+  stellar-toml-lint dispatch-alert --webhook <url> --type slack|discord|pagerduty
+                                   [--severity critical|error|warning|info] [--title <text>]
+                                   Dispatch an incident, or --resolve to close it
   stellar-toml-lint "configs/**/*.toml"  Lint a glob — quote it so the shell
                                          passes the pattern through instead of
                                          expanding it (or failing to)
@@ -175,6 +188,12 @@ OPTIONS
                           Verify complaints, dispute, jurisdiction and license
                           disclosures and print a scorecard (add --check-network
                           to probe the dispute URL)
+      --audit-offline-pwa <path>
+                          Audit a Service Worker script (or manifest.json) for offline
+                          precaching, cache versioning, and PWA manifest requirements
+      --audit-edge-compatibility <path>
+                          Check a bundle for Node-only APIs and measure its cold start
+                          and heap against Cloudflare Workers limits
       --audit-kyc-fsm     Audit SEP-12 customer status state machines advertised by
                           KYC_SERVER and DIRECT_PAYMENT_SERVER (use with --domain)
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
@@ -326,8 +345,126 @@ async function auditClawbacks(args: string[]): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint dispatch-alert --webhook <url> --type slack|discord|pagerduty ...` */
+async function dispatchAlert(args: string[]): Promise<number> {
+  let webhook: string | undefined;
+  let type: IncidentChannel | undefined;
+  let severity: IncidentSeverity = 'warning';
+  let title = 'stellar-toml-lint alert';
+  let summary: string | undefined;
+  let source: string | undefined;
+  let rule: string | undefined;
+  let dedupKey: string | undefined;
+  let routingKey: string | undefined;
+  let throttleMs: number | undefined;
+  let resolved = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--webhook') webhook = requireValue(args, ++i, arg);
+    else if (arg === '--type') type = requireValue(args, ++i, arg) as IncidentChannel;
+    else if (arg === '--severity') severity = requireValue(args, ++i, arg) as IncidentSeverity;
+    else if (arg === '--title') title = requireValue(args, ++i, arg);
+    else if (arg === '--summary') summary = requireValue(args, ++i, arg);
+    else if (arg === '--source') source = requireValue(args, ++i, arg);
+    else if (arg === '--rule') rule = requireValue(args, ++i, arg);
+    else if (arg === '--dedup-key') dedupKey = requireValue(args, ++i, arg);
+    else if (arg === '--routing-key') routingKey = requireValue(args, ++i, arg);
+    else if (arg === '--throttle-ms') throttleMs = Number(requireValue(args, ++i, arg));
+    else if (arg === '--resolve') resolved = true;
+    else {
+      process.stderr.write(`Unknown option ${arg} for dispatch-alert\n`);
+      return 2;
+    }
+  }
+
+  if (webhook === undefined || type === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint dispatch-alert --webhook <url> --type slack|discord|pagerduty ' +
+        '[--severity critical|error|warning|info] [--title <text>] [--resolve]\n',
+    );
+    return 2;
+  }
+  if (type !== 'slack' && type !== 'discord' && type !== 'pagerduty') {
+    process.stderr.write(`Unknown alert type "${type}". Expected slack, discord, or pagerduty.\n`);
+    return 2;
+  }
+
+  const dispatcher = new IncidentWebhookDispatcher({
+    ...(throttleMs !== undefined ? { throttleMs } : {}),
+  });
+  const targets = {
+    ...(type === 'slack'
+      ? { slack: webhook }
+      : type === 'discord'
+        ? { discord: webhook }
+        : { pagerduty: webhook }),
+    ...(routingKey !== undefined ? { pagerdutyRoutingKey: routingKey } : {}),
+  };
+  const incident = {
+    title,
+    severity,
+    ...(summary !== undefined ? { summary } : {}),
+    ...(source !== undefined ? { source } : {}),
+    ...(rule !== undefined ? { rule } : {}),
+    ...(dedupKey !== undefined ? { dedupKey } : {}),
+  };
+
+  const deliveries = resolved
+    ? await dispatcher.resolve(incident, targets)
+    : await dispatcher.dispatch(incident, targets, { force: true });
+  process.stdout.write(renderIncidentReport(deliveries));
+  return deliveries.every((delivery) => delivery.ok) ? 0 : 1;
+}
+
+/** `stellar-toml-lint --audit-offline-pwa <sw.js|manifest.json>` */
+async function auditOfflinePwa(input: string): Promise<number> {
+  const path = resolve(input);
+  const readOptional = async (candidate: string): Promise<string | undefined> => {
+    try {
+      return await readFile(candidate, 'utf8');
+    } catch {
+      return undefined;
+    }
+  };
+
+  try {
+    const source = await readFile(path, 'utf8');
+    const isManifest = path.toLowerCase().endsWith('.json');
+    const serviceWorkerSource = isManifest
+      ? ((await readOptional(resolve(dirname(path), 'sw.js'))) ??
+        (await readOptional(resolve(dirname(path), 'service-worker.js'))) ??
+        '')
+      : source;
+    const manifestSource = isManifest
+      ? source
+      : ((await readOptional(resolve(dirname(path), 'manifest.json'))) ?? '{}');
+
+    const result = validateOfflinePwa(serviceWorkerSource, manifestSource);
+    process.stdout.write(renderOfflineReport(result));
+    return result.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint --audit-edge-compatibility <bundle.js>` */
+async function auditEdgeCompatibility(input: string): Promise<number> {
+  try {
+    const source = await readFile(resolve(input), 'utf8');
+    const result = verifyEdgeCompatibility(source);
+    process.stdout.write(renderEdgeReport(result));
+    return result.compatible ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
+  if (argv[0] === 'dispatch-alert') return dispatchAlert(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -338,8 +475,9 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
-  if (cli.runSandboxedPlugin !== undefined) {
-    return runSandboxedPlugin(cli.runSandboxedPlugin, cli.sandboxFuel);
+  if (cli.auditOfflinePwa !== undefined) return auditOfflinePwa(cli.auditOfflinePwa);
+  if (cli.auditEdgeCompatibility !== undefined) {
+    return auditEdgeCompatibility(cli.auditEdgeCompatibility);
   }
 
   const color = cli.color ?? shouldUseColor();
@@ -923,6 +1061,14 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-kyc-fsm':
         cli.auditKycFsm = true;
+        break;
+
+      case '--audit-offline-pwa':
+        cli.auditOfflinePwa = requireValue(argv, ++i, arg);
+        break;
+
+      case '--audit-edge-compatibility':
+        cli.auditEdgeCompatibility = requireValue(argv, ++i, arg);
         break;
 
       case '--crawl-peers':

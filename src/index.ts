@@ -136,6 +136,87 @@ export type {
   Severity,
   TlsSession,
 } from './types.js';
+export {
+  ServiceWorkerOfflineValidator,
+  validateOfflinePwa,
+  simulateOfflineLint,
+  parseServiceWorker,
+  parseManifest,
+  parseCacheNames,
+  isVersionedCacheName,
+  renderOfflineReport,
+  swOfflineRuleIds,
+} from './wasm/swValidator.js';
+export type {
+  ManifestAnalysis,
+  OfflineFinding,
+  OfflineFindingCode,
+  OfflineValidationOptions,
+  OfflineValidationResult,
+  PwaIcon,
+  ServiceWorkerAnalysis,
+} from './wasm/swValidator.js';
+export {
+  WebWorkerLinterEngine,
+  createLinterEngine,
+  registerWorkerFactory,
+  encodeLintSource,
+  decodeLintSource,
+  encodeLintResponse,
+  decodeLintResponse,
+  defaultPoolSize,
+  workersAvailable,
+} from './wasm/workerEngine.js';
+export type {
+  LintJob,
+  LintJobOutcome,
+  LintWorkerMessage,
+  LintWorkerResponse,
+  WorkerEngineOptions,
+  WorkerEngineStats,
+  WorkerFactory,
+  WorkerPort,
+} from './wasm/workerEngine.js';
+export {
+  EdgeRuntimeVerifier,
+  verifyEdgeCompatibility,
+  createEdgeIsolateScope,
+  checkEdgeWebApis,
+  readEdgeStream,
+  renderEdgeReport,
+  DEFAULT_EDGE_THRESHOLDS,
+  EDGE_WEB_APIS,
+} from './wasm/edgeRuntimeVerifier.js';
+export type {
+  EdgeBenchmark,
+  EdgeFinding,
+  EdgeThresholds,
+  EdgeVerificationOptions,
+  EdgeVerificationResult,
+} from './wasm/edgeRuntimeVerifier.js';
+export {
+  IncidentWebhookDispatcher,
+  formatSlackIncident,
+  formatDiscordIncident,
+  formatPagerDutyIncident,
+  formatIncident,
+  dedupKeyFor,
+  routesFor,
+  isSupportedIncidentUrl,
+  renderIncidentReport,
+  SEVERITY_ROUTES,
+} from './gitops/incidentDispatcher.js';
+export type {
+  Incident,
+  IncidentChannel,
+  IncidentDelivery,
+  IncidentSeverity,
+  IncidentTargets,
+  DispatcherOptions,
+  SlackIncidentPayload,
+  DiscordIncidentPayload,
+  PagerDutyIncidentPayload,
+} from './gitops/incidentDispatcher.js';
 export { SPEC_URL } from './spec.js';
 export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
