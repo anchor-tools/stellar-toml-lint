@@ -96,6 +96,13 @@ import { generateCompletion, isCompletionShell } from './completion.js';
 import { WasiSandboxRunner } from './wasm/wasiRunner.js';
 import { WasiSandboxError } from './wasm/errors.js';
 import { WasmHeapProfiler } from './wasm/heapProfiler.js';
+import { auditWasmBinary, renderSimdReport } from './wasm/simdAuditor.js';
+import { renderStreamingReport, WasmStreamingVerifier } from './wasm/streamingVerifier.js';
+import {
+  DirectorySyncVerifier,
+  parseDirectoryFeed,
+  renderDirectorySyncReport,
+} from './protocols/directorySyncVerifier.js';
 import { isWasmMemory, wasmRuntime } from './wasm/wasmApi.js';
 import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
 
@@ -149,6 +156,7 @@ interface Cli {
   lsp?: boolean;
   runSandboxedPlugin?: string;
   sandboxFuel?: number;
+  verifyWasmStreaming?: string;
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -169,6 +177,12 @@ USAGE
   cat stellar.toml | stellar-toml-lint - Lint stdin
   stellar-toml-lint profile-wasm-heap --wasm <plugin.wasm> --iterations <n>
                                          Run a plugin repeatedly and report heap growth
+  stellar-toml-lint sync-directory --feed <url|file> [--format text|json]
+                                         Diff a multi-tenant anchor directory feed
+                                         against each anchor's live stellar.toml
+  stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]
+                                         Audit a WASM binary for SIMD opcodes and
+                                         unbounded memory growth
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -238,6 +252,9 @@ OPTIONS
       --graph-validators  Include validators in diagram
       --graph-color       Color nodes by protocol type
       --policy <file>     Evaluate enterprise policy file (JSON or YAML)
+      --verify-wasm-streaming <url>
+                          Check that a .wasm URL is served as application/wasm and
+                          benchmark instantiateStreaming against buffered compile
       --run-sandboxed-plugin <file.wasm>
                           Run a third-party validator plugin inside the WASI
                           preview 1 capability sandbox: in-memory files only,
@@ -485,6 +502,122 @@ async function auditEdgeCompatibility(input: string): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint sync-directory --feed <url|file> [--format text|json]` */
+async function syncDirectory(args: string[]): Promise<number> {
+  let feed: string | undefined;
+  let format: 'text' | 'json' = 'text';
+  let concurrency = 8;
+  let timeoutMs = 10_000;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--feed') feed = requireValue(args, ++i, arg);
+    else if (arg === '--format') {
+      const value = requireValue(args, ++i, arg);
+      if (value !== 'text' && value !== 'json') {
+        process.stderr.write(`Unknown format "${value}". Expected text or json.\n`);
+        return 2;
+      }
+      format = value;
+    } else if (arg === '--concurrency') {
+      const value = Number(requireValue(args, ++i, arg));
+      if (!Number.isInteger(value) || value < 1) {
+        process.stderr.write('--concurrency expects a positive integer.\n');
+        return 2;
+      }
+      concurrency = value;
+    } else if (arg === '--timeout') {
+      const value = Number(requireValue(args, ++i, arg));
+      if (!Number.isFinite(value) || value <= 0) {
+        process.stderr.write('--timeout expects a positive number of milliseconds.\n');
+        return 2;
+      }
+      timeoutMs = value;
+    } else {
+      process.stderr.write(`Unknown option ${arg} for sync-directory\n`);
+      return 2;
+    }
+  }
+
+  if (feed === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint sync-directory --feed <url|file> [--format text|json] ' +
+        '[--concurrency <n>] [--timeout <ms>]\n',
+    );
+    return 2;
+  }
+
+  try {
+    let payload: unknown;
+    if (/^https?:\/\//i.test(feed)) {
+      const response = await fetch(feed);
+      if (!response.ok) throw new Error(`Could not fetch ${feed}: HTTP ${response.status}`);
+      payload = await response.json();
+    } else {
+      payload = JSON.parse(await readFile(resolve(feed), 'utf8'));
+    }
+
+    const parsedFeed = parseDirectoryFeed(payload);
+    const report = await new DirectorySyncVerifier({ concurrency, timeoutMs }).verify(
+      parsedFeed.anchors,
+      feed,
+    );
+    process.stdout.write(
+      format === 'json'
+        ? `${JSON.stringify(report, null, 2)}\n`
+        : renderDirectorySyncReport(report),
+    );
+    for (const problem of parsedFeed.problems) process.stderr.write(`feed: ${problem}\n`);
+    return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]` */
+async function auditWasmSimd(args: string[]): Promise<number> {
+  let file: string | undefined;
+  let json = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--json') json = true;
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-wasm-simd\n`);
+      return 2;
+    }
+  }
+
+  if (file === undefined) {
+    process.stderr.write('Usage: stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]\n');
+    return 2;
+  }
+
+  try {
+    const bytes = new Uint8Array(await readFile(resolve(file)));
+    const report = auditWasmBinary(bytes, { file });
+    process.stdout.write(json ? `${JSON.stringify(report, null, 2)}\n` : renderSimdReport(report));
+    return report.findings.some((finding) => finding.severity === 'error') ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint --verify-wasm-streaming <url>` */
+async function verifyWasmStreaming(url: string): Promise<number> {
+  try {
+    const result = await new WasmStreamingVerifier().verify(url);
+    process.stdout.write(renderStreamingReport(result));
+    return result.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 /** `stellar-toml-lint audit-coop-coep --url <web_app_url>` */
 async function auditCoopCoep(args: string[]): Promise<number> {
   let url: string | undefined;
@@ -586,6 +719,8 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-coop-coep') return auditCoopCoep(argv.slice(1));
   if (argv[0] === 'verify-federation-sync') return verifyFederationSyncCommand(argv.slice(1));
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
+  if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
+  if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -599,6 +734,9 @@ async function main(argv: string[]): Promise<number> {
   if (cli.auditOfflinePwa !== undefined) return auditOfflinePwa(cli.auditOfflinePwa);
   if (cli.auditEdgeCompatibility !== undefined) {
     return auditEdgeCompatibility(cli.auditEdgeCompatibility);
+  }
+  if (cli.verifyWasmStreaming !== undefined) {
+    return verifyWasmStreaming(cli.verifyWasmStreaming);
   }
 
   const color = cli.color ?? shouldUseColor();
@@ -1195,6 +1333,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-edge-compatibility':
         cli.auditEdgeCompatibility = requireValue(argv, ++i, arg);
+        break;
+
+      case '--verify-wasm-streaming':
+        cli.verifyWasmStreaming = requireValue(argv, ++i, arg);
         break;
 
       case '--crawl-peers':
