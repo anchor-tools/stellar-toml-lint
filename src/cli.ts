@@ -38,6 +38,10 @@ import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkSep10ClientDomain } from './protocols/sep10-client-domain.js';
 import { auditQuoteBinding } from './protocols/quote-binding-auditor.js';
 import { validateUnicode } from './cst/unicodeValidator.js';
+import {
+  auditConsumerProtection,
+  renderScorecard,
+} from './protocols/consumerProtectionVerifier.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
@@ -86,6 +90,7 @@ interface Cli {
   verifySep10: boolean;
   auditQuotes: boolean;
   auditUnicodeSecurity: boolean;
+  auditConsumerProtection: boolean;
   crawlPeers: boolean;
   verifyDnssec: boolean;
   badgeSvg?: string;
@@ -147,6 +152,10 @@ OPTIONS
       --audit-unicode-security
                           Detect bidi overrides, invisible characters, homoglyph
                           spoofing, and malformed language tags in string values
+      --audit-consumer-protection
+                          Verify complaints, dispute, jurisdiction and license
+                          disclosures and print a scorecard (add --check-network
+                          to probe the dispute URL)
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
@@ -233,11 +242,20 @@ EXAMPLES
 async function runExtraAudits(
   cli: Cli,
   parsed: Record<string, unknown>,
-  _fetchImpl: typeof fetch,
+  fetchImpl: typeof fetch,
   rules: RuleOverrides,
 ): Promise<Diagnostic[]> {
   const out: Diagnostic[] = [];
   if (cli.auditUnicodeSecurity) out.push(...validateUnicode(parsed, { rules }));
+  if (cli.auditConsumerProtection) {
+    const result = await auditConsumerProtection(parsed, fetchImpl, {
+      rules,
+      checkReachability: cli.checkNetwork,
+    });
+    out.push(...result.diagnostics);
+    // stderr keeps machine-readable stdout formats parseable.
+    process.stderr.write(renderScorecard(result.scorecard));
+  }
   return out;
 }
 
@@ -727,6 +745,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     verifySep10: false,
     auditQuotes: false,
     auditUnicodeSecurity: false,
+    auditConsumerProtection: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -823,6 +842,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-unicode-security':
         cli.auditUnicodeSecurity = true;
+        break;
+
+      case '--audit-consumer-protection':
+        cli.auditConsumerProtection = true;
         break;
 
       case '--crawl-peers':

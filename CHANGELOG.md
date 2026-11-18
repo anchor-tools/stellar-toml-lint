@@ -9,6 +9,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--audit-consumer-protection` (`src/protocols/consumerProtectionVerifier.ts`): checks that
+  `[DOCUMENTATION.ORG_LEGAL]` (or `[DOCUMENTATION]`) declares `ORG_COMPLAINTS_EMAIL`,
+  `ORG_DISPUTE_RESOLUTION_URL`, `ORG_JURISDICTION` and `ORG_LICENSES`
+  (`consumerprotection/missing-field`, `consumerprotection/invalid-field`), probes the dispute URL
+  for a 200 OK with readable content under `--check-network`
+  (`consumerprotection/dispute-url-unreachable`), and prints a transparency scorecard.
+
 - `--audit-unicode-security` (`src/cst/unicodeValidator.ts`): scans every key and string value
   for bidirectional override characters (`unicode/bidi-override`, error), zero-width and invisible
   formatting characters (`unicode/invisible-character`), Cyrillic/Greek homoglyphs in domains and
