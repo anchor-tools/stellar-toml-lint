@@ -18,7 +18,7 @@
             installFlags = [ "--ignore-scripts" ];
             # Recompute after changing package-lock.json with:
             # nix run nixpkgs#prefetch-npm-deps -- package-lock.json
-            npmDepsHash = "sha256-Q42QhZ4P7gD62LaOGGBUtZErbgfqN2zGtQlMWwF5sps=";
+            npmDepsHash = "sha256-KBBW7pONEoizjzmJw5cnr9bVQnFIzm0GJDrg72KVa7Y=";
             nativeBuildInputs = with pkgs; [
               nodejs_22
               python3

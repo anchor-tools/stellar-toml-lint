@@ -101,7 +101,7 @@ export function formatHealthCheckTable(results: HealthCheckResult[], color: bool
     const statusText = r.statusCode ? String(r.statusCode).padEnd(6) : 'ERR   ';
     const latencyText = `${r.latencyMs}ms`.padEnd(7);
 
-    let badge = '';
+    let badge: string;
     if (r.error || (r.statusCode && r.statusCode >= 400)) {
       badge = c.red('FAIL');
     } else if (r.latencyMs < 200) {

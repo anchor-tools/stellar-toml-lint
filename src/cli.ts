@@ -37,6 +37,19 @@ import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkSep10ClientDomain } from './protocols/sep10-client-domain.js';
 import { auditQuoteBinding } from './protocols/quote-binding-auditor.js';
+import { auditKycStateMachines, renderKycDiagram } from './protocols/kycTierAuditor.js';
+import {
+  ClawbackAuditTrailGenerator,
+  DEFAULT_HORIZON,
+  parseAsset,
+  renderClawbackJson,
+  renderClawbackMarkdown,
+} from './protocols/clawbackAuditGenerator.js';
+import { validateUnicode } from './cst/unicodeValidator.js';
+import {
+  auditConsumerProtection,
+  renderScorecard,
+} from './protocols/consumerProtectionVerifier.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
@@ -84,6 +97,9 @@ interface Cli {
   followLinks: boolean;
   verifySep10: boolean;
   auditQuotes: boolean;
+  auditUnicodeSecurity: boolean;
+  auditConsumerProtection: boolean;
+  auditKycFsm: boolean;
   crawlPeers: boolean;
   verifyDnssec: boolean;
   badgeSvg?: string;
@@ -110,6 +126,8 @@ Validate a Stellar Info File (stellar.toml) against SEP-1 — offline.
 
 USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
+  stellar-toml-lint audit-clawbacks --asset <code:issuer> [--horizon <url>] [--format json|markdown]
+                                         Generate a clawback audit trail from Horizon
   stellar-toml-lint "configs/**/*.toml"  Lint a glob — quote it so the shell
                                          passes the pattern through instead of
                                          expanding it (or failing to)
@@ -142,6 +160,15 @@ OPTIONS
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --audit-quotes      Book an ANCHOR_QUOTE_SERVER SEP-38 quote and execute it on
                           TRANSFER_SERVER to verify atomic price and fee execution
+      --audit-unicode-security
+                          Detect bidi overrides, invisible characters, homoglyph
+                          spoofing, and malformed language tags in string values
+      --audit-consumer-protection
+                          Verify complaints, dispute, jurisdiction and license
+                          disclosures and print a scorecard (add --check-network
+                          to probe the dispute URL)
+      --audit-kyc-fsm     Audit SEP-12 customer status state machines advertised by
+                          KYC_SERVER and DIRECT_PAYMENT_SERVER (use with --domain)
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
@@ -224,7 +251,69 @@ EXAMPLES
     --mock-fixtures ./test/fixtures/network
 `;
 
+/** Opt-in audits that run on the parsed document, on top of the standard rules. */
+async function runExtraAudits(
+  cli: Cli,
+  parsed: Record<string, unknown>,
+  fetchImpl: typeof fetch,
+  rules: RuleOverrides,
+): Promise<Diagnostic[]> {
+  const out: Diagnostic[] = [];
+  if (cli.auditUnicodeSecurity) out.push(...validateUnicode(parsed, { rules }));
+  if (cli.auditConsumerProtection) {
+    const result = await auditConsumerProtection(parsed, fetchImpl, {
+      rules,
+      checkReachability: cli.checkNetwork,
+    });
+    out.push(...result.diagnostics);
+    // stderr keeps machine-readable stdout formats parseable.
+    process.stderr.write(renderScorecard(result.scorecard));
+  }
+  if (cli.auditKycFsm) {
+    const result = await auditKycStateMachines(parsed, fetchImpl, { rules });
+    out.push(...result.diagnostics);
+    for (const model of result.models) process.stderr.write(renderKycDiagram(model));
+  }
+  return out;
+}
+
+/** `stellar-toml-lint audit-clawbacks --asset CODE:ISSUER [--horizon <url>] [--format json|markdown]` */
+async function auditClawbacks(args: string[]): Promise<number> {
+  let asset: string | undefined;
+  let horizon = DEFAULT_HORIZON;
+  let format = 'markdown';
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--asset') asset = requireValue(args, ++i, arg);
+    else if (arg === '--horizon') horizon = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-clawbacks\n`);
+      return 2;
+    }
+  }
+  if (asset === undefined || (format !== 'json' && format !== 'markdown')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-clawbacks --asset <code:issuer> [--horizon <url>] [--format json|markdown]\n',
+    );
+    return 2;
+  }
+  try {
+    const report = await new ClawbackAuditTrailGenerator(fetch, horizon).generate(
+      parseAsset(asset),
+    );
+    process.stdout.write(
+      format === 'json' ? renderClawbackJson(report) : renderClawbackMarkdown(report),
+    );
+    return report.unreferenced > 0 ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
+  if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -298,6 +387,16 @@ async function main(argv: string[]): Promise<number> {
             );
           }
         }
+        if (domainResult.parsed) {
+          const extra = await runExtraAudits(cli, domainResult.parsed, fetchImpl, rules);
+          if (extra.length > 0) {
+            domainResult = finalize(
+              [...domainResult.diagnostics, ...extra],
+              { strict },
+              domainResult.parsed,
+            );
+          }
+        }
         results.push({ name: cli.domain, result: domainResult });
       } else {
         const paths = await expandInputs(cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH]);
@@ -315,6 +414,17 @@ async function main(argv: string[]): Promise<number> {
             checkNetwork: cli.checkNetwork,
             ...(cli.domain ? { domain: cli.domain } : {}),
           });
+
+          if (fileResult.parsed) {
+            const extra = await runExtraAudits(cli, fileResult.parsed, fetchImpl, rules);
+            if (extra.length > 0) {
+              fileResult = finalize(
+                [...fileResult.diagnostics, ...extra],
+                { strict: fileStrict },
+                fileResult.parsed,
+              );
+            }
+          }
 
           if (
             fileResult.parsed &&
@@ -688,6 +798,9 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     followLinks: false,
     verifySep10: false,
     auditQuotes: false,
+    auditUnicodeSecurity: false,
+    auditConsumerProtection: false,
+    auditKycFsm: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -719,7 +832,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         return 'handled';
 
       case '--completion': {
-        const shell = requireValue(argv, ++i, arg);
+        const shell = requireValue(argv, i + 1, arg);
         if (!isCompletionShell(shell)) {
           throw new Error(`Unknown shell "${shell}". Expected bash, zsh, or fish.`);
         }
@@ -780,6 +893,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-quotes':
         cli.auditQuotes = true;
+        break;
+
+      case '--audit-unicode-security':
+        cli.auditUnicodeSecurity = true;
+        break;
+
+      case '--audit-consumer-protection':
+        cli.auditConsumerProtection = true;
+        break;
+
+      case '--audit-kyc-fsm':
+        cli.auditKycFsm = true;
         break;
 
       case '--crawl-peers':

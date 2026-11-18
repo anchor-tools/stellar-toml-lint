@@ -136,14 +136,18 @@ function readFixture(file: string, relative: string): ResolvedFixture {
   try {
     raw = readFileSync(file, 'utf8');
   } catch (error) {
-    throw new Error(`Mock fixture ${file} could not be read: ${messageOf(error)}`);
+    throw new Error(`Mock fixture ${file} could not be read: ${messageOf(error)}`, {
+      cause: error,
+    });
   }
 
   let value: unknown;
   try {
     value = JSON.parse(raw);
   } catch (error) {
-    throw new Error(`Mock fixture ${file} is not valid JSON: ${messageOf(error)}`);
+    throw new Error(`Mock fixture ${file} is not valid JSON: ${messageOf(error)}`, {
+      cause: error,
+    });
   }
 
   if (isRecord(value) && 'body' in value) {
