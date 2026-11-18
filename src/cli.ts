@@ -79,6 +79,10 @@ import { createFixtureFetch } from './mock-fixtures.js';
 import { runLspServer } from './lsp/server.js';
 import { getTomlJsonSchema } from './schema.js';
 import { generateCompletion, isCompletionShell } from './completion.js';
+import { WasiSandboxRunner } from './wasm/wasiRunner.js';
+import { WasiSandboxError } from './wasm/errors.js';
+import { WasmHeapProfiler } from './wasm/heapProfiler.js';
+import { isWasmMemory, wasmRuntime } from './wasm/wasmApi.js';
 import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
 
 const VERSION = '0.1.0';
@@ -128,6 +132,8 @@ interface Cli {
   policy?: string;
   mockFixtures?: string;
   lsp?: boolean;
+  runSandboxedPlugin?: string;
+  sandboxFuel?: number;
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -146,6 +152,8 @@ USAGE
                                          expanding it (or failing to)
   stellar-toml-lint --domain <domain>    Fetch and lint https://<domain>/.well-known/stellar.toml
   cat stellar.toml | stellar-toml-lint - Lint stdin
+  stellar-toml-lint profile-wasm-heap --wasm <plugin.wasm> --iterations <n>
+                                         Run a plugin repeatedly and report heap growth
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -212,6 +220,12 @@ OPTIONS
       --graph-validators  Include validators in diagram
       --graph-color       Color nodes by protocol type
       --policy <file>     Evaluate enterprise policy file (JSON or YAML)
+      --run-sandboxed-plugin <file.wasm>
+                          Run a third-party validator plugin inside the WASI
+                          preview 1 capability sandbox: in-memory files only,
+                          no host filesystem, fuel-metered execution
+      --sandbox-fuel <n>  Instruction budget for --run-sandboxed-plugin
+                          (default 5000000)
       --json-schema       Print a JSON Schema (Draft 2020-12) for stellar.toml
                           to stdout, for editor autocompletion via schema
                           associations
@@ -1081,6 +1095,19 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.mockFixtures = requireValue(argv, ++i, arg);
         break;
 
+      case '--run-sandboxed-plugin':
+        cli.runSandboxedPlugin = requireValue(argv, ++i, arg);
+        break;
+
+      case '--sandbox-fuel': {
+        const value = Number(requireValue(argv, ++i, arg));
+        if (!Number.isSafeInteger(value) || value <= 0) {
+          throw new Error('--sandbox-fuel expects a positive integer.');
+        }
+        cli.sandboxFuel = value;
+        break;
+      }
+
       case '--webhook-slack':
       case '--webhook-discord': {
         const value = requireValue(argv, ++i, arg);
@@ -1260,6 +1287,134 @@ function message(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+/**
+ * Runs a plugin inside the WASI capability sandbox.
+ *
+ * Anything the sandbox denies is reported even though the guest saw only an
+ * errno: a probe for the host filesystem is worth failing the build over, and
+ * the exit code says so (`1`) rather than hiding it in the output.
+ */
+async function runSandboxedPlugin(path: string, fuel: number | undefined): Promise<number> {
+  const bytes = new Uint8Array(await readFile(path));
+  const runner = new WasiSandboxRunner(fuel === undefined ? {} : { fuel });
+
+  try {
+    const result = await runner.run(bytes);
+    process.stdout.write(result.stdout);
+    process.stderr.write(result.stderr);
+    for (const violation of result.violations) {
+      process.stderr.write(`sandbox/violation: ${violation.syscall} — ${violation.detail}\n`);
+    }
+    if (result.violations.length > 0) return 1;
+    return result.exitCode === 0 ? 0 : 1;
+  } catch (error) {
+    if (error instanceof WasiSandboxError) {
+      process.stderr.write(`sandbox/${error.code}: ${error.message}\n`);
+      // A sandbox rejection is a plugin failure; an unreadable or malformed
+      // module is a usage error, the same code as every other bad input.
+      return error.code === 'fuel' || error.code === 'trap' || error.code === 'capability' ? 1 : 2;
+    }
+    throw error;
+  }
+}
+
+const PROFILE_USAGE = `stellar-toml-lint profile-wasm-heap --wasm <file.wasm> [options]
+
+Run a validator plugin repeatedly and report whether its memory stabilises.
+
+OPTIONS
+      --wasm <file>        Module to profile (required)
+      --iterations <n>     Invocations to sample (default 1000)
+      --json               Print the profile as JSON
+      --svg <file>         Write the heap growth curve as SVG
+`;
+
+async function runHeapProfileCommand(argv: string[]): Promise<number> {
+  let wasmPath: string | undefined;
+  let iterations = 1_000;
+  let json = false;
+  let svg: string | undefined;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    switch (arg) {
+      case '-h':
+      case '--help':
+        process.stdout.write(PROFILE_USAGE);
+        return 0;
+      case '--wasm':
+        wasmPath = argv[++i];
+        break;
+      case '--iterations': {
+        const value = Number(argv[++i]);
+        if (!Number.isInteger(value) || value < 1) {
+          process.stderr.write('--iterations expects a positive integer.\n');
+          return 2;
+        }
+        iterations = value;
+        break;
+      }
+      case '--json':
+        json = true;
+        break;
+      case '--svg':
+        svg = argv[++i];
+        break;
+      default:
+        process.stderr.write(`Unknown option "${arg}".\n\n${PROFILE_USAGE}`);
+        return 2;
+    }
+  }
+
+  if (wasmPath === undefined) {
+    process.stderr.write(`profile-wasm-heap needs --wasm <file.wasm>.\n\n${PROFILE_USAGE}`);
+    return 2;
+  }
+
+  try {
+    const runtime = wasmRuntime();
+    const compiled = await runtime.compile(new Uint8Array(await readFile(wasmPath)));
+    const pending = runtime.Module.imports(compiled);
+    if (pending.length > 0) {
+      throw new Error(
+        `Module imports ${pending.map((entry) => `${entry.module}.${entry.name}`).join(', ')}; profile-wasm-heap runs self-contained modules only.`,
+      );
+    }
+
+    const instance = await runtime.instantiate(compiled, {});
+    const memory = instance.exports['memory'];
+    if (!isWasmMemory(memory)) {
+      throw new Error('Module exports no memory, so there is no heap to sample.');
+    }
+
+    const entry = ['run', '_start', 'main']
+      .map((name) => instance.exports[name])
+      .find((candidate) => typeof candidate === 'function') as (() => unknown) | undefined;
+    if (entry === undefined) {
+      throw new Error('Module exports no entry point. Expected run, _start, or main.');
+    }
+
+    const profiler = new WasmHeapProfiler();
+    const profile = await profiler.profile(
+      () => {
+        entry();
+      },
+      () => memory.buffer.byteLength,
+      iterations,
+    );
+
+    process.stdout.write(
+      json ? `${JSON.stringify(profile, null, 2)}\n` : profiler.formatReport(profile),
+    );
+    if (svg !== undefined) await writeFile(svg, profiler.renderGrowthCurve(profile));
+
+    return profile.leaked ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
 }
 
 main(process.argv.slice(2))
