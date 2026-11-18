@@ -6,7 +6,8 @@
  * set is small and stable, and a linter that anchors run in CI benefits from a
  * dependency tree small enough to audit by eye.
  */
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { parse as parseToml } from 'smol-toml';
 import { watch } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
@@ -56,6 +57,19 @@ import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
+import { CrossOriginIsolationAuditor, renderIsolationReport } from './wasm/isolationAuditor.js';
+import {
+  BrowserBoundaryVerifier,
+  renderBrowserBoundaryReport,
+} from './wasm/browserBoundaryVerifier.js';
+import {
+  auditFederationSecurity,
+  renderFederationSecurityReport,
+} from './protocols/federationSecurityTester.js';
+import {
+  renderReverseFederationReport,
+  verifyFederationSync,
+} from './protocols/reverseFederationVerifier.js';
 import {
   IncidentWebhookDispatcher,
   renderIncidentReport,
@@ -112,6 +126,7 @@ interface Cli {
   auditUnicodeSecurity: boolean;
   auditConsumerProtection: boolean;
   auditKycFsm: boolean;
+  auditFederationSecurity: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
@@ -196,6 +211,9 @@ OPTIONS
                           and heap against Cloudflare Workers limits
       --audit-kyc-fsm     Audit SEP-12 customer status state machines advertised by
                           KYC_SERVER and DIRECT_PAYMENT_SERVER (use with --domain)
+      --audit-federation-security
+                          Probe FEDERATION_SERVER with non-destructive injection
+                          payloads and check for leaked internals (use with --domain)
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
@@ -306,6 +324,11 @@ async function runExtraAudits(
     const result = await auditKycStateMachines(parsed, fetchImpl, { rules });
     out.push(...result.diagnostics);
     for (const model of result.models) process.stderr.write(renderKycDiagram(model));
+  }
+  if (cli.auditFederationSecurity) {
+    const result = await auditFederationSecurity(parsed, fetchImpl, { rules });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderFederationSecurityReport(result.report));
   }
   return out;
 }
@@ -462,9 +485,107 @@ async function auditEdgeCompatibility(input: string): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint audit-coop-coep --url <web_app_url>` */
+async function auditCoopCoep(args: string[]): Promise<number> {
+  let url: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--url') url = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-coop-coep\n`);
+      return 2;
+    }
+  }
+  if (url === undefined) {
+    process.stderr.write('Usage: stellar-toml-lint audit-coop-coep --url <web_app_url>\n');
+    return 2;
+  }
+
+  try {
+    const report = await new CrossOriginIsolationAuditor().audit(url);
+    process.stdout.write(renderIsolationReport(report));
+    return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint verify-federation-sync --domain <domain>` */
+async function verifyFederationSyncCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for verify-federation-sync\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined) {
+    process.stderr.write('Usage: stellar-toml-lint verify-federation-sync --domain <domain>\n');
+    return 2;
+  }
+
+  try {
+    const url = `https://${domain.replace(/^https?:\/\//, '').replace(/\/+$/, '')}/.well-known/stellar.toml`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      process.stderr.write(`Could not fetch ${url}: HTTP ${response.status}\n`);
+      return 2;
+    }
+    const doc = parseToml(await response.text()) as Record<string, unknown>;
+    const result = await verifyFederationSync(doc);
+    process.stdout.write(renderReverseFederationReport(result.report));
+    return result.report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint verify-browser-bundle [--dir dist/browser]` */
+async function verifyBrowserBundleCommand(args: string[]): Promise<number> {
+  let dir = 'dist/browser';
+  let maxBytes: number | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--dir') dir = requireValue(args, ++i, arg);
+    else if (arg === '--max-bytes') maxBytes = Number(requireValue(args, ++i, arg));
+    else {
+      process.stderr.write(`Unknown option ${arg} for verify-browser-bundle\n`);
+      return 2;
+    }
+  }
+
+  try {
+    const entries = await readdir(resolve(dir), { withFileTypes: true });
+    const files = entries.filter((entry) => entry.isFile() && entry.name.endsWith('.js'));
+    const artifacts = await Promise.all(
+      files.map(async (entry) => ({
+        path: `${dir}/${entry.name}`,
+        source: await readFile(resolve(dir, entry.name), 'utf8'),
+      })),
+    );
+    const verifier = new BrowserBoundaryVerifier({
+      ...(maxBytes !== undefined && Number.isFinite(maxBytes) ? { maxBundleBytes: maxBytes } : {}),
+      requiredFiles: ['index.js'],
+    });
+    const report = verifier.verify(artifacts);
+    process.stdout.write(renderBrowserBoundaryReport(report));
+    return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
   if (argv[0] === 'dispatch-alert') return dispatchAlert(argv.slice(1));
+  if (argv[0] === 'audit-coop-coep') return auditCoopCoep(argv.slice(1));
+  if (argv[0] === 'verify-federation-sync') return verifyFederationSyncCommand(argv.slice(1));
+  if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -957,6 +1078,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditUnicodeSecurity: false,
     auditConsumerProtection: false,
     auditKycFsm: false,
+    auditFederationSecurity: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -1061,6 +1183,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-kyc-fsm':
         cli.auditKycFsm = true;
+        break;
+
+      case '--audit-federation-security':
+        cli.auditFederationSecurity = true;
         break;
 
       case '--audit-offline-pwa':
