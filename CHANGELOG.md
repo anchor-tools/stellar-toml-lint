@@ -9,6 +9,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--audit-unicode-security` (`src/cst/unicodeValidator.ts`): scans every key and string value
+  for bidirectional override characters (`unicode/bidi-override`, error), zero-width and invisible
+  formatting characters (`unicode/invisible-character`), Cyrillic/Greek homoglyphs in domains and
+  asset codes (`unicode/homoglyph-spoofing`, error), and malformed language tags
+  (`unicode/invalid-language-tag`), following Unicode TR #36.
+
 - SEP-42 cross-contract authorization call-tree simulator under `--check-network`
   (`src/soroban/auth-tree-simulator.ts`): the SAC `mint` and `clawback` calls are dry-run with
   `simulateTransaction` in recording mode, and the returned `SorobanAuthorizationEntry` tree is

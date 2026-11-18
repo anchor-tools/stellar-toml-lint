@@ -23,6 +23,7 @@ import { historyPublishRules } from '../history/publish-validator.js';
 import { dnsIntegrityRules } from '../security/dns-integrity.js';
 import { sep10ClientDomainRules } from '../protocols/sep10-client-domain.js';
 import { quoteBindingRules } from '../protocols/quote-binding-auditor.js';
+import { unicodeRules } from '../cst/unicodeValidator.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -52,6 +53,7 @@ export const allRules: Rule[] = [
   ...dnsIntegrityRules,
   ...sep10ClientDomainRules,
   ...quoteBindingRules,
+  ...unicodeRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -80,4 +82,5 @@ export {
   dnsIntegrityRules,
   sep10ClientDomainRules,
   quoteBindingRules,
+  unicodeRules,
 };

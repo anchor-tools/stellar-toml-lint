@@ -136,6 +136,7 @@ it was before.
 | `--check-network`           | Verify accounts, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online |
 | `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                       |
 | `--audit-quotes`            | Book an ANCHOR_QUOTE_SERVER SEP-38 quote and execute it on TRANSFER_SERVER (requires `--check-network`)                 |
+| `--audit-unicode-security`  | Detect bidi overrides, invisible characters, Cyrillic/Greek homoglyphs, and bad language tags in string values          |
 | `--crawl-peers`             | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                 |
 | `--verify-dnssec`           | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                  |
 | `--follow-links`            | Fetch and lint the `toml` pointers in `CURRENCIES` (implied by `--domain`)                                              |

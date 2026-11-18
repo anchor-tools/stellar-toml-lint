@@ -37,6 +37,7 @@ import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkSep10ClientDomain } from './protocols/sep10-client-domain.js';
 import { auditQuoteBinding } from './protocols/quote-binding-auditor.js';
+import { validateUnicode } from './cst/unicodeValidator.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
@@ -84,6 +85,7 @@ interface Cli {
   followLinks: boolean;
   verifySep10: boolean;
   auditQuotes: boolean;
+  auditUnicodeSecurity: boolean;
   crawlPeers: boolean;
   verifyDnssec: boolean;
   badgeSvg?: string;
@@ -142,6 +144,9 @@ OPTIONS
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --audit-quotes      Book an ANCHOR_QUOTE_SERVER SEP-38 quote and execute it on
                           TRANSFER_SERVER to verify atomic price and fee execution
+      --audit-unicode-security
+                          Detect bidi overrides, invisible characters, homoglyph
+                          spoofing, and malformed language tags in string values
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
@@ -224,6 +229,18 @@ EXAMPLES
     --mock-fixtures ./test/fixtures/network
 `;
 
+/** Opt-in audits that run on the parsed document, on top of the standard rules. */
+async function runExtraAudits(
+  cli: Cli,
+  parsed: Record<string, unknown>,
+  _fetchImpl: typeof fetch,
+  rules: RuleOverrides,
+): Promise<Diagnostic[]> {
+  const out: Diagnostic[] = [];
+  if (cli.auditUnicodeSecurity) out.push(...validateUnicode(parsed, { rules }));
+  return out;
+}
+
 async function main(argv: string[]): Promise<number> {
   let cli: Cli;
   try {
@@ -298,6 +315,16 @@ async function main(argv: string[]): Promise<number> {
             );
           }
         }
+        if (domainResult.parsed) {
+          const extra = await runExtraAudits(cli, domainResult.parsed, fetchImpl, rules);
+          if (extra.length > 0) {
+            domainResult = finalize(
+              [...domainResult.diagnostics, ...extra],
+              { strict },
+              domainResult.parsed,
+            );
+          }
+        }
         results.push({ name: cli.domain, result: domainResult });
       } else {
         const paths = await expandInputs(cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH]);
@@ -315,6 +342,17 @@ async function main(argv: string[]): Promise<number> {
             checkNetwork: cli.checkNetwork,
             ...(cli.domain ? { domain: cli.domain } : {}),
           });
+
+          if (fileResult.parsed) {
+            const extra = await runExtraAudits(cli, fileResult.parsed, fetchImpl, rules);
+            if (extra.length > 0) {
+              fileResult = finalize(
+                [...fileResult.diagnostics, ...extra],
+                { strict: fileStrict },
+                fileResult.parsed,
+              );
+            }
+          }
 
           if (
             fileResult.parsed &&
@@ -688,6 +726,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     followLinks: false,
     verifySep10: false,
     auditQuotes: false,
+    auditUnicodeSecurity: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -780,6 +819,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-quotes':
         cli.auditQuotes = true;
+        break;
+
+      case '--audit-unicode-security':
+        cli.auditUnicodeSecurity = true;
         break;
 
       case '--crawl-peers':
