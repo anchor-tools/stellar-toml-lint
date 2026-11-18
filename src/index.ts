@@ -294,6 +294,68 @@ export type {
   PermissionRequest,
   PermissionUsage,
 } from './wasm/denoVerifier.js';
+export {
+  CrossOriginIsolationAuditor,
+  normalizeHeaders,
+  renderDeploymentGuide,
+  renderIsolationReport,
+} from './wasm/isolationAuditor.js';
+export type {
+  IsolationAuditorOptions,
+  IsolationFinding,
+  IsolationFindingCode,
+  IsolationReport,
+  ResourceCheck,
+} from './wasm/isolationAuditor.js';
+export {
+  BrowserBoundaryVerifier,
+  NODE_BUILTINS,
+  extractBundleSpecifiers,
+  isNodeBuiltin,
+  renderBrowserBoundaryReport,
+} from './wasm/browserBoundaryVerifier.js';
+export type {
+  BrowserBoundaryCode,
+  BrowserBoundaryFinding,
+  BrowserBoundaryOptions,
+  BrowserBoundaryReport,
+  BundleArtifact,
+} from './wasm/browserBoundaryVerifier.js';
+export {
+  ERROR_LEAK_PATTERNS,
+  FederationSecurityTester,
+  INJECTION_PROBES,
+  auditFederationSecurity,
+  federationSecurityRuleIds,
+  federationSecurityRules,
+  findLeakedDetail,
+  renderFederationSecurityReport,
+} from './protocols/federationSecurityTester.js';
+export type {
+  FederationProbe,
+  FederationQueryType,
+  FederationSecurityFinding,
+  FederationSecurityOptions,
+  FederationSecurityReport,
+} from './protocols/federationSecurityTester.js';
+export {
+  ReverseFederationVerifier,
+  collectAnchorAccounts,
+  renderReverseFederationReport,
+  reverseFederationRuleIds,
+  reverseFederationRules,
+  validateFederationRecord,
+  validateMemo,
+  verifyFederationSync,
+} from './protocols/reverseFederationVerifier.js';
+export type {
+  FederationRecord,
+  MemoProblem,
+  MemoType,
+  ReverseCheck,
+  ReverseFederationOptions,
+  ReverseFederationReport,
+} from './protocols/reverseFederationVerifier.js';
 export type {
   AuthTreeOptions,
   AuthTreeOperation,

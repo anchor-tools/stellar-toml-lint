@@ -26,6 +26,8 @@ import { quoteBindingRules } from '../protocols/quote-binding-auditor.js';
 import { consumerProtectionRules } from '../protocols/consumerProtectionVerifier.js';
 import { kycTierRules } from '../protocols/kycTierAuditor.js';
 import { unicodeRules } from '../cst/unicodeValidator.js';
+import { federationSecurityRules } from '../protocols/federationSecurityTester.js';
+import { reverseFederationRules } from '../protocols/reverseFederationVerifier.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -58,6 +60,8 @@ export const allRules: Rule[] = [
   ...unicodeRules,
   ...consumerProtectionRules,
   ...kycTierRules,
+  ...federationSecurityRules,
+  ...reverseFederationRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -89,4 +93,6 @@ export {
   unicodeRules,
   consumerProtectionRules,
   kycTierRules,
+  federationSecurityRules,
+  reverseFederationRules,
 };
