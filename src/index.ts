@@ -160,6 +160,59 @@ export {
   UNAUTHORIZED_CROSS_CONTRACT_RULE,
   UNBOUNDED_AUTH_GRANT_RULE,
 } from './soroban/auth-tree-simulator.js';
+export { WasiSandboxRunner, SANDBOX_SYSCALLS, WASI_ERRNO } from './wasm/wasiRunner.js';
+export type {
+  SandboxFileSnapshot,
+  SandboxViolation,
+  VirtualFileInput,
+  WasiSandboxOptions,
+  WasiSandboxResult,
+} from './wasm/wasiRunner.js';
+export { FuelMeterError, WasiSandboxError } from './wasm/errors.js';
+export type { SandboxErrorCode } from './wasm/errors.js';
+export { DEFAULT_FUEL, FUEL_EXPORT_NAME, injectFuelMeter } from './wasm/fuelMeter.js';
+export type { InstrumentedModule } from './wasm/fuelMeter.js';
+export {
+  DEFAULT_LEAK_THRESHOLD_BYTES,
+  DEFAULT_STABLE_WINDOW,
+  WASM_PAGE_BYTES,
+  WasmHeapProfiler,
+} from './wasm/heapProfiler.js';
+export type { HeapProfile, HeapProfilerOptions, HeapSample } from './wasm/heapProfiler.js';
+export { PointerLedger } from './wasm/pointerLedger.js';
+export type { DanglingPointer } from './wasm/pointerLedger.js';
+export {
+  CACHE_DB_VERSION,
+  CACHE_STORES,
+  DEFAULT_CACHE_TTL_MS,
+  DEFAULT_MAX_ENTRIES,
+  IndexedDbSchemaCache,
+} from './wasm/indexedDbCache.js';
+export type {
+  CacheBackend,
+  CacheRecord,
+  CacheSetOptions,
+  CacheStats,
+  CacheStore,
+  IdbFactoryLike,
+  IndexedDbCacheOptions,
+} from './wasm/indexedDbCache.js';
+export {
+  buildDenoManifest,
+  DenoCompatibilityVerifier,
+  extractSpecifiers,
+  permissionFlags,
+} from './wasm/denoVerifier.js';
+export type {
+  DenoCompatibilityFinding,
+  DenoCompatibilityReport,
+  DenoEntryPointReport,
+  DenoFindingKind,
+  DenoVerifierOptions,
+  ImportedSpecifier,
+  PermissionRequest,
+  PermissionUsage,
+} from './wasm/denoVerifier.js';
 export type {
   AuthTreeOptions,
   AuthTreeOperation,
