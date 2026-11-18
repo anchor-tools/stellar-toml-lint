@@ -42,29 +42,24 @@ function errorMessage(error: unknown): string {
  * valid TLS session, or a human-readable reason when it is not.
  */
 async function probeEndpoint(url: string, fetchImpl: typeof fetch): Promise<string | undefined> {
-  let methodRejected = false;
   try {
     const response = await fetchImpl(url, { method: 'HEAD', redirect: 'follow' });
     if (response.ok) return undefined;
     if (response.status !== 405 && response.status !== 501) {
       return `ORG_URL at ${url} returned HTTP ${response.status}`;
     }
-    methodRejected = true;
   } catch (error) {
     return `Could not reach ORG_URL at ${url}: ${errorMessage(error)}`;
   }
 
-  if (methodRejected) {
-    try {
-      const response = await fetchImpl(url, { method: 'GET', redirect: 'follow' });
-      if (response.ok) return undefined;
-      return `ORG_URL at ${url} returned HTTP ${response.status}`;
-    } catch (error) {
-      return `Could not reach ORG_URL at ${url}: ${errorMessage(error)}`;
-    }
+  // Only a 405/501 on HEAD reaches here; retry with GET.
+  try {
+    const response = await fetchImpl(url, { method: 'GET', redirect: 'follow' });
+    if (response.ok) return undefined;
+    return `ORG_URL at ${url} returned HTTP ${response.status}`;
+  } catch (error) {
+    return `Could not reach ORG_URL at ${url}: ${errorMessage(error)}`;
   }
-
-  return undefined;
 }
 
 /**

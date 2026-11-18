@@ -9,6 +9,31 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `stellar-toml-lint audit-clawbacks --asset <code:issuer>` (`src/protocols/clawbackAuditGenerator.ts`):
+  scans the issuer's Horizon history for `clawback` and `clawback_claimable_balance` operations,
+  verifies each carries an audit memo reference, and generates JSON and Markdown audit trail reports
+  with exact stroop precision.
+
+- `--audit-kyc-fsm --domain <domain>` (`src/protocols/kycTierAuditor.ts`): reads the customer
+  types advertised by SEP-31 `/info`, observes the SEP-12 `/customer` status for each, and audits the
+  status state machine against the four SEP-12 statuses: `sep12/unknown-customer-status`,
+  `sep12/status-missing-next-action`, `sep12/circular-status-transition`,
+  `sep12/nondeterministic-status-transition` and `sep12/unreachable-status`. Transition diagrams are
+  printed to stderr.
+
+- `--audit-consumer-protection` (`src/protocols/consumerProtectionVerifier.ts`): checks that
+  `[DOCUMENTATION.ORG_LEGAL]` (or `[DOCUMENTATION]`) declares `ORG_COMPLAINTS_EMAIL`,
+  `ORG_DISPUTE_RESOLUTION_URL`, `ORG_JURISDICTION` and `ORG_LICENSES`
+  (`consumerprotection/missing-field`, `consumerprotection/invalid-field`), probes the dispute URL
+  for a 200 OK with readable content under `--check-network`
+  (`consumerprotection/dispute-url-unreachable`), and prints a transparency scorecard.
+
+- `--audit-unicode-security` (`src/cst/unicodeValidator.ts`): scans every key and string value
+  for bidirectional override characters (`unicode/bidi-override`, error), zero-width and invisible
+  formatting characters (`unicode/invisible-character`), Cyrillic/Greek homoglyphs in domains and
+  asset codes (`unicode/homoglyph-spoofing`, error), and malformed language tags
+  (`unicode/invalid-language-tag`), following Unicode TR #36.
+
 - SEP-42 cross-contract authorization call-tree simulator under `--check-network`
   (`src/soroban/auth-tree-simulator.ts`): the SAC `mint` and `clawback` calls are dry-run with
   `simulateTransaction` in recording mode, and the returned `SorobanAuthorizationEntry` tree is

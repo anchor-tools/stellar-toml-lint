@@ -142,7 +142,7 @@ function validate(path: string, content: string): ProjectConfig {
     raw = JSON.parse(content);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Malformed JSON in ${path}: ${detail}`);
+    throw new Error(`Malformed JSON in ${path}: ${detail}`, { cause: error });
   }
 
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
