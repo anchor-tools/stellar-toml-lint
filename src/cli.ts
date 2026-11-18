@@ -38,6 +38,13 @@ import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkSep10ClientDomain } from './protocols/sep10-client-domain.js';
 import { auditQuoteBinding } from './protocols/quote-binding-auditor.js';
 import { auditKycStateMachines, renderKycDiagram } from './protocols/kycTierAuditor.js';
+import {
+  ClawbackAuditTrailGenerator,
+  DEFAULT_HORIZON,
+  parseAsset,
+  renderClawbackJson,
+  renderClawbackMarkdown,
+} from './protocols/clawbackAuditGenerator.js';
 import { validateUnicode } from './cst/unicodeValidator.js';
 import {
   auditConsumerProtection,
@@ -119,6 +126,8 @@ Validate a Stellar Info File (stellar.toml) against SEP-1 — offline.
 
 USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
+  stellar-toml-lint audit-clawbacks --asset <code:issuer> [--horizon <url>] [--format json|markdown]
+                                         Generate a clawback audit trail from Horizon
   stellar-toml-lint "configs/**/*.toml"  Lint a glob — quote it so the shell
                                          passes the pattern through instead of
                                          expanding it (or failing to)
@@ -268,7 +277,43 @@ async function runExtraAudits(
   return out;
 }
 
+/** `stellar-toml-lint audit-clawbacks --asset CODE:ISSUER [--horizon <url>] [--format json|markdown]` */
+async function auditClawbacks(args: string[]): Promise<number> {
+  let asset: string | undefined;
+  let horizon = DEFAULT_HORIZON;
+  let format = 'markdown';
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--asset') asset = requireValue(args, ++i, arg);
+    else if (arg === '--horizon') horizon = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-clawbacks\n`);
+      return 2;
+    }
+  }
+  if (asset === undefined || (format !== 'json' && format !== 'markdown')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-clawbacks --asset <code:issuer> [--horizon <url>] [--format json|markdown]\n',
+    );
+    return 2;
+  }
+  try {
+    const report = await new ClawbackAuditTrailGenerator(fetch, horizon).generate(
+      parseAsset(asset),
+    );
+    process.stdout.write(
+      format === 'json' ? renderClawbackJson(report) : renderClawbackMarkdown(report),
+    );
+    return report.unreferenced > 0 ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
+  if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);

@@ -125,6 +125,15 @@ The exit code is `1` when any file fails and `0` when they all pass. The summary
 `text` reporter only, so `-f json`, `-f sarif`, and `-f junit` output stays exactly as parseable as
 it was before.
 
+### Clawback audit trail
+
+`stellar-toml-lint audit-clawbacks --asset <code:issuer> [--horizon <url>] [--format json|markdown]`
+reads the issuer's `clawback` and `clawback_claimable_balance` operations from Horizon, checks that
+each transaction memo carries an audit reference (a URL, a 64-hex hash, a hash memo, or a
+`LEGAL:`/`ORDER:`/`CASE:`/`AUDIT:` reference), and prints a Markdown (default) or JSON report with
+exact 7-decimal amounts. It exits 1 when any clawback lacks a reference. Claimable-balance
+clawbacks carry no amount on the operation, so their amount is reported as `n/a`.
+
 ### Options
 
 | Flag                          | Effect                                                                                                                  |

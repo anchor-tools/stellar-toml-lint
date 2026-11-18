@@ -9,6 +9,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `stellar-toml-lint audit-clawbacks --asset <code:issuer>` (`src/protocols/clawbackAuditGenerator.ts`):
+  scans the issuer's Horizon history for `clawback` and `clawback_claimable_balance` operations,
+  verifies each carries an audit memo reference, and generates JSON and Markdown audit trail reports
+  with exact stroop precision.
+
 - `--audit-kyc-fsm --domain <domain>` (`src/protocols/kycTierAuditor.ts`): reads the customer
   types advertised by SEP-31 `/info`, observes the SEP-12 `/customer` status for each, and audits the
   status state machine against the four SEP-12 statuses: `sep12/unknown-customer-status`,
