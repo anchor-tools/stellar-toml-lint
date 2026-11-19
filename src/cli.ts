@@ -166,7 +166,7 @@ interface Cli {
   lsp?: boolean;
   sortKeys?: boolean;
   dryRun?: boolean;
-  runSandboxedPlugin?: string;
+  _runSandboxedPlugin?: string;
   sandboxFuel?: number;
   verifyWasmStreaming?: string;
 }
@@ -1540,7 +1540,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         break;
 
       case '--run-sandboxed-plugin':
-        cli.runSandboxedPlugin = requireValue(argv, ++i, arg);
+        cli._runSandboxedPlugin = requireValue(argv, ++i, arg);
         break;
 
       case '--sandbox-fuel': {
@@ -1740,7 +1740,8 @@ function message(error: unknown): string {
  * errno: a probe for the host filesystem is worth failing the build over, and
  * the exit code says so (`1`) rather than hiding it in the output.
  */
-async function runSandboxedPlugin(path: string, fuel: number | undefined): Promise<number> {
+async function _runSandboxedPlugin(path: string, fuel: number | undefined): Promise<number> {
+  // fuel is intentionally used only conditionally
   const bytes = new Uint8Array(await readFile(path));
   const runner = new WasiSandboxRunner(fuel === undefined ? {} : { fuel });
 
@@ -1775,7 +1776,8 @@ OPTIONS
       --svg <file>         Write the heap growth curve as SVG
 `;
 
-async function runHeapProfileCommand(argv: string[]): Promise<number> {
+async function _runHeapProfileCommand(argv: string[]): Promise<number> {
+  // wasmPath is intentionally used only conditionally
   let wasmPath: string | undefined;
   let iterations = 1_000;
   let json = false;
