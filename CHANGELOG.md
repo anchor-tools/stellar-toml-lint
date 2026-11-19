@@ -9,6 +9,34 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--audit-caa` (`src/protocols/dnsCaaValidator.ts`): resolves CAA records for `--domain` and
+  each parent zone up to the TLD, judges the first non-empty record set as RFC 8659 §3 does, and
+  checks for `issue` naming a recognized CA, an explicit `issuewild` and a valid `iodef`
+  (`caa/missing-records`, `caa/missing-issue`, `caa/missing-issuewild`, `caa/unrecognized-ca`,
+  `caa/missing-iodef`, `caa/invalid-iodef`, `caa/unknown-critical-tag`). DNS timeouts and SERVFAIL
+  are reported as `caa/lookup-failed` instead of failing the run. The resolver is injectable.
+
+- `--verify-security-txt` / `stellar-toml-lint verify-security-txt --domain <domain>`
+  (`src/protocols/securityTxtValidator.ts`): fetches `/.well-known/security.txt` and validates it
+  against RFC 9116: `Contact` URIs, a strict RFC 3339 `Expires` in the future and under a year
+  away, https `Encryption`/`Acknowledgments`/`Policy` URIs, `Preferred-Languages` tags and single
+  occurrence fields (`securitytxt/*`). A cleartext-signed file has its armor and CRC-24 checksum
+  verified; full OpenPGP verification is an injectable `verifySignature` hook.
+
+- `--audit-ip-spoofing` (`src/protocols/ipSpoofingDetector.ts`): under `--check-network`, sends two
+  plain GETs and one GET with spoofed `X-Forwarded-For`, `X-Real-IP`, `True-Client-IP` and
+  `CF-Connecting-IP` (RFC 5737 documentation addresses) to each SEP endpoint, and reports reflected
+  client IPs (`ipspoof/header-reflected`), rate-limit counters that reset
+  (`ipspoof/rate-limit-bypass`), unstripped forwarded chains and long `Via` chains, with Nginx and
+  Cloudflare mitigation steps.
+
+- `--audit-btc-reserves` (`src/protocols/btcReserveAuditor.ts`): validates BTC
+  `collateral_addresses` (P2PKH, P2SH, P2WPKH, P2WSH, P2TR with base58check/bech32/bech32m
+  checksums and network) and, under `--check-network`, sums Esplora UTXOs with at least 6
+  confirmations, excluding mempool, shallow, dust and mempool-swept outputs, then reconciles the
+  total against the Horizon supply with exact satoshi/stroop integer math
+  (`btcreserve/reserve-deficit` and friends).
+
 - `--audit-esg-disclosures` (`src/protocols/esgComplianceVerifier.ts`): checks
   `[DOCUMENTATION.ORG_ESG]` for a carbon accounting methodology, renewable energy certificates, PUE
   and an attestation (`esg/missing-field`, `esg/invalid-field`, `esg/attestation-expired`), verifies

@@ -32,6 +32,10 @@ import { sep30Rules } from '../protocols/sep30Verifier.js';
 import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
+import { dnsCaaRules } from '../protocols/dnsCaaValidator.js';
+import { securityTxtRules } from '../protocols/securityTxtValidator.js';
+import { ipSpoofingRules } from '../protocols/ipSpoofingDetector.js';
+import { btcReserveRules } from '../protocols/btcReserveAuditor.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -70,6 +74,10 @@ export const allRules: Rule[] = [
   ...promotionalPricingRules,
   ...federationSrvRules,
   ...esgRules,
+  ...dnsCaaRules,
+  ...securityTxtRules,
+  ...ipSpoofingRules,
+  ...btcReserveRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -107,4 +115,8 @@ export {
   promotionalPricingRules,
   federationSrvRules,
   esgRules,
+  dnsCaaRules,
+  securityTxtRules,
+  ipSpoofingRules,
+  btcReserveRules,
 };
