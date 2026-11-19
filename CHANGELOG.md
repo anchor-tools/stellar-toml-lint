@@ -9,6 +9,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--verify-federation-srv` (`src/protocols/federationSrvVerifier.ts`): resolves
+  `_stellar-federation._tcp.<domain>` (RFC 2782) and checks targets, ports, priority/weight
+  (`federationsrv/invalid-target`, `federationsrv/invalid-port`,
+  `federationsrv/invalid-priority-weight`, `federationsrv/non-default-port`), conflicts with
+  `FEDERATION_SERVER` (`federationsrv/conflicts-with-toml`) and, under `--check-network`, probes each
+  target over HTTPS with a timeout (`federationsrv/unreachable-target`,
+  `federationsrv/not-a-federation-server`).
+
 - `--verify-promotions` / `stellar-toml-lint verify-promotions --domain <domain>`
   (`src/protocols/promotionalPricingVerifier.ts`): parses "0% fee", "1.5% fee" and "until
   YYYY-MM-DD" claims from `[DOCUMENTATION]` and `CURRENCIES` text, flags expired claims

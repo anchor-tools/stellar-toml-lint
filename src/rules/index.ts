@@ -30,6 +30,7 @@ import { federationSecurityRules } from '../protocols/federationSecurityTester.j
 import { reverseFederationRules } from '../protocols/reverseFederationVerifier.js';
 import { sep30Rules } from '../protocols/sep30Verifier.js';
 import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier.js';
+import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -66,6 +67,7 @@ export const allRules: Rule[] = [
   ...reverseFederationRules,
   ...sep30Rules,
   ...promotionalPricingRules,
+  ...federationSrvRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -101,4 +103,5 @@ export {
   reverseFederationRules,
   sep30Rules,
   promotionalPricingRules,
+  federationSrvRules,
 };

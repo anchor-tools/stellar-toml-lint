@@ -461,3 +461,16 @@ export type {
   PromotionalPricingOptions,
   PromotionalPricingResult,
 } from './protocols/promotionalPricingVerifier.js';
+export {
+  FederationSrvRecordVerifier,
+  federationSrvRuleIds,
+  federationSrvRules,
+  isValidSrvTarget,
+  verifyFederationSrv,
+} from './protocols/federationSrvVerifier.js';
+export type {
+  FederationSrvOptions,
+  FederationSrvResult,
+  SrvRecord,
+  SrvResolver,
+} from './protocols/federationSrvVerifier.js';

@@ -53,6 +53,7 @@ import {
 } from './protocols/consumerProtectionVerifier.js';
 import { auditSep30Recovery } from './protocols/sep30Verifier.js';
 import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
+import { verifyFederationSrv } from './protocols/federationSrvVerifier.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
@@ -138,6 +139,7 @@ interface Cli {
   auditFederationSecurity: boolean;
   auditSep30Recovery: boolean;
   verifyPromotions: boolean;
+  verifyFederationSrv: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
@@ -228,6 +230,9 @@ OPTIONS
       --verify-promotions Compare promotional fee claims against SEP-38 quote
                           fees (with --check-network); also available as
                           'verify-promotions --domain <domain>'
+      --verify-federation-srv
+                          Check _stellar-federation._tcp.<domain> SRV records
+                          against FEDERATION_SERVER (use with --domain)
       --audit-offline-pwa <path>
                           Audit a Service Worker script (or manifest.json) for offline
                           precaching, cache versioning, and PWA manifest requirements
@@ -336,6 +341,7 @@ async function runExtraAudits(
   parsed: Record<string, unknown>,
   fetchImpl: typeof fetch,
   rules: RuleOverrides,
+  domain?: string,
 ): Promise<Diagnostic[]> {
   const out: Diagnostic[] = [];
   if (cli.auditUnicodeSecurity) out.push(...validateUnicode(parsed, { rules }));
@@ -366,6 +372,14 @@ async function runExtraAudits(
     const result = await verifyPromotions(parsed, fetchImpl, {
       rules,
       checkQuotes: cli.checkNetwork,
+    });
+    out.push(...result.diagnostics);
+  }
+  if (cli.verifyFederationSrv && domain !== undefined) {
+    const result = await verifyFederationSrv(parsed, fetchImpl, {
+      rules,
+      domain,
+      probe: cli.checkNetwork,
     });
     out.push(...result.diagnostics);
   }
@@ -829,7 +843,13 @@ async function main(argv: string[]): Promise<number> {
           }
         }
         if (domainResult.parsed) {
-          const extra = await runExtraAudits(cli, domainResult.parsed, fetchImpl, rules);
+          const extra = await runExtraAudits(
+            cli,
+            domainResult.parsed,
+            fetchImpl,
+            rules,
+            cli.domain,
+          );
           if (extra.length > 0) {
             domainResult = finalize(
               [...domainResult.diagnostics, ...extra],
@@ -857,7 +877,13 @@ async function main(argv: string[]): Promise<number> {
           });
 
           if (fileResult.parsed) {
-            const extra = await runExtraAudits(cli, fileResult.parsed, fetchImpl, rules);
+            const extra = await runExtraAudits(
+              cli,
+              fileResult.parsed,
+              fetchImpl,
+              rules,
+              cli.domain,
+            );
             if (extra.length > 0) {
               fileResult = finalize(
                 [...fileResult.diagnostics, ...extra],
@@ -1245,6 +1271,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditFederationSecurity: false,
     auditSep30Recovery: false,
     verifyPromotions: false,
+    verifyFederationSrv: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -1361,6 +1388,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-promotions':
         cli.verifyPromotions = true;
+        break;
+
+      case '--verify-federation-srv':
+        cli.verifyFederationSrv = true;
         break;
 
       case '--audit-offline-pwa':
