@@ -9,6 +9,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--audit-esg-disclosures` (`src/protocols/esgComplianceVerifier.ts`): checks
+  `[DOCUMENTATION.ORG_ESG]` for a carbon accounting methodology, renewable energy certificates, PUE
+  and an attestation (`esg/missing-field`, `esg/invalid-field`, `esg/attestation-expired`), verifies
+  the Ed25519 attestation signature under `--check-network` (`esg/attestation-unreachable`,
+  `esg/attestation-signature-invalid`) and prints a Platinum/Gold/Silver/Bronze rating to stderr.
+
 - `--verify-federation-srv` (`src/protocols/federationSrvVerifier.ts`): resolves
   `_stellar-federation._tcp.<domain>` (RFC 2782) and checks targets, ports, priority/weight
   (`federationsrv/invalid-target`, `federationsrv/invalid-port`,

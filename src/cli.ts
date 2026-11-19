@@ -54,6 +54,7 @@ import {
 import { auditSep30Recovery } from './protocols/sep30Verifier.js';
 import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { verifyFederationSrv } from './protocols/federationSrvVerifier.js';
+import { auditEsgDisclosures, renderEsgReport } from './protocols/esgComplianceVerifier.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
@@ -140,6 +141,7 @@ interface Cli {
   auditSep30Recovery: boolean;
   verifyPromotions: boolean;
   verifyFederationSrv: boolean;
+  auditEsgDisclosures: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
@@ -233,6 +235,10 @@ OPTIONS
       --verify-federation-srv
                           Check _stellar-federation._tcp.<domain> SRV records
                           against FEDERATION_SERVER (use with --domain)
+      --audit-esg-disclosures
+                          Verify DOCUMENTATION.ORG_ESG disclosures, check the
+                          attestation signature with --check-network, and print
+                          a sustainability rating
       --audit-offline-pwa <path>
                           Audit a Service Worker script (or manifest.json) for offline
                           precaching, cache versioning, and PWA manifest requirements
@@ -382,6 +388,14 @@ async function runExtraAudits(
       probe: cli.checkNetwork,
     });
     out.push(...result.diagnostics);
+  }
+  if (cli.auditEsgDisclosures) {
+    const result = await auditEsgDisclosures(parsed, fetchImpl, {
+      rules,
+      checkAttestation: cli.checkNetwork,
+    });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderEsgReport(result.report));
   }
   return out;
 }
@@ -1272,6 +1286,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditSep30Recovery: false,
     verifyPromotions: false,
     verifyFederationSrv: false,
+    auditEsgDisclosures: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -1392,6 +1407,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-federation-srv':
         cli.verifyFederationSrv = true;
+        break;
+
+      case '--audit-esg-disclosures':
+        cli.auditEsgDisclosures = true;
         break;
 
       case '--audit-offline-pwa':

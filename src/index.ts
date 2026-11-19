@@ -474,3 +474,19 @@ export type {
   SrvRecord,
   SrvResolver,
 } from './protocols/federationSrvVerifier.js';
+export {
+  EsgComplianceVerifier,
+  auditEsgDisclosures,
+  esgRuleIds,
+  esgRules,
+  rate as rateEsgScore,
+  renderEsgReport,
+  verifyAttestationSignature,
+} from './protocols/esgComplianceVerifier.js';
+export type {
+  EsgCriterion,
+  EsgOptions,
+  EsgRating,
+  EsgReport,
+  EsgResult,
+} from './protocols/esgComplianceVerifier.js';

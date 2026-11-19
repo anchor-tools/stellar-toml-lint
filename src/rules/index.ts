@@ -31,6 +31,7 @@ import { reverseFederationRules } from '../protocols/reverseFederationVerifier.j
 import { sep30Rules } from '../protocols/sep30Verifier.js';
 import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
+import { esgRules } from '../protocols/esgComplianceVerifier.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -68,6 +69,7 @@ export const allRules: Rule[] = [
   ...sep30Rules,
   ...promotionalPricingRules,
   ...federationSrvRules,
+  ...esgRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -104,4 +106,5 @@ export {
   sep30Rules,
   promotionalPricingRules,
   federationSrvRules,
+  esgRules,
 };
