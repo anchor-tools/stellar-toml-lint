@@ -9,6 +9,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--audit-sep30-recovery` (`src/protocols/sep30Verifier.ts`): validates `RECOVERY_SERVER` and
+  `RECOVERY_SIGNING_KEYS` (`sep30/invalid-recovery-server`, `sep30/invalid-signing-key`,
+  `sep30/insufficient-recovery-quorum`) and, under `--check-network`, probes `POST`/`GET`/`PUT`
+  `/accounts/{address}` with no credentials against a throwaway address
+  (`sep30/endpoint-unavailable`, `sep30/unauthenticated-recovery`, `sep30/unsupported-auth-method`).
+  Signer weights are not readable without an authenticated session, so quorum is judged from the
+  number of distinct declared signing keys.
+
 - `stellar-toml-lint audit-clawbacks --asset <code:issuer>` (`src/protocols/clawbackAuditGenerator.ts`):
   scans the issuer's Horizon history for `clawback` and `clawback_claimable_balance` operations,
   verifies each carries an audit memo reference, and generates JSON and Markdown audit trail reports

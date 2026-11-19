@@ -51,6 +51,7 @@ import {
   auditConsumerProtection,
   renderScorecard,
 } from './protocols/consumerProtectionVerifier.js';
+import { auditSep30Recovery } from './protocols/sep30Verifier.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
@@ -134,6 +135,7 @@ interface Cli {
   auditConsumerProtection: boolean;
   auditKycFsm: boolean;
   auditFederationSecurity: boolean;
+  auditSep30Recovery: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
@@ -217,6 +219,10 @@ OPTIONS
                           Verify complaints, dispute, jurisdiction and license
                           disclosures and print a scorecard (add --check-network
                           to probe the dispute URL)
+      --audit-sep30-recovery
+                          Verify RECOVERY_SERVER and recovery signing keys, and
+                          (with --check-network) probe /accounts/{address} for
+                          unauthenticated recovery
       --audit-offline-pwa <path>
                           Audit a Service Worker script (or manifest.json) for offline
                           precaching, cache versioning, and PWA manifest requirements
@@ -346,6 +352,10 @@ async function runExtraAudits(
     const result = await auditFederationSecurity(parsed, fetchImpl, { rules });
     out.push(...result.diagnostics);
     process.stderr.write(renderFederationSecurityReport(result.report));
+  }
+  if (cli.auditSep30Recovery) {
+    const result = await auditSep30Recovery(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
+    out.push(...result.diagnostics);
   }
   return out;
 }
@@ -1217,6 +1227,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditConsumerProtection: false,
     auditKycFsm: false,
     auditFederationSecurity: false,
+    auditSep30Recovery: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -1325,6 +1336,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-federation-security':
         cli.auditFederationSecurity = true;
+        break;
+
+      case '--audit-sep30-recovery':
+        cli.auditSep30Recovery = true;
         break;
 
       case '--audit-offline-pwa':

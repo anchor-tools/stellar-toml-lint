@@ -437,3 +437,13 @@ export type {
   DriftField,
   PublishedAnchor,
 } from './protocols/directorySyncVerifier.js';
+export {
+  PROBE_ADDRESS,
+  SEP30_AUTH_METHODS,
+  Sep30RecoveryVerifier,
+  auditSep30Recovery,
+  findUnsupportedAuthMethods,
+  sep30RuleIds,
+  sep30Rules,
+} from './protocols/sep30Verifier.js';
+export type { Sep30Options, Sep30Result } from './protocols/sep30Verifier.js';

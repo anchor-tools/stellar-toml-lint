@@ -28,6 +28,7 @@ import { kycTierRules } from '../protocols/kycTierAuditor.js';
 import { unicodeRules } from '../cst/unicodeValidator.js';
 import { federationSecurityRules } from '../protocols/federationSecurityTester.js';
 import { reverseFederationRules } from '../protocols/reverseFederationVerifier.js';
+import { sep30Rules } from '../protocols/sep30Verifier.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -62,6 +63,7 @@ export const allRules: Rule[] = [
   ...kycTierRules,
   ...federationSecurityRules,
   ...reverseFederationRules,
+  ...sep30Rules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -95,4 +97,5 @@ export {
   kycTierRules,
   federationSecurityRules,
   reverseFederationRules,
+  sep30Rules,
 };
