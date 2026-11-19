@@ -55,6 +55,10 @@ import { auditSep30Recovery } from './protocols/sep30Verifier.js';
 import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { verifyFederationSrv } from './protocols/federationSrvVerifier.js';
 import { auditEsgDisclosures, renderEsgReport } from './protocols/esgComplianceVerifier.js';
+import { auditTlsCiphers, renderCipherReport } from './security/tlsCipherAuditor.js';
+import { auditHsts, renderHstsBadges } from './security/hstsVerifier.js';
+import { auditEmergencyPause } from './bridges/emergencyPauseValidator.js';
+import { auditBridgeQuorum } from './bridges/bridgeQuorumAuditor.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
@@ -142,6 +146,9 @@ interface Cli {
   verifyPromotions: boolean;
   verifyFederationSrv: boolean;
   auditEsgDisclosures: boolean;
+  auditHsts: boolean;
+  auditEmergencyPause: boolean;
+  auditBridgeQuorum: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
@@ -173,6 +180,7 @@ Validate a Stellar Info File (stellar.toml) against SEP-1 — offline.
 
 USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
+  stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]
   stellar-toml-lint audit-clawbacks --asset <code:issuer> [--horizon <url>] [--format json|markdown]
                                          Generate a clawback audit trail from Horizon
   stellar-toml-lint dispatch-alert --webhook <url> --type slack|discord|pagerduty
@@ -239,6 +247,16 @@ OPTIONS
                           Verify DOCUMENTATION.ORG_ESG disclosures, check the
                           attestation signature with --check-network, and print
                           a sustainability rating
+      --audit-hsts        Check Strict-Transport-Security on the domain and every
+                          host stellar.toml declares, against the Chromium
+                          preload criteria (use with --domain)
+      --audit-emergency-pause
+                          Check [[BRIDGES]] export pause methods, restrict pause
+                          authority and publish a 24/7 security contact
+      --audit-bridge-quorum
+                          Check [[BRIDGES]] relayer thresholds against the 2/3 BFT
+                          supermajority and staking evidence; also available as
+                          'audit-bridge-quorum --domain <domain>'
       --audit-offline-pwa <path>
                           Audit a Service Worker script (or manifest.json) for offline
                           precaching, cache versioning, and PWA manifest requirements
@@ -397,7 +415,43 @@ async function runExtraAudits(
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
   }
+  if (cli.auditHsts) {
+    const result = await auditHsts(parsed, fetchImpl, { rules, ...(domain ? { domain } : {}) });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderHstsBadges(result));
+  }
+  if (cli.auditEmergencyPause) out.push(...auditEmergencyPause(parsed, { rules }).diagnostics);
+  if (cli.auditBridgeQuorum) {
+    const result = await auditBridgeQuorum(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
+    out.push(...result.diagnostics);
+  }
   return out;
+}
+
+/** `stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]` */
+async function auditCiphersCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let port: number | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--port') port = Number(requireValue(args, ++i, arg));
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-ciphers\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined || (port !== undefined && !Number.isInteger(port))) {
+    process.stderr.write('Usage: stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]\n');
+    return 2;
+  }
+  const host = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  const result = await auditTlsCiphers(host, port === undefined ? {} : { port });
+  process.stdout.write(renderCipherReport(result.report));
+  for (const d of result.diagnostics) {
+    process.stdout.write(`${d.severity}: ${d.message} [${d.rule}]\n`);
+  }
+  return result.report.grade === 'F' || result.report.grade === null ? 1 : 0;
 }
 
 /** `stellar-toml-lint audit-clawbacks --asset CODE:ISSUER [--horizon <url>] [--format json|markdown]` */
@@ -768,6 +822,10 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-promotions') {
     argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
   }
+  if (argv[0] === 'audit-bridge-quorum') {
+    argv = ['--audit-bridge-quorum', '--check-network', ...argv.slice(1)];
+  }
+  if (argv[0] === 'audit-ciphers') return auditCiphersCommand(argv.slice(1));
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
   if (argv[0] === 'dispatch-alert') return dispatchAlert(argv.slice(1));
   if (argv[0] === 'audit-coop-coep') return auditCoopCoep(argv.slice(1));
@@ -775,6 +833,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
+  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -791,6 +850,9 @@ async function main(argv: string[]): Promise<number> {
   }
   if (cli.verifyWasmStreaming !== undefined) {
     return verifyWasmStreaming(cli.verifyWasmStreaming);
+  }
+  if (cli.runSandboxedPlugin !== undefined) {
+    return runSandboxedPlugin(cli.runSandboxedPlugin, cli.sandboxFuel);
   }
 
   const color = cli.color ?? shouldUseColor();
@@ -1287,6 +1349,9 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     verifyPromotions: false,
     verifyFederationSrv: false,
     auditEsgDisclosures: false,
+    auditHsts: false,
+    auditEmergencyPause: false,
+    auditBridgeQuorum: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -1411,6 +1476,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-esg-disclosures':
         cli.auditEsgDisclosures = true;
+        break;
+
+      case '--audit-hsts':
+        cli.auditHsts = true;
+        break;
+
+      case '--audit-emergency-pause':
+        cli.auditEmergencyPause = true;
+        break;
+
+      case '--audit-bridge-quorum':
+        cli.auditBridgeQuorum = true;
         break;
 
       case '--audit-offline-pwa':
