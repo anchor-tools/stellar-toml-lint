@@ -55,6 +55,10 @@ import { auditSep30Recovery } from './protocols/sep30Verifier.js';
 import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { verifyFederationSrv } from './protocols/federationSrvVerifier.js';
 import { auditEsgDisclosures, renderEsgReport } from './protocols/esgComplianceVerifier.js';
+import { benchmarkBridgeLatency, renderLatencyReport } from './bridges/latencyBenchmark.js';
+import { auditBridgeReplays } from './bridges/eventReplayDetector.js';
+import { verifyBankAttestations } from './bridges/bankAttestationVerifier.js';
+import { auditBurnRedemptions, renderBurnReport } from './bridges/proofOfBurnValidator.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
@@ -142,6 +146,9 @@ interface Cli {
   verifyPromotions: boolean;
   verifyFederationSrv: boolean;
   auditEsgDisclosures: boolean;
+  auditBridgeReplays?: string;
+  verifyAttestations: boolean;
+  auditBurnRedemptions?: string;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
@@ -188,6 +195,10 @@ USAGE
   stellar-toml-lint sync-directory --feed <url|file> [--format text|json]
                                          Diff a multi-tenant anchor directory feed
                                          against each anchor's live stellar.toml
+  stellar-toml-lint benchmark-bridge-latency --receipts <file.json> [--corridor <source-dest>]
+                                         Benchmark cross-chain bridge settlement latency (p99 SLA)
+  stellar-toml-lint verify-attestations --domain <domain>
+                                         Verify reserve attestation PDFs, checksums and freshness
   stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]
                                          Audit a WASM binary for SIMD opcodes and
                                          unbounded memory growth
@@ -235,6 +246,14 @@ OPTIONS
       --verify-federation-srv
                           Check _stellar-federation._tcp.<domain> SRV records
                           against FEDERATION_SERVER (use with --domain)
+      --audit-bridge-replays <evidence.json>
+                          Match EVM lock event logs to Stellar mints and flag
+                          duplicate, unrecorded or replayable events
+      --verify-attestations
+                          Verify DOCUMENTATION.ATTESTATIONS checksums and age
+                          (downloads PDFs with --check-network)
+      --audit-burn-redemptions <evidence.json>
+                          Verify wrapped-asset redemptions burn supply
       --audit-esg-disclosures
                           Verify DOCUMENTATION.ORG_ESG disclosures, check the
                           attestation signature with --check-network, and print
@@ -397,7 +416,61 @@ async function runExtraAudits(
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
   }
+  if (cli.auditBridgeReplays !== undefined) {
+    out.push(
+      ...auditBridgeReplays(await readEvidence(cli.auditBridgeReplays), { rules }).diagnostics,
+    );
+  }
+  if (cli.verifyAttestations) {
+    const result = await verifyBankAttestations(parsed, fetchImpl, {
+      rules,
+      download: cli.checkNetwork,
+    });
+    out.push(...result.diagnostics);
+  }
+  if (cli.auditBurnRedemptions !== undefined) {
+    const result = auditBurnRedemptions(parsed, await readEvidence(cli.auditBurnRedemptions), {
+      rules,
+    });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderBurnReport(result));
+  }
   return out;
+}
+
+/** Recorded evidence files are JSON; an unreadable one is reported by the audit as invalid. */
+async function readEvidence(path: string): Promise<unknown> {
+  try {
+    return JSON.parse(await readFile(resolve(path), 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
+/** `stellar-toml-lint benchmark-bridge-latency --receipts <file> [--corridor <s-d>]` */
+async function benchmarkBridgeLatencyCommand(args: string[]): Promise<number> {
+  let receipts: string | undefined;
+  let corridor: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--receipts') receipts = requireValue(args, ++i, arg);
+    else if (arg === '--corridor') corridor = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for benchmark-bridge-latency\n`);
+      return 2;
+    }
+  }
+  if (receipts === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint benchmark-bridge-latency --receipts <file.json> [--corridor <source-dest>]\n',
+    );
+    return 2;
+  }
+  const result = benchmarkBridgeLatency(await readEvidence(receipts), { corridor });
+  process.stdout.write(renderLatencyReport(result.corridors));
+  for (const d of result.diagnostics)
+    process.stderr.write(`${d.severity}: ${d.message} [${d.rule}]\n`);
+  return result.diagnostics.some((d) => d.severity === 'error') ? 1 : 0;
 }
 
 /** `stellar-toml-lint audit-clawbacks --asset CODE:ISSUER [--horizon <url>] [--format json|markdown]` */
@@ -768,6 +841,10 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-promotions') {
     argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
   }
+  if (argv[0] === 'verify-attestations') {
+    argv = ['--verify-attestations', '--check-network', ...argv.slice(1)];
+  }
+  if (argv[0] === 'benchmark-bridge-latency') return benchmarkBridgeLatencyCommand(argv.slice(1));
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
   if (argv[0] === 'dispatch-alert') return dispatchAlert(argv.slice(1));
   if (argv[0] === 'audit-coop-coep') return auditCoopCoep(argv.slice(1));
@@ -775,6 +852,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
+  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -791,6 +869,9 @@ async function main(argv: string[]): Promise<number> {
   }
   if (cli.verifyWasmStreaming !== undefined) {
     return verifyWasmStreaming(cli.verifyWasmStreaming);
+  }
+  if (cli.runSandboxedPlugin !== undefined) {
+    return runSandboxedPlugin(cli.runSandboxedPlugin, cli.sandboxFuel);
   }
 
   const color = cli.color ?? shouldUseColor();
@@ -1287,6 +1368,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     verifyPromotions: false,
     verifyFederationSrv: false,
     auditEsgDisclosures: false,
+    verifyAttestations: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -1407,6 +1489,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-federation-srv':
         cli.verifyFederationSrv = true;
+        break;
+
+      case '--audit-bridge-replays':
+        cli.auditBridgeReplays = requireValue(argv, ++i, arg);
+        break;
+
+      case '--verify-attestations':
+        cli.verifyAttestations = true;
+        break;
+
+      case '--audit-burn-redemptions':
+        cli.auditBurnRedemptions = requireValue(argv, ++i, arg);
         break;
 
       case '--audit-esg-disclosures':

@@ -9,6 +9,36 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `stellar-toml-lint benchmark-bridge-latency --receipts <file> [--corridor <source-dest>]`
+  (`src/bridges/latencyBenchmark.ts`): pairs origin-chain lock/burn receipts with Stellar
+  mint/release receipts, normalises every timestamp to UTC (zone-less times are rejected, block
+  numbers are placed by per-chain checkpoint interpolation) and reports mean, standard deviation and
+  p99 latency per corridor with an SLA rating (`bridgelatency/invalid-receipt`,
+  `bridgelatency/negative-latency`, `bridgelatency/sla-breach`,
+  `bridgelatency/congested-corridor`, `bridgelatency/stalled-transfer`).
+
+- `--audit-bridge-replays <evidence.json>` (`src/bridges/eventReplayDetector.ts`): parses EVM
+  `Locked` logs, compares 32-byte hex values strictly and checks each final lock maps to exactly one
+  Stellar mint with the same amount and recipient, with reorg and confirmation-depth handling
+  (`bridgereplay/duplicate-mint`, `bridgereplay/unrecorded-lock`,
+  `bridgereplay/missing-replay-id`, `bridgereplay/orphan-mint`,
+  `bridgereplay/reorged-event-minted`, `bridgereplay/premature-mint`,
+  `bridgereplay/amount-mismatch`, `bridgereplay/recipient-mismatch`).
+
+- `--verify-attestations` / `stellar-toml-lint verify-attestations --domain <domain>`
+  (`src/bridges/bankAttestationVerifier.ts`): checks `[[DOCUMENTATION.ATTESTATIONS]]` and
+  `attestation_of_reserve` links, SHA-256 checksums and the 90 day freshness limit and, under
+  `--check-network`, downloads each PDF over verified HTTPS, hashes it and reads its metadata
+  without crashing on corrupted files (`attestation/invalid-url`, `attestation/missing-checksum`,
+  `attestation/expired`, `attestation/checksum-mismatch`, `attestation/corrupted-document`,
+  `attestation/unreachable`, `attestation/under-reserved`).
+
+- `--audit-burn-redemptions <evidence.json>` (`src/bridges/proofOfBurnValidator.ts`): verifies
+  wrapped-asset redemptions pay the issuer, a locked account or call the SAC `burn` function, that
+  supply falls by exactly the redeemed amount, and flags pseudo-burns (`burn/pseudo-burn`,
+  `burn/supply-mismatch`, `burn/invalid-redemption`, `burn/undeclared-asset`,
+  `burn/missing-withdraw-endpoint`).
+
 - `--audit-esg-disclosures` (`src/protocols/esgComplianceVerifier.ts`): checks
   `[DOCUMENTATION.ORG_ESG]` for a carbon accounting methodology, renewable energy certificates, PUE
   and an attestation (`esg/missing-field`, `esg/invalid-field`, `esg/attestation-expired`), verifies
