@@ -667,6 +667,44 @@ This catches the failure mode nobody notices: a CDN or hosting change quietly dr
 `Access-Control-Allow-Origin` header, which makes the file unreadable to every browser-based wallet
 while looking perfectly fine to `curl`.
 
+### Telemetry and SLA tooling
+
+Four subcommands audit how a live anchor behaves operationally. Every network probe is a
+read-only `GET`; none of them creates, updates or deletes anything. Exit codes match the
+rest of the CLI: `0` clean, `1` findings, `2` bad usage or I/O failure.
+
+```sh
+# Prometheus text 0.0.4 / OpenMetrics 1.0.0 compliance of a /metrics endpoint
+stellar-toml-lint verify-metrics --url https://anchor.example/metrics
+stellar-toml-lint verify-metrics --domain anchor.example   # finds METRICS_URL etc. in stellar.toml
+
+# p50 / p95 / p99 TTFB, TCP connect and TLS handshake for each SEP server's /info
+stellar-toml-lint probe-sla --domain anchor.example --samples 20 --threshold-ms 500
+
+# Invalid read-only requests to each SEP endpoint: are errors RFC 7807 or {"error": "..."}?
+# Flags HTML error pages, plain-text errors, and leaked stack traces, secrets or DB URLs.
+stellar-toml-lint --audit-error-taxonomy --domain anchor.example
+
+# Availability over 24h / 7d / 30d, incidents and the longest downtime streak
+stellar-toml-lint calculate-uptime --log-file health.csv --format markdown \
+  --badge-svg uptime.svg --badge-json uptime.json --min-availability 99.9
+```
+
+- **`verify-metrics`** streams the scrape through an incremental parser, so very large expositions
+  validate in bounded memory. It checks metric and label names, `TYPE` (per standard), missing
+  `HELP`/`TYPE`, NaN gauges, negative counters, histogram `le`/`+Inf`/`_sum`/`_count`, `# EOF` for
+  OpenMetrics, and the anchor metrics `stellar_anchor_balance`, `stellar_tx_processed_total` and
+  `stellar_sep_request_duration_seconds` (override with `--require <name>` or `--no-required-metrics`).
+- **`probe-sla`** probes `TRANSFER_SERVER`, `TRANSFER_SERVER_SEP0024`, `DIRECT_PAYMENT_SERVER` and
+  `ANCHOR_QUOTE_SERVER` on a fresh connection each time and prints an ASCII TTFB histogram. A p50 or
+  p95 above the threshold is an error; a slow p99 tail is a warning.
+- **`--audit-error-taxonomy`** sorts every response into `client-input`, `authentication`,
+  `authorization`, `not-found`, `conflict`, `rate-limited`, `server`, `unexpected-success` or `other`.
+- **`calculate-uptime`** reads JSON arrays, `{ "records": [...] }`, NDJSON or CSV with flexible
+  column names (`timestamp`/`time`/`ts`, `status`/`up`/`ok`/HTTP code, optional `service`).
+  Availability is time-weighted and truncated, never rounded up, so 99.989% is never reported as
+  99.99%.
+
 ## Programmatic API
 
 ```ts

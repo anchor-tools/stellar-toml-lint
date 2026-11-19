@@ -65,6 +65,12 @@ import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
 import { CrossOriginIsolationAuditor, renderIsolationReport } from './wasm/isolationAuditor.js';
 import {
+  auditErrorTaxonomyCommand,
+  calculateUptimeCommand,
+  probeSlaCommand,
+  verifyMetricsCommand,
+} from './telemetry/commands.js';
+import {
   BrowserBoundaryVerifier,
   renderBrowserBoundaryReport,
 } from './wasm/browserBoundaryVerifier.js';
@@ -199,6 +205,20 @@ USAGE
   stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]
                                          Audit a WASM binary for SIMD opcodes and
                                          unbounded memory growth
+  stellar-toml-lint verify-metrics --url <metrics_url> [--format text|json]
+                                         Scrape a Prometheus/OpenMetrics endpoint and
+                                         validate names, TYPE/HELP and anchor gauges
+                                         (--domain discovers it from stellar.toml)
+  stellar-toml-lint probe-sla --domain <domain> [--samples <n>] [--threshold-ms <ms>]
+                                         Probe SEP /info endpoints read-only and report
+                                         p50/p95/p99 TTFB against the SLA (500 ms)
+  stellar-toml-lint --audit-error-taxonomy --domain <domain>
+                                         Send invalid read-only requests to SEP
+                                         endpoints; check RFC 7807 / SEP error JSON
+                                         and flag leaked stack traces or secrets
+  stellar-toml-lint calculate-uptime --log-file <path> [--format text|markdown|json]
+                                         Availability over 24h/7d/30d, incidents and
+                                         downtime streaks from JSON/CSV health logs
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -848,6 +868,11 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
+  if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
+  if (argv[0] === 'probe-sla') return probeSlaCommand(argv.slice(1));
+  if (argv[0] === 'calculate-uptime') return calculateUptimeCommand(argv.slice(1));
+  if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
+  if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
