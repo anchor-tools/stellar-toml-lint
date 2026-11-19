@@ -868,6 +868,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
+  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
   if (argv[0] === 'probe-sla') return probeSlaCommand(argv.slice(1));
   if (argv[0] === 'calculate-uptime') return calculateUptimeCommand(argv.slice(1));
@@ -883,6 +884,9 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
+  if (cli.runSandboxedPlugin !== undefined) {
+    return runSandboxedPlugin(cli.runSandboxedPlugin, cli.sandboxFuel);
+  }
   if (cli.auditOfflinePwa !== undefined) return auditOfflinePwa(cli.auditOfflinePwa);
   if (cli.auditEdgeCompatibility !== undefined) {
     return auditEdgeCompatibility(cli.auditEdgeCompatibility);
