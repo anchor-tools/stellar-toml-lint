@@ -32,6 +32,10 @@ import { sep30Rules } from '../protocols/sep30Verifier.js';
 import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
+import { bridgeLatencyRules } from '../bridges/latencyBenchmark.js';
+import { bridgeReplayRules } from '../bridges/eventReplayDetector.js';
+import { bankAttestationRules } from '../bridges/bankAttestationVerifier.js';
+import { proofOfBurnRules } from '../bridges/proofOfBurnValidator.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -70,6 +74,10 @@ export const allRules: Rule[] = [
   ...promotionalPricingRules,
   ...federationSrvRules,
   ...esgRules,
+  ...bridgeLatencyRules,
+  ...bridgeReplayRules,
+  ...bankAttestationRules,
+  ...proofOfBurnRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -107,4 +115,8 @@ export {
   promotionalPricingRules,
   federationSrvRules,
   esgRules,
+  bridgeLatencyRules,
+  bridgeReplayRules,
+  bankAttestationRules,
+  proofOfBurnRules,
 };
