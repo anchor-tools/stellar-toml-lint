@@ -145,7 +145,10 @@ describe('WebWorkerLinterEngine', () => {
 
   it('cancels a queued job without dispatching it', async () => {
     const ports = [mockPort({ autoReply: false })];
-    const engine = new WebWorkerLinterEngine({ poolSize: 1, workerFactory: () => ports[0] as WorkerPort });
+    const engine = new WebWorkerLinterEngine({
+      poolSize: 1,
+      workerFactory: () => ports[0] as WorkerPort,
+    });
 
     const first = engine.runAll([{ id: 'a', source: SAMPLE }]);
     const second = engine.runAll([{ id: 'b', source: SAMPLE }]);
@@ -192,4 +195,3 @@ const lintStub = {
   ok: true,
   counts: { error: 0, warning: 0, info: 0 },
 };
-

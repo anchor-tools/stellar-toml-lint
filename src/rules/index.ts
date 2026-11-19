@@ -32,6 +32,10 @@ import { sep30Rules } from '../protocols/sep30Verifier.js';
 import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
+import { chainlinkPorRules } from '../bridges/chainlinkPorVerifier.js';
+import { wormholeRules } from '../bridges/wormholeVaaAuditor.js';
+import { solanaEscrowRules } from '../bridges/solanaEscrowVerifier.js';
+import { erc4626Rules } from '../bridges/erc4626VaultAuditor.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -70,6 +74,10 @@ export const allRules: Rule[] = [
   ...promotionalPricingRules,
   ...federationSrvRules,
   ...esgRules,
+  ...chainlinkPorRules,
+  ...wormholeRules,
+  ...solanaEscrowRules,
+  ...erc4626Rules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -107,4 +115,8 @@ export {
   promotionalPricingRules,
   federationSrvRules,
   esgRules,
+  chainlinkPorRules,
+  wormholeRules,
+  solanaEscrowRules,
+  erc4626Rules,
 };

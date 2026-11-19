@@ -152,7 +152,9 @@ function statusOf(incident: Incident): IncidentStatus {
 function timestampOf(incident: Incident): string | undefined {
   if (incident.timestamp === undefined) return undefined;
   const date =
-    typeof incident.timestamp === 'number' ? new Date(incident.timestamp) : new Date(incident.timestamp);
+    typeof incident.timestamp === 'number'
+      ? new Date(incident.timestamp)
+      : new Date(incident.timestamp);
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
@@ -247,8 +249,7 @@ export function formatPagerDutyIncident(
 ): PagerDutyIncidentPayload {
   const status = statusOf(incident);
   // Events API v2 maps `error` onto `critical`: it has no `error` severity.
-  const severity: IncidentSeverity =
-    incident.severity === 'error' ? 'critical' : incident.severity;
+  const severity: IncidentSeverity = incident.severity === 'error' ? 'critical' : incident.severity;
   const timestamp = timestampOf(incident);
 
   return {
@@ -256,7 +257,8 @@ export function formatPagerDutyIncident(
     event_action: status === 'resolved' ? 'resolve' : 'trigger',
     dedup_key: dedupKeyFor(incident),
     payload: {
-      summary: incident.summary !== undefined ? `${incident.title}: ${incident.summary}` : incident.title,
+      summary:
+        incident.summary !== undefined ? `${incident.title}: ${incident.summary}` : incident.title,
       source: incident.source ?? 'stellar-toml-lint',
       severity,
       ...(timestamp !== undefined ? { timestamp } : {}),
@@ -357,7 +359,10 @@ export class IncidentWebhookDispatcher {
 
     const plan = route
       .map((channel) => ({ channel, url: targets[channel] }))
-      .filter((entry): entry is { channel: IncidentChannel; url: string } => typeof entry.url === 'string');
+      .filter(
+        (entry): entry is { channel: IncidentChannel; url: string } =>
+          typeof entry.url === 'string',
+      );
 
     if (suppressed) {
       return plan.map(({ channel, url }) => ({
@@ -431,7 +436,14 @@ export class IncidentWebhookDispatcher {
         lastStatus = response.status;
         lastError = `HTTP ${response.status}`;
         if (!RETRYABLE_STATUS.has(response.status)) {
-          return { channel, url, ok: false, attempts: attempt, status: response.status, error: lastError };
+          return {
+            channel,
+            url,
+            ok: false,
+            attempts: attempt,
+            status: response.status,
+            error: lastError,
+          };
         }
 
         if (response.status === 429) {

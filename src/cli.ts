@@ -55,6 +55,14 @@ import { auditSep30Recovery } from './protocols/sep30Verifier.js';
 import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { verifyFederationSrv } from './protocols/federationSrvVerifier.js';
 import { auditEsgDisclosures, renderEsgReport } from './protocols/esgComplianceVerifier.js';
+import { verifyPorFeeds } from './bridges/chainlinkPorVerifier.js';
+import { verifySolanaBridges } from './bridges/solanaEscrowVerifier.js';
+import { auditErc4626Vaults } from './bridges/erc4626VaultAuditor.js';
+import {
+  WormholeVaaAuditor,
+  parseGuardianSet,
+  renderVaaReport,
+} from './bridges/wormholeVaaAuditor.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
@@ -142,6 +150,9 @@ interface Cli {
   verifyPromotions: boolean;
   verifyFederationSrv: boolean;
   auditEsgDisclosures: boolean;
+  verifyPorFeed: boolean;
+  verifySolanaBridge: boolean;
+  auditErc4626Vaults: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
@@ -191,6 +202,13 @@ USAGE
   stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]
                                          Audit a WASM binary for SIMD opcodes and
                                          unbounded memory growth
+  stellar-toml-lint verify-por-feed --domain <domain>
+                                         Check Chainlink Proof of Reserve feeds
+  stellar-toml-lint verify-solana-bridge --domain <domain>
+                                         Check Solana escrow covers Stellar supply
+  stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> [--guardian-set <file.json>]
+                                         [--format text|json]
+                                         Verify a Wormhole VAA's guardian quorum
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -239,6 +257,15 @@ OPTIONS
                           Verify DOCUMENTATION.ORG_ESG disclosures, check the
                           attestation signature with --check-network, and print
                           a sustainability rating
+      --verify-por-feed   Check Chainlink Proof of Reserve feeds declared in
+                          DOCUMENTATION.PROOF_OF_RESERVES for freshness and
+                          collateralization (queries with --check-network)
+      --verify-solana-bridge
+                          Check that Solana escrow balances cover the Stellar
+                          supply of CURRENCIES[].solana_bridge assets
+      --audit-erc4626-vaults
+                          Audit CURRENCIES[].collateral_vaults ERC-4626 share
+                          prices and NAV backing (queries with --check-network)
       --audit-offline-pwa <path>
                           Audit a Service Worker script (or manifest.json) for offline
                           precaching, cache versioning, and PWA manifest requirements
@@ -396,6 +423,24 @@ async function runExtraAudits(
     });
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
+  }
+  if (cli.verifyPorFeed) {
+    const result = await verifyPorFeeds(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
+    out.push(...result.diagnostics);
+  }
+  if (cli.verifySolanaBridge) {
+    const result = await verifySolanaBridges(parsed, fetchImpl, {
+      rules,
+      probe: cli.checkNetwork,
+    });
+    out.push(...result.diagnostics);
+  }
+  if (cli.auditErc4626Vaults) {
+    const result = await auditErc4626Vaults(parsed, fetchImpl, {
+      rules,
+      probe: cli.checkNetwork,
+    });
+    out.push(...result.diagnostics);
   }
   return out;
 }
@@ -763,11 +808,70 @@ async function verifyBrowserBundleCommand(args: string[]): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> [--guardian-set <file>] [--format text|json]` */
+async function auditWormholeVaaCommand(args: string[]): Promise<number> {
+  let vaa: string | undefined;
+  let setFile: string | undefined;
+  let format = 'text';
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--vaa') vaa = requireValue(args, ++i, arg);
+    else if (arg === '--guardian-set') setFile = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-wormhole-vaa\n`);
+      return 2;
+    }
+  }
+  if (vaa === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> ' +
+        '[--guardian-set <file.json>] [--format text|json]\n',
+    );
+    return 2;
+  }
+  let guardianSet;
+  if (setFile !== undefined) {
+    try {
+      guardianSet = parseGuardianSet(JSON.parse(await readFile(resolve(setFile), 'utf8')));
+    } catch (error) {
+      process.stderr.write(`${message(error)}\n`);
+      return 2;
+    }
+    if (guardianSet === undefined) {
+      process.stderr.write('Guardian set must be { "index": n, "keys": ["0x..."] }\n');
+      return 2;
+    }
+  }
+  const result = new WormholeVaaAuditor(guardianSet ? { guardianSet } : {}).audit(vaa);
+  if (format === 'json') {
+    const replacer = (_key: string, value: unknown): unknown =>
+      typeof value === 'bigint'
+        ? value.toString()
+        : value instanceof Uint8Array
+          ? `0x${Buffer.from(value).toString('hex')}`
+          : value;
+    process.stdout.write(`${JSON.stringify(result, replacer, 2)}\n`);
+  } else {
+    process.stdout.write(renderVaaReport(result));
+    for (const d of result.diagnostics) {
+      process.stdout.write(`${d.severity}: ${d.message} [${d.rule}]\n`);
+    }
+  }
+  return result.diagnostics.some((d) => d.severity === 'error') ? 1 : 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   // `verify-promotions --domain <domain>` is the flag form with quotes enabled.
   if (argv[0] === 'verify-promotions') {
     argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
   }
+  // `verify-por-feed` / `verify-solana-bridge --domain <domain>` are the flag forms with RPC queries.
+  if (argv[0] === 'verify-por-feed' || argv[0] === 'verify-solana-bridge') {
+    const flag = argv[0] === 'verify-por-feed' ? '--verify-por-feed' : '--verify-solana-bridge';
+    argv = [flag, '--check-network', ...argv.slice(1)];
+  }
+  if (argv[0] === 'audit-wormhole-vaa') return auditWormholeVaaCommand(argv.slice(1));
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
   if (argv[0] === 'dispatch-alert') return dispatchAlert(argv.slice(1));
   if (argv[0] === 'audit-coop-coep') return auditCoopCoep(argv.slice(1));
@@ -775,6 +879,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
+  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -791,6 +896,9 @@ async function main(argv: string[]): Promise<number> {
   }
   if (cli.verifyWasmStreaming !== undefined) {
     return verifyWasmStreaming(cli.verifyWasmStreaming);
+  }
+  if (cli.runSandboxedPlugin !== undefined) {
+    return runSandboxedPlugin(cli.runSandboxedPlugin, cli.sandboxFuel);
   }
 
   const color = cli.color ?? shouldUseColor();
@@ -1287,6 +1395,9 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     verifyPromotions: false,
     verifyFederationSrv: false,
     auditEsgDisclosures: false,
+    verifyPorFeed: false,
+    verifySolanaBridge: false,
+    auditErc4626Vaults: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -1411,6 +1522,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-esg-disclosures':
         cli.auditEsgDisclosures = true;
+        break;
+
+      case '--verify-por-feed':
+        cli.verifyPorFeed = true;
+        break;
+
+      case '--verify-solana-bridge':
+        cli.verifySolanaBridge = true;
+        break;
+
+      case '--audit-erc4626-vaults':
+        cli.auditErc4626Vaults = true;
         break;
 
       case '--audit-offline-pwa':

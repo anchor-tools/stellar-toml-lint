@@ -52,7 +52,11 @@ describe('payload formatters', () => {
     expect(payload.event_action).toBe('trigger');
     expect(payload.dedup_key).toBe('reserve:anchor.example.com');
     expect(payload.payload.severity).toBe('critical');
-    expect(payload.payload.custom_details).toEqual({ rule: incident.rule, deficit: '12%', asset: 'USDC' });
+    expect(payload.payload.custom_details).toEqual({
+      rule: incident.rule,
+      deficit: '12%',
+      asset: 'USDC',
+    });
   });
 
   it('maps error severity onto PagerDuty critical', () => {
