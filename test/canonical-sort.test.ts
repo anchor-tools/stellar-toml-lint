@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CANONICAL_ARRAY_ORDER,
   CANONICAL_KEY_ORDER,
+  CanonicalSortCodemod,
   sortCanonical,
 } from '../src/cst/canonicalSortCodemod.js';
 
@@ -374,5 +375,17 @@ describe('sortCanonical', () => {
     const currencies = keysOf(once.output, 1);
     expect(currencies.filter((key) => !canonical.has(key))).toEqual([]);
     expect(currencies.slice(0, 2)).toEqual(['code', 'contract']);
+  });
+
+  it('is usable as the stateless codemod the issue names', () => {
+    const source = ['[[CURRENCIES]]', 'issuer = "GABC"', 'code = "USDC"', ''].join('\n');
+    const codemod = new CanonicalSortCodemod();
+
+    const result = codemod.run(source);
+
+    expect(result.output).toBe(sortCanonical(source).output);
+    // One instance serves every file in a run, so nothing may accumulate between
+    // calls: the sorted text is already canonical and says so.
+    expect(codemod.run(result.output).changed).toBe(false);
   });
 });

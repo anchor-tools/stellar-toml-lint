@@ -300,69 +300,85 @@ function moveSections(document: CstDocument, run: Section[], order: Section[]): 
  * `stellar.toml` is worse than an unsorted one, and linting is where the reason
  * belongs.
  */
-export function sortCanonical(source: string): CanonicalSortResult {
-  const document = parseCst(source);
-  if (document.errors.length > 0) {
+export class CanonicalSortCodemod {
+  run(source: string): CanonicalSortResult {
+    const document = parseCst(source);
+    if (document.errors.length > 0) {
+      return {
+        output: source,
+        parsed: false,
+        changed: false,
+        tablesSorted: [],
+        arraysSorted: [],
+        warnings: ['file does not parse; nothing was reordered'],
+      };
+    }
+
+    const tablesSorted: string[] = [];
+    const arraysSorted: string[] = [];
+    const warnings: string[] = [];
+
+    this.reorderKeys(document, tablesSorted);
+    this.reorderArrays(document, arraysSorted, warnings);
+
+    const output = printCst(document);
     return {
-      output: source,
-      parsed: false,
-      changed: false,
-      tablesSorted: [],
-      arraysSorted: [],
-      warnings: ['file does not parse; nothing was reordered'],
+      output,
+      parsed: true,
+      changed: output !== source,
+      tablesSorted: [...new Set(tablesSorted)],
+      arraysSorted: [...new Set(arraysSorted)],
+      warnings,
     };
   }
 
-  const tablesSorted: string[] = [];
-  const arraysSorted: string[] = [];
-  const warnings: string[] = [];
-
-  // Keys first, then entries: the key pass only permutes within a section, so
-  // every section keeps the entry range it had at parse time and the array pass
-  // below can still move sections by those ranges.
-  for (const section of sectionsOf(document)) {
-    const order = orderFor(section.path);
-    if (section.blocks.length < 2 || order === undefined) continue;
-    const sorted = rankBlocks(section.blocks, order);
-    const positions = section.blocks.map((block) => block.index);
-    const separators = section.blocks.map((block) => block.separator);
-    if (reattach(document, positions, separators, sorted)) {
-      tablesSorted.push(section.path === '' ? '<root>' : section.path);
+  private reorderKeys(document: CstDocument, tablesSorted: string[]): void {
+    for (const section of sectionsOf(document)) {
+      const order = orderFor(section.path);
+      if (section.blocks.length < 2 || order === undefined) continue;
+      const sorted = rankBlocks(section.blocks, order);
+      const positions = section.blocks.map((block) => block.index);
+      const separators = section.blocks.map((block) => block.separator);
+      if (reattach(document, positions, separators, sorted)) {
+        tablesSorted.push(section.path === '' ? '<root>' : section.path);
+      }
     }
   }
 
-  for (const run of arrayRuns(sectionsOf(document))) {
-    const name = (run[0] as Section).path;
-    const field = CANONICAL_ARRAY_ORDER[name];
-    if (field === undefined) continue;
-    const keyed = run.map((section) => ({ section, value: valueOf(section, field) }));
-    if (keyed.some((entry) => entry.value === undefined)) {
-      warnings.push(`${name}: an entry has no \`${field}\`, left in place`);
-      continue;
+  /**
+   * Runs after `reorderKeys`, which only ever permutes within a section, so every
+   * section still owns the entry range it had at parse time and this pass can
+   * move whole sections by those ranges.
+   */
+  private reorderArrays(document: CstDocument, arraysSorted: string[], warnings: string[]): void {
+    for (const run of arrayRuns(sectionsOf(document))) {
+      const name = (run[0] as Section).path;
+      const field = CANONICAL_ARRAY_ORDER[name];
+      if (field === undefined) continue;
+      const keyed = run.map((section) => ({ section, value: valueOf(section, field) }));
+      if (keyed.some((entry) => entry.value === undefined)) {
+        warnings.push(`${name}: an entry has no \`${field}\`, left in place`);
+        continue;
+      }
+      const ordered = [...keyed].sort((left, right) => {
+        const a = String(left.value).toUpperCase();
+        const b = String(right.value).toUpperCase();
+        if (a < b) return -1;
+        if (a > b) return 1;
+        return keyed.indexOf(left) - keyed.indexOf(right);
+      });
+      if (ordered.every((entry, index) => entry.section === run[index])) continue;
+      moveSections(
+        document,
+        run,
+        ordered.map((entry) => entry.section),
+      );
+      arraysSorted.push(name);
     }
-    const ordered = [...keyed].sort((left, right) => {
-      const a = String(left.value).toUpperCase();
-      const b = String(right.value).toUpperCase();
-      if (a < b) return -1;
-      if (a > b) return 1;
-      return keyed.indexOf(left) - keyed.indexOf(right);
-    });
-    if (ordered.every((entry, index) => entry.section === run[index])) continue;
-    moveSections(
-      document,
-      run,
-      ordered.map((entry) => entry.section),
-    );
-    arraysSorted.push(name);
   }
+}
 
-  const output = printCst(document);
-  return {
-    output,
-    parsed: true,
-    changed: output !== source,
-    tablesSorted: [...new Set(tablesSorted)],
-    arraysSorted: [...new Set(arraysSorted)],
-    warnings,
-  };
+/** {@link CanonicalSortCodemod.run} without constructing one. */
+export function sortCanonical(source: string): CanonicalSortResult {
+  return new CanonicalSortCodemod().run(source);
 }
