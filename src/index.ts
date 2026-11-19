@@ -217,6 +217,63 @@ export type {
   DiscordIncidentPayload,
   PagerDutyIncidentPayload,
 } from './gitops/incidentDispatcher.js';
+export {
+  ContainerSecurityAuditor,
+  auditDockerfile,
+  analyzeDockerignore,
+  classifyBaseImage,
+  parseDockerfile,
+  parseDockerStages,
+  parseFrom,
+  renderContainerReport,
+  resolveUserStage,
+  DEFAULT_IMAGE_SIZE_BUDGET,
+} from './gitops/containerAuditor.js';
+export type {
+  BaseImageFamily,
+  ContainerAuditOptions,
+  ContainerAuditReport,
+  ContainerFinding,
+  ContainerFindingCode,
+  ContainerSeverity,
+  DockerInstruction,
+  DockerfileAnalysis,
+  DockerfileStage,
+  DockerignoreAnalysis,
+} from './gitops/containerAuditor.js';
+export {
+  HOSTED_BUILDER_PATTERNS,
+  SlsaProvenanceError,
+  SlsaProvenanceVerifier,
+  certificateChainTrusted,
+  dssePae,
+  normalizeProvenance,
+  parseAttestationDocument,
+  parseProvenanceDocuments,
+  predicateTypeOf,
+  renderProvenanceReport,
+  subjectsOf,
+  verifyEnvelopeSignature,
+  verifySlsaProvenance,
+} from './gitops/slsaVerifier.js';
+export type {
+  AttestationFormat,
+  DsseEnvelope,
+  DsseSignature,
+  NormalizedProvenance,
+  ParsedAttestation,
+  ProvenanceMaterial,
+  ProvenanceSubject,
+  SigstoreBundle,
+  SignatureVerification,
+  SlsaFinding,
+  SlsaFindingCode,
+  SlsaLevel,
+  SlsaSecurityAttestation,
+  SlsaSeverity,
+  SlsaVerificationOptions,
+  SlsaVerificationReport,
+} from './gitops/slsaVerifier.js';
 export { SPEC_URL } from './spec.js';
 export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
