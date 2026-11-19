@@ -134,6 +134,14 @@ each transaction memo carries an audit reference (a URL, a 64-hex hash, a hash m
 exact 7-decimal amounts. It exits 1 when any clawback lacks a reference. Claimable-balance
 clawbacks carry no amount on the operation, so their amount is reported as `n/a`.
 
+`stellar-toml-lint refactor <file> [--deduplicate-assets] [--split] [--max-bytes <n>] [--out-dir <dir>]
+[--write] [--json]` merges `[[CURRENCIES]]` entries that share a code and issuer, keeping comments and
+non-conflicting metadata from every declaration. Conflicting fields keep the first value and are
+both recorded in the summary and preserved as `# refactor: conflict` comments. A post-refactor CST
+validation checks that no currency or non-conflicting value was lost; the diff is printed for review
+and only `--write` changes the file. `--split` instead emits modular partials grouped by table
+(`base`, `currencies`, `validators`, …), optionally written to `--out-dir`.
+
 ### Options
 
 | Flag                          | Effect                                                                                                                              |
@@ -154,6 +162,9 @@ clawbacks carry no amount on the operation, so their amount is reported as `n/a`
 | `--audit-kyc-fsm`             | Audit SEP-12 customer status state machines for stuck or circular onboarding (use with `--domain`)                                  |
 | `--crawl-peers`               | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                             |
 | `--verify-dnssec`             | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                              |
+| `--audit-dns-takeover`        | Query CNAME/NS for every referenced domain and flag dangling pointers to claimable cloud resources                                  |
+| `--audit-secrets`             | Halt with exit 1 on leaked Stellar seeds, cloud keys, tokens or PEM blocks; all output is redacted                                  |
+| `--audit-ssrf`                | Flag advertised URLs resolving to private, loopback, link-local or multicast IPs, including DNS rebinding                           |
 | `--follow-links`              | Fetch and lint the `toml` pointers in `CURRENCIES` (implied by `--domain`)                                                          |
 | `--check-contracts`           | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                               |
 | `--soroban-rpc <url>`         | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                                   |
@@ -823,6 +834,23 @@ Cloudflare (`1.1.1.1`), Google (`8.8.8.8`), and Quad9 (`9.9.9.9`) through their 
 endpoints. Resolver sets are normalized and compared; disagreement emits
 `security/dns-resolver-divergence` (error), while an explicit unauthenticated response emits
 `security/dnssec-not-enabled` (warning).
+
+**DNS takeover and SSRF** (`--audit-dns-takeover`, `--audit-ssrf`) — the takeover audit collects the
+apex domain and every hostname referenced by the file, then queries CNAME and NS records through a
+DNS-over-HTTPS resolver. A CNAME whose target matches a known cloud signature (S3, GitHub Pages,
+Fastly, Cloudflare, Azure, Heroku, Netlify or Vercel) and does not resolve is reported as
+`security/dns-takeover-cname` at **critical** severity; dangling Route 53 delegations are reported as
+`security/dns-takeover-ns`. The SSRF audit resolves every advertised URL twice (passively, through
+the same resolver) and reports RFC 1918, loopback, link-local, multicast and IPv4-mapped IPv6 targets
+as `security/ssrf-private-ip`, with public→private answer changes reported as
+`security/ssrf-dns-rebinding`. Both audits carry per-query timeouts, so a slow resolver degrades to a
+warning instead of hanging CI. Neither audit connects to the target resource.
+
+**Secret leak detection** (`--audit-secrets`) — scans the raw source, its comments and the parsed
+values for checksum-valid Stellar seeds (`S…`), AWS keys, GitHub tokens, PEM blocks, bearer tokens and
+high-entropy values in credential-looking fields. A finding halts the run immediately with exit 1;
+only masked values (`SABC...XYZ`) ever reach stdout, stderr or reports, and public `G…`/`C…` keys are
+never flagged.
 
 The same flag sends browser-shaped `OPTIONS` requests to each declared `WEB_AUTH_ENDPOINT`,
 `TRANSFER_SERVER`, `KYC_SERVER`, and `ANCHOR_QUOTE_SERVER`. The response must allow the requesting

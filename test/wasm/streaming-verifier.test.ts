@@ -56,9 +56,7 @@ describe('WasmStreamingVerifier headers', () => {
     const octet = verifier.evaluateHeaders('application/octet-stream');
     expect(octet[0]?.code).toBe('streaming/invalid-content-type');
     expect(octet[0]?.message).toContain('application/octet-stream');
-    expect(verifier.evaluateHeaders('text/plain')[0]?.code).toBe(
-      'streaming/invalid-content-type',
-    );
+    expect(verifier.evaluateHeaders('text/plain')[0]?.code).toBe('streaming/invalid-content-type');
   });
 });
 

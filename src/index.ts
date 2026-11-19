@@ -123,6 +123,86 @@ export type {
   DnsResolver,
   DnsResolverResult,
 } from './security/dns-integrity.js';
+export {
+  checkSubdomainTakeover,
+  renderTakeoverReport,
+  scanSubdomainTakeover,
+  subdomainTakeoverRuleIds,
+  subdomainTakeoverRules,
+  takeoverDiagnostics,
+  TAKEOVER_SIGNATURES,
+  SECURITY_DNS_TAKEOVER_CNAME,
+  SECURITY_DNS_TAKEOVER_NS,
+  SECURITY_DNS_TAKEOVER_TIMEOUT,
+} from './security/subdomainScanner.js';
+export type {
+  SubdomainTakeoverOptions,
+  SubdomainTakeoverReport,
+  TakeoverDnsRecord,
+  TakeoverDnsResolver,
+  TakeoverDnsResponse,
+  TakeoverFinding,
+  TakeoverRisk,
+  TakeoverSignature,
+} from './security/subdomainScanner.js';
+export {
+  checkSecrets,
+  maskSecret,
+  renderSecretReport,
+  scanSecrets,
+  secretDetectorRuleIds,
+  secretDetectorRules,
+  SECURITY_SECRET_AWS_ACCESS_KEY,
+  SECURITY_SECRET_AWS_SECRET_KEY,
+  SECURITY_SECRET_BEARER_TOKEN,
+  SECURITY_SECRET_GITHUB_TOKEN,
+  SECURITY_SECRET_HIGH_ENTROPY,
+  SECURITY_SECRET_PRIVATE_KEY,
+  SECURITY_SECRET_STELLAR_SEED,
+  shannonEntropy,
+} from './security/secretDetector.js';
+export type {
+  SecretDetectorOptions,
+  SecretFinding,
+  SecretKind,
+  SecretScanResult,
+} from './security/secretDetector.js';
+export {
+  checkSsrf,
+  isBlockedIp,
+  normalizeIp,
+  renderSsrfReport,
+  scanSsrf,
+  ssrfDiagnostics,
+  ssrfRuleIds,
+  ssrfRules,
+  BLOCKED_CIDRS,
+  SECURITY_SSRF_DNS_REBINDING,
+  SECURITY_SSRF_PRIVATE_IP,
+  SECURITY_SSRF_TIMEOUT,
+} from './security/ssrfScanner.js';
+export type {
+  SsrfDnsResolver,
+  SsrfFinding,
+  SsrfOptions,
+  SsrfReport,
+} from './security/ssrfScanner.js';
+export {
+  deduplicateAssets,
+  diffText,
+  renderRefactorSummary,
+  splitLargeFile,
+  StructuralRefactoringEngine,
+} from './cst/structuralRefactoring.js';
+export type {
+  AssetDuplicateGroup,
+  FieldConflict,
+  PartialFile,
+  RefactorResult,
+  RefactorValidation,
+  SplitOptions,
+  SplitResult,
+} from './cst/structuralRefactoring.js';
 export type {
   Diagnostic,
   Fix,
