@@ -437,3 +437,56 @@ export type {
   DriftField,
   PublishedAnchor,
 } from './protocols/directorySyncVerifier.js';
+export {
+  PROBE_ADDRESS,
+  SEP30_AUTH_METHODS,
+  Sep30RecoveryVerifier,
+  auditSep30Recovery,
+  findUnsupportedAuthMethods,
+  sep30RuleIds,
+  sep30Rules,
+} from './protocols/sep30Verifier.js';
+export type { Sep30Options, Sep30Result } from './protocols/sep30Verifier.js';
+export {
+  PromotionalPricingVerifier,
+  collectPromoClaims,
+  formatPercent,
+  parsePromoClaim,
+  promotionalPricingRuleIds,
+  promotionalPricingRules,
+  verifyPromotions,
+} from './protocols/promotionalPricingVerifier.js';
+export type {
+  PromoClaim,
+  PromotionalPricingOptions,
+  PromotionalPricingResult,
+} from './protocols/promotionalPricingVerifier.js';
+export {
+  FederationSrvRecordVerifier,
+  federationSrvRuleIds,
+  federationSrvRules,
+  isValidSrvTarget,
+  verifyFederationSrv,
+} from './protocols/federationSrvVerifier.js';
+export type {
+  FederationSrvOptions,
+  FederationSrvResult,
+  SrvRecord,
+  SrvResolver,
+} from './protocols/federationSrvVerifier.js';
+export {
+  EsgComplianceVerifier,
+  auditEsgDisclosures,
+  esgRuleIds,
+  esgRules,
+  rate as rateEsgScore,
+  renderEsgReport,
+  verifyAttestationSignature,
+} from './protocols/esgComplianceVerifier.js';
+export type {
+  EsgCriterion,
+  EsgOptions,
+  EsgRating,
+  EsgReport,
+  EsgResult,
+} from './protocols/esgComplianceVerifier.js';

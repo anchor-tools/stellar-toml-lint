@@ -9,6 +9,35 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--audit-esg-disclosures` (`src/protocols/esgComplianceVerifier.ts`): checks
+  `[DOCUMENTATION.ORG_ESG]` for a carbon accounting methodology, renewable energy certificates, PUE
+  and an attestation (`esg/missing-field`, `esg/invalid-field`, `esg/attestation-expired`), verifies
+  the Ed25519 attestation signature under `--check-network` (`esg/attestation-unreachable`,
+  `esg/attestation-signature-invalid`) and prints a Platinum/Gold/Silver/Bronze rating to stderr.
+
+- `--verify-federation-srv` (`src/protocols/federationSrvVerifier.ts`): resolves
+  `_stellar-federation._tcp.<domain>` (RFC 2782) and checks targets, ports, priority/weight
+  (`federationsrv/invalid-target`, `federationsrv/invalid-port`,
+  `federationsrv/invalid-priority-weight`, `federationsrv/non-default-port`), conflicts with
+  `FEDERATION_SERVER` (`federationsrv/conflicts-with-toml`) and, under `--check-network`, probes each
+  target over HTTPS with a timeout (`federationsrv/unreachable-target`,
+  `federationsrv/not-a-federation-server`).
+
+- `--verify-promotions` / `stellar-toml-lint verify-promotions --domain <domain>`
+  (`src/protocols/promotionalPricingVerifier.ts`): parses "0% fee", "1.5% fee" and "until
+  YYYY-MM-DD" claims from `[DOCUMENTATION]` and `CURRENCIES` text, flags expired claims
+  (`promotions/expired-claim`) and, under `--check-network`, compares them with SEP-38 `/price` fees
+  at test volumes using exact integer math (`promotions/fee-mismatch`,
+  `promotions/unverifiable-claim`). `/quote` needs a SEP-10 session, so indicative `/price` is used.
+
+- `--audit-sep30-recovery` (`src/protocols/sep30Verifier.ts`): validates `RECOVERY_SERVER` and
+  `RECOVERY_SIGNING_KEYS` (`sep30/invalid-recovery-server`, `sep30/invalid-signing-key`,
+  `sep30/insufficient-recovery-quorum`) and, under `--check-network`, probes `POST`/`GET`/`PUT`
+  `/accounts/{address}` with no credentials against a throwaway address
+  (`sep30/endpoint-unavailable`, `sep30/unauthenticated-recovery`, `sep30/unsupported-auth-method`).
+  Signer weights are not readable without an authenticated session, so quorum is judged from the
+  number of distinct declared signing keys.
+
 - `stellar-toml-lint audit-clawbacks --asset <code:issuer>` (`src/protocols/clawbackAuditGenerator.ts`):
   scans the issuer's Horizon history for `clawback` and `clawback_claimable_balance` operations,
   verifies each carries an audit memo reference, and generates JSON and Markdown audit trail reports
