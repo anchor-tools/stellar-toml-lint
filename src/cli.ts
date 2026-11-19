@@ -884,6 +884,79 @@ async function sortKeysCommand(cli: Cli, color: boolean): Promise<number> {
   return unparseable > 0 ? 1 : 0;
 }
 
+/** `stellar-toml-lint refactor <file> [options]` */
+async function refactorCommand(args: string[]): Promise<number> {
+  let file: string | undefined;
+  let split = false;
+  let write = false;
+  let json = false;
+  let maxBytes: number | undefined;
+  let outDir: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--deduplicate-assets') continue;
+    else if (arg === '--split') split = true;
+    else if (arg === '--write') write = true;
+    else if (arg === '--json') json = true;
+    else if (arg === '--max-bytes') {
+      const value = Number(requireValue(args, ++i, arg));
+      if (!Number.isInteger(value) || value <= 0) {
+        process.stderr.write('--max-bytes expects a positive integer.\n');
+        return 2;
+      }
+      maxBytes = value;
+    } else if (arg === '--out-dir') outDir = requireValue(args, ++i, arg);
+    else if (!arg.startsWith('-')) file = arg;
+    else {
+      process.stderr.write(`Unknown option ${arg} for refactor\n`);
+      return 2;
+    }
+  }
+
+  if (file === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint refactor <file> [--deduplicate-assets] [--split] ' +
+        '[--max-bytes <n>] [--out-dir <dir>] [--write] [--json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const source = await readFile(resolve(file), 'utf8');
+    const engine = new StructuralRefactoringEngine(source);
+
+    if (split) {
+      const result = engine.split({
+        ...(maxBytes === undefined ? {} : { maxBytes }),
+        ...(outDir === undefined ? {} : { baseName: basename(file, '.toml') }),
+      });
+      if (outDir !== undefined) {
+        await mkdir(resolve(outDir), { recursive: true });
+        for (const partial of result.files) {
+          await writeFile(resolve(outDir, partial.name), partial.source, 'utf8');
+        }
+      }
+      process.stdout.write(
+        json
+          ? `${JSON.stringify(result, null, 2)}\n`
+          : `${result.files.map((partial) => partial.name).join('\n')}\n` +
+              `Validation: ${result.validation.ok ? 'passed' : `FAILED: ${result.validation.errors.join('; ')}`}\n`,
+      );
+      return result.validation.ok ? 0 : 1;
+    }
+
+    const result = engine.deduplicateAssets();
+    process.stderr.write(renderRefactorSummary(result));
+    process.stdout.write(json ? `${JSON.stringify(result, null, 2)}\n` : result.diff);
+    if (write && result.validation.ok) await writeFile(resolve(file), result.source, 'utf8');
+    return result.validation.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
   // `verify-promotions --domain <domain>` is the flag form with quotes enabled.
   if (argv[0] === 'verify-promotions') {
