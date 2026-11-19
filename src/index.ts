@@ -490,3 +490,72 @@ export type {
   EsgReport,
   EsgResult,
 } from './protocols/esgComplianceVerifier.js';
+export {
+  DnsCaaRecordValidator,
+  RECOGNIZED_CAS,
+  auditDnsCaa,
+  caaLookupChain,
+  dnsCaaRuleIds,
+  dnsCaaRules,
+  isValidIodef,
+  issuerOf,
+} from './protocols/dnsCaaValidator.js';
+export type {
+  CaaRecord,
+  CaaResolver,
+  DnsCaaOptions,
+  DnsCaaResult,
+} from './protocols/dnsCaaValidator.js';
+export {
+  SecurityTxtValidator,
+  crc24,
+  isWellFormedArmor,
+  parseExpires,
+  parseSecurityTxt,
+  securityTxtRuleIds,
+  securityTxtRules,
+  verifySecurityTxt,
+} from './protocols/securityTxtValidator.js';
+export type {
+  ParsedSecurityTxt,
+  SecurityTxtField,
+  SecurityTxtOptions,
+  SecurityTxtResult,
+  SignatureVerifier,
+} from './protocols/securityTxtValidator.js';
+export {
+  IpSpoofingVulnerabilityDetector,
+  SPOOF_HEADERS,
+  auditIpSpoofing,
+  findReflectedHeaders,
+  ipSpoofingRuleIds,
+  ipSpoofingRules,
+  isRateLimitBypass,
+  proxyHopCount,
+  rateLimitRemaining,
+} from './protocols/ipSpoofingDetector.js';
+export type {
+  EndpointFinding,
+  IpSpoofingOptions,
+  IpSpoofingResult,
+} from './protocols/ipSpoofingDetector.js';
+export {
+  BtcReserveUtxoAuditor,
+  DUST_LIMIT_SATS,
+  SATS_PER_STROOP,
+  auditBtcReserves,
+  btcReserveRuleIds,
+  btcReserveRules,
+  formatBtc,
+  parseBtcAddress,
+} from './protocols/btcReserveAuditor.js';
+export type {
+  BtcAddressInfo,
+  BtcAddressType,
+  BtcReserveOptions,
+  BtcReserveResult,
+  ReserveReport,
+  SupplyProvider,
+  Utxo,
+  UtxoProvider,
+} from './protocols/btcReserveAuditor.js';

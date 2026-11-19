@@ -55,6 +55,10 @@ import { auditSep30Recovery } from './protocols/sep30Verifier.js';
 import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { verifyFederationSrv } from './protocols/federationSrvVerifier.js';
 import { auditEsgDisclosures, renderEsgReport } from './protocols/esgComplianceVerifier.js';
+import { auditDnsCaa } from './protocols/dnsCaaValidator.js';
+import { verifySecurityTxt } from './protocols/securityTxtValidator.js';
+import { auditIpSpoofing } from './protocols/ipSpoofingDetector.js';
+import { auditBtcReserves } from './protocols/btcReserveAuditor.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
@@ -142,6 +146,10 @@ interface Cli {
   verifyPromotions: boolean;
   verifyFederationSrv: boolean;
   auditEsgDisclosures: boolean;
+  auditCaa: boolean;
+  verifySecurityTxt: boolean;
+  auditIpSpoofing: boolean;
+  auditBtcReserves: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
@@ -239,6 +247,18 @@ OPTIONS
                           Verify DOCUMENTATION.ORG_ESG disclosures, check the
                           attestation signature with --check-network, and print
                           a sustainability rating
+      --audit-caa         Check DNS CAA records on --domain and its parent
+                          zones for issue, issuewild and iodef (RFC 8659)
+      --verify-security-txt
+                          Validate https://<domain>/.well-known/security.txt
+                          (RFC 9116); also available as
+                          'verify-security-txt --domain <domain>'
+      --audit-ip-spoofing Probe anchor endpoints with spoofed client IP
+                          headers for rate-limit bypass (with --check-network)
+      --audit-btc-reserves
+                          Validate BTC collateral_addresses and, with
+                          --check-network, reconcile 6-conf UTXOs against the
+                          wrapped supply
       --audit-offline-pwa <path>
                           Audit a Service Worker script (or manifest.json) for offline
                           precaching, cache versioning, and PWA manifest requirements
@@ -396,6 +416,22 @@ async function runExtraAudits(
     });
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
+  }
+  if (cli.auditCaa && domain !== undefined) {
+    const result = await auditDnsCaa({ rules, domain });
+    out.push(...result.diagnostics);
+  }
+  if (cli.verifySecurityTxt && domain !== undefined) {
+    const result = await verifySecurityTxt(fetchImpl, { rules, domain });
+    out.push(...result.diagnostics);
+  }
+  if (cli.auditIpSpoofing) {
+    const result = await auditIpSpoofing(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
+    out.push(...result.diagnostics);
+  }
+  if (cli.auditBtcReserves) {
+    const result = await auditBtcReserves(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
+    out.push(...result.diagnostics);
   }
   return out;
 }
@@ -768,6 +804,9 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-promotions') {
     argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
   }
+  if (argv[0] === 'verify-security-txt') {
+    argv = ['--verify-security-txt', ...argv.slice(1)];
+  }
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
   if (argv[0] === 'dispatch-alert') return dispatchAlert(argv.slice(1));
   if (argv[0] === 'audit-coop-coep') return auditCoopCoep(argv.slice(1));
@@ -775,6 +814,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
+  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -785,6 +825,9 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
+  if (cli.runSandboxedPlugin !== undefined) {
+    return runSandboxedPlugin(cli.runSandboxedPlugin, cli.sandboxFuel);
+  }
   if (cli.auditOfflinePwa !== undefined) return auditOfflinePwa(cli.auditOfflinePwa);
   if (cli.auditEdgeCompatibility !== undefined) {
     return auditEdgeCompatibility(cli.auditEdgeCompatibility);
@@ -1287,6 +1330,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     verifyPromotions: false,
     verifyFederationSrv: false,
     auditEsgDisclosures: false,
+    auditCaa: false,
+    verifySecurityTxt: false,
+    auditIpSpoofing: false,
+    auditBtcReserves: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -1411,6 +1458,22 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-esg-disclosures':
         cli.auditEsgDisclosures = true;
+        break;
+
+      case '--audit-caa':
+        cli.auditCaa = true;
+        break;
+
+      case '--verify-security-txt':
+        cli.verifySecurityTxt = true;
+        break;
+
+      case '--audit-ip-spoofing':
+        cli.auditIpSpoofing = true;
+        break;
+
+      case '--audit-btc-reserves':
+        cli.auditBtcReserves = true;
         break;
 
       case '--audit-offline-pwa':
