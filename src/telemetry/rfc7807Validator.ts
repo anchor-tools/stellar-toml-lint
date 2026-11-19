@@ -15,6 +15,7 @@
  * created, updated or deleted.
  */
 import { StrKey } from '@stellar/stellar-base';
+import { trimTrailingSlashes } from '../strings.js';
 
 /** Standardized classification of an error response. */
 export type ErrorCategory =
@@ -410,7 +411,7 @@ export function buildErrorProbes(doc: Record<string, unknown>): (ErrorProbe & { 
   for (const [field, probes] of Object.entries(ERROR_PROBES)) {
     const base = doc[field];
     if (typeof base !== 'string' || !/^https?:\/\//i.test(base)) continue;
-    const trimmed = base.replace(/\/+$/, '');
+    const trimmed = trimTrailingSlashes(base);
     for (const probe of probes) out.push({ field, ...probe, url: `${trimmed}${probe.path}` });
   }
   return out;

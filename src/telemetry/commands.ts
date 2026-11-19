@@ -33,6 +33,7 @@ import {
   uptimeBadgeSvg,
   UptimeAvailabilityCalculator,
 } from './uptimeCalculator.js';
+import { trimTrailingSlashes } from '../strings.js';
 
 export interface CommandIo {
   stdout: (text: string) => void;
@@ -78,7 +79,7 @@ export async function fetchStellarToml(
   domain: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Record<string, unknown>> {
-  const host = domain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  const host = trimTrailingSlashes(domain.replace(/^https?:\/\//, ''));
   const scheme = /^http:\/\//.test(domain) ? 'http' : 'https';
   const url = `${scheme}://${host}/.well-known/stellar.toml`;
   const response = await fetchImpl(url);

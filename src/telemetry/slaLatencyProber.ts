@@ -17,6 +17,7 @@
  */
 import http from 'node:http';
 import https from 'node:https';
+import { trimTrailingSlashes } from '../strings.js';
 
 /** `stellar.toml` keys that point at SEP servers worth probing. */
 export const SLA_ENDPOINT_FIELDS: readonly string[] = [
@@ -127,7 +128,7 @@ export function probeUrl(base: string, path = '/info'): string {
       `Refusing to probe ${path}: only read-only paths (${READ_ONLY_PROBE_PATHS.join(', ')}) are allowed`,
     );
   }
-  return `${base.replace(/\/+$/, '')}${path}`;
+  return `${trimTrailingSlashes(base)}${path}`;
 }
 
 /** Returns `[field, baseUrl]` pairs for every declared SEP server. */
