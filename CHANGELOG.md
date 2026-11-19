@@ -9,6 +9,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--sort-keys` / `--sort-keys --dry-run` (`src/cst/canonicalSortCodemod.ts`,
+  `src/line-diff.ts`): rewrites `[DOCUMENTATION]`, `[[PRINCIPALS]]`, `[[CURRENCIES]]` and
+  `[[VALIDATORS]]` into the SEP-1 field order and sorts currency entries by `code` and validators by
+  `PUBLIC_KEY`, so adding one asset stops rediffing the whole file. Entries move as lossless CST
+  nodes, so nothing is reformatted and a comment travels with the key it annotates; a blank line
+  makes a comment floating and it stays at its position. Unknown keys stay last in the order written,
+  the pass is idempotent, and a file that does not parse is reported and left untouched (exit 1).
+  `--dry-run` prints a unified diff instead of writing and exits 1 when a file is not already
+  canonical, which is the CI gate; `--sort-keys -` sorts stdin to stdout.
+
 - `--audit-esg-disclosures` (`src/protocols/esgComplianceVerifier.ts`): checks
   `[DOCUMENTATION.ORG_ESG]` for a carbon accounting methodology, renewable energy certificates, PUE
   and an attestation (`esg/missing-field`, `esg/invalid-field`, `esg/attestation-expired`), verifies

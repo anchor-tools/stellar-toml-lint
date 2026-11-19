@@ -174,6 +174,8 @@ clawbacks carry no amount on the operation, so their amount is reported as `n/a`
 | `-w, --watch`                 | Watch files and re-run on changes                                                                                                   |
 | `-i, --interactive`           | Full-screen dashboard to walk the findings (falls back to text)                                                                     |
 | `--lsp`                       | Run as a Language Server on stdio (diagnostics, quick-fixes, hover)                                                                 |
+| `--sort-keys`                 | Rewrite files into canonical SEP-1 key order; a comment moves with the key it annotates                                             |
+| `--dry-run`                   | With `--sort-keys`, print the diff instead of writing and exit 1 if a file is not already canonical                                 |
 | `--graph <fmt>`               | Generate architecture diagram: `mermaid` or `dot`                                                                                   |
 | `--graph-contracts`           | Include Soroban contracts in diagram                                                                                                |
 | `--graph-validators`          | Include validators in diagram                                                                                                       |
@@ -194,6 +196,42 @@ failure.
 Colour output follows the [NO_COLOR standard](https://no-color.org): setting `NO_COLOR` to any
 non-empty value disables it, an empty value counts as unset, and stdout not being a terminal
 disables it too. An explicit `--color` is the only thing that overrides `NO_COLOR`.
+
+### Canonical key order
+
+Anchors edit `stellar.toml` by hand, so the fields land in whatever order the last edit happened to
+touch. The next person who adds one currency to a five-currency file produces a diff that moves
+half the file, and the reviewer has to read all of it to find the one line that matters.
+
+`--sort-keys` reorders the tables SEP-1 defines a reading order for — `[DOCUMENTATION]`,
+`[[PRINCIPALS]]`, `[[CURRENCIES]]`, `[[VALIDATORS]]` — into that order, and sorts `[[CURRENCIES]]`
+by `code` and `[[VALIDATORS]]` by `PUBLIC_KEY` so the entries themselves are findable:
+
+```bash
+stellar-toml-lint --sort-keys                    # apply
+stellar-toml-lint --sort-keys --dry-run          # preview; exit 1 if anything is out of order
+stellar-toml-lint --sort-keys --dry-run > keys.diff
+cat broken.toml | stellar-toml-lint --sort-keys - # stdin to stdout
+```
+
+What it guarantees:
+
+- **It only moves lines.** Nothing is reformatted, re-quoted, or re-rendered, so `issuer = "GABC" #
+our account` keeps its trailing comment, its quoting, and its multi-line `"""` value byte for byte.
+- **A comment travels with the key under it.** A blank line separates a comment from the key below,
+  which makes it floating layout rather than an annotation, and floating whitespace stays where the
+  author put it.
+- **Fields the spec does not name stay last, in the order written.** The codemod has no opinion
+  about `sep38`, so it will not invent one and will not reorder your custom keys against each other.
+- **It is idempotent.** A second pass reports no change, which is what makes `--dry-run` usable as a
+  CI gate and `--sort-keys` safe in a pre-commit hook.
+- **A file that does not parse is left alone** and reported on stderr with exit 1. Fix the syntax
+  first; a reorder is not the place to guess at intent.
+
+Two limits worth knowing: the keys above the first table header are left where they are, since
+there is no canonical order for the global preamble that everyone agrees on, and an array whose
+entries are interrupted by another table is not reordered, because moving it would change which
+table its keys belong to.
 
 ### Rule presets
 

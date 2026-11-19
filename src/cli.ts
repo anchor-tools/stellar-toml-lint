@@ -47,6 +47,8 @@ import {
   renderClawbackMarkdown,
 } from './protocols/clawbackAuditGenerator.js';
 import { validateUnicode } from './cst/unicodeValidator.js';
+import { sortCanonical } from './cst/canonicalSortCodemod.js';
+import { formatUnifiedDiff } from './line-diff.js';
 import {
   auditConsumerProtection,
   renderScorecard,
@@ -162,6 +164,8 @@ interface Cli {
   policy?: string;
   mockFixtures?: string;
   lsp?: boolean;
+  sortKeys?: boolean;
+  dryRun?: boolean;
   runSandboxedPlugin?: string;
   sandboxFuel?: number;
   verifyWasmStreaming?: string;
@@ -183,6 +187,10 @@ USAGE
                                          expanding it (or failing to)
   stellar-toml-lint --domain <domain>    Fetch and lint https://<domain>/.well-known/stellar.toml
   cat stellar.toml | stellar-toml-lint - Lint stdin
+  stellar-toml-lint --sort-keys [file...]
+                                         Reorder table keys into canonical order
+                                         in place; --dry-run prints the diff
+                                         instead of writing
   stellar-toml-lint profile-wasm-heap --wasm <plugin.wasm> --iterations <n>
                                          Run a plugin repeatedly and report heap growth
   stellar-toml-lint sync-directory --feed <url|file> [--format text|json]
@@ -208,6 +216,14 @@ OPTIONS
                           without one the text reporter is used instead
       --lsp               Run as a Language Server on stdio (diagnostics,
                           quick-fix code actions, and SEP-1 hover docs)
+      --sort-keys         Rewrite files into canonical key order: SEP-1 fields in
+                          spec order inside each table, [[CURRENCIES]] sorted by
+                          code, [[VALIDATORS]] by public_key, and keys this tool
+                          does not know pushed to the end of their table. Leading
+                          comments travel with the key they describe.
+      --dry-run           With --sort-keys, print a unified diff and change
+                          nothing. Exits 1 when a file is not already canonical,
+                          so CI can check ordering without writing to the tree.
   -q, --quiet             Report errors only
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
@@ -337,6 +353,8 @@ EXAMPLES
   stellar-toml-lint --graph mermaid > diagram.mmd
   stellar-toml-lint --graph dot --graph-contracts > diagram.dot
   stellar-toml-lint --policy policy.yaml public/.well-known/stellar.toml
+  stellar-toml-lint --sort-keys --dry-run          # show the reorder, change nothing
+  stellar-toml-lint --sort-keys                    # apply it
   stellar-toml-lint public/.well-known/stellar.toml --check-network \\\\
     --mock-fixtures ./test/fixtures/network
 `;
@@ -763,6 +781,61 @@ async function verifyBrowserBundleCommand(args: string[]): Promise<number> {
   }
 }
 
+/**
+ * `--sort-keys` rewrites files into canonical key order; `--dry-run` prints the
+ * diff and leaves the tree alone. Both go through this one pass so a preview can
+ * never disagree with what the write would have done.
+ */
+async function sortKeysCommand(cli: Cli, color: boolean): Promise<number> {
+  if (cli.domain !== undefined) {
+    process.stderr.write(
+      '--sort-keys rewrites files on disk, so it cannot be combined with --domain.\n\nRun with --help for usage.\n',
+    );
+    return 2;
+  }
+
+  let wouldChange = 0;
+  let unparseable = 0;
+
+  try {
+    const paths = await expandInputs(cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH]);
+    for (const path of paths) {
+      const name = path === '-' ? 'stdin' : path;
+      const source = path === '-' ? await readStdin() : await readFile(resolve(path), 'utf8');
+      const sorted = sortCanonical(source);
+      for (const warning of sorted.warnings) process.stderr.write(`${name}: ${warning}\n`);
+      if (!sorted.parsed) unparseable++;
+      if (!sorted.changed) continue;
+
+      wouldChange++;
+      // A dry run only ever shows the diff; stdin has no file to write back to,
+      // so there the sorted text is the output.
+      if (cli.dryRun) {
+        process.stdout.write(formatUnifiedDiff(name, source, sorted.output, { color }));
+      } else if (path === '-') {
+        process.stdout.write(sorted.output);
+      } else {
+        await writeFile(resolve(path), sorted.output);
+        process.stdout.write(`${name}: sorted\n`);
+      }
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  // Only a dry run fails on a change — that is what makes it usable as a CI
+  // ordering gate. In apply mode the sort *is* the success, so a file that
+  // could not be parsed is the only non-zero exit.
+  if (cli.dryRun) {
+    if (wouldChange === 0 && unparseable === 0 && !cli.quiet) {
+      process.stdout.write('All files are in canonical key order.\n');
+    }
+    return wouldChange > 0 || unparseable > 0 ? 1 : 0;
+  }
+  return unparseable > 0 ? 1 : 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   // `verify-promotions --domain <domain>` is the flag form with quotes enabled.
   if (argv[0] === 'verify-promotions') {
@@ -793,7 +866,16 @@ async function main(argv: string[]): Promise<number> {
     return verifyWasmStreaming(cli.verifyWasmStreaming);
   }
 
+  if (cli.dryRun && !cli.sortKeys) {
+    process.stderr.write(
+      '--dry-run has nothing to preview without --sort-keys.\n\nRun with --help for usage.\n',
+    );
+    return 2;
+  }
+
   const color = cli.color ?? shouldUseColor();
+
+  if (cli.sortKeys) return sortKeysCommand(cli, color);
 
   const runLint = async (cli: Cli, color: boolean): Promise<number> => {
     if (cli.lsp) {
@@ -1328,6 +1410,14 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--lsp':
         cli.lsp = true;
+        break;
+
+      case '--sort-keys':
+        cli.sortKeys = true;
+        break;
+
+      case '--dry-run':
+        cli.dryRun = true;
         break;
 
       case '-d':
