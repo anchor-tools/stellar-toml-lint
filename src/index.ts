@@ -490,3 +490,61 @@ export type {
   EsgReport,
   EsgResult,
 } from './protocols/esgComplianceVerifier.js';
+export {
+  TlsCipherSecurityAuditor,
+  auditTlsCiphers,
+  hasForwardSecrecy,
+  isAeadCipher,
+  nodeTlsProbe,
+  renderCipherReport,
+  tlsCipherRuleIds,
+  tlsCipherRules,
+} from './security/tlsCipherAuditor.js';
+export type {
+  CipherGrade,
+  HandshakeProbe,
+  HandshakeResult,
+  TlsCipherOptions,
+  TlsCipherReport,
+  TlsCipherResult,
+  TlsVersion,
+} from './security/tlsCipherAuditor.js';
+export {
+  HstsSecurityVerifier,
+  auditHsts,
+  collectHosts,
+  hstsRuleIds,
+  hstsRules,
+  parseHsts,
+  renderHstsBadges,
+} from './security/hstsVerifier.js';
+export type {
+  HstsHostResult,
+  HstsOptions,
+  HstsPolicy,
+  HstsResult,
+} from './security/hstsVerifier.js';
+export {
+  BridgeEmergencyPauseValidator,
+  auditEmergencyPause,
+  emergencyPauseRuleIds,
+  emergencyPauseRules,
+} from './bridges/emergencyPauseValidator.js';
+export type {
+  EmergencyPauseOptions,
+  EmergencyPauseResult,
+} from './bridges/emergencyPauseValidator.js';
+export {
+  BridgeQuorumAuditor,
+  auditBridgeQuorum,
+  bridgeQuorumRuleIds,
+  bridgeQuorumRules,
+  requiredThreshold,
+  rotationContinuity,
+} from './bridges/bridgeQuorumAuditor.js';
+export type {
+  BridgeQuorumOptions,
+  BridgeQuorumResult,
+  BridgeQuorumSummary,
+  StakingEvidence,
+} from './bridges/bridgeQuorumAuditor.js';
