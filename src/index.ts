@@ -447,3 +447,17 @@ export {
   sep30Rules,
 } from './protocols/sep30Verifier.js';
 export type { Sep30Options, Sep30Result } from './protocols/sep30Verifier.js';
+export {
+  PromotionalPricingVerifier,
+  collectPromoClaims,
+  formatPercent,
+  parsePromoClaim,
+  promotionalPricingRuleIds,
+  promotionalPricingRules,
+  verifyPromotions,
+} from './protocols/promotionalPricingVerifier.js';
+export type {
+  PromoClaim,
+  PromotionalPricingOptions,
+  PromotionalPricingResult,
+} from './protocols/promotionalPricingVerifier.js';

@@ -52,6 +52,7 @@ import {
   renderScorecard,
 } from './protocols/consumerProtectionVerifier.js';
 import { auditSep30Recovery } from './protocols/sep30Verifier.js';
+import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
@@ -136,6 +137,7 @@ interface Cli {
   auditKycFsm: boolean;
   auditFederationSecurity: boolean;
   auditSep30Recovery: boolean;
+  verifyPromotions: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
@@ -223,6 +225,9 @@ OPTIONS
                           Verify RECOVERY_SERVER and recovery signing keys, and
                           (with --check-network) probe /accounts/{address} for
                           unauthenticated recovery
+      --verify-promotions Compare promotional fee claims against SEP-38 quote
+                          fees (with --check-network); also available as
+                          'verify-promotions --domain <domain>'
       --audit-offline-pwa <path>
                           Audit a Service Worker script (or manifest.json) for offline
                           precaching, cache versioning, and PWA manifest requirements
@@ -355,6 +360,13 @@ async function runExtraAudits(
   }
   if (cli.auditSep30Recovery) {
     const result = await auditSep30Recovery(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
+    out.push(...result.diagnostics);
+  }
+  if (cli.verifyPromotions) {
+    const result = await verifyPromotions(parsed, fetchImpl, {
+      rules,
+      checkQuotes: cli.checkNetwork,
+    });
     out.push(...result.diagnostics);
   }
   return out;
@@ -724,6 +736,10 @@ async function verifyBrowserBundleCommand(args: string[]): Promise<number> {
 }
 
 async function main(argv: string[]): Promise<number> {
+  // `verify-promotions --domain <domain>` is the flag form with quotes enabled.
+  if (argv[0] === 'verify-promotions') {
+    argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
+  }
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
   if (argv[0] === 'dispatch-alert') return dispatchAlert(argv.slice(1));
   if (argv[0] === 'audit-coop-coep') return auditCoopCoep(argv.slice(1));
@@ -1228,6 +1244,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditKycFsm: false,
     auditFederationSecurity: false,
     auditSep30Recovery: false,
+    verifyPromotions: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -1340,6 +1357,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-sep30-recovery':
         cli.auditSep30Recovery = true;
+        break;
+
+      case '--verify-promotions':
+        cli.verifyPromotions = true;
         break;
 
       case '--audit-offline-pwa':

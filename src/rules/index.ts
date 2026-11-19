@@ -29,6 +29,7 @@ import { unicodeRules } from '../cst/unicodeValidator.js';
 import { federationSecurityRules } from '../protocols/federationSecurityTester.js';
 import { reverseFederationRules } from '../protocols/reverseFederationVerifier.js';
 import { sep30Rules } from '../protocols/sep30Verifier.js';
+import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -64,6 +65,7 @@ export const allRules: Rule[] = [
   ...federationSecurityRules,
   ...reverseFederationRules,
   ...sep30Rules,
+  ...promotionalPricingRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -98,4 +100,5 @@ export {
   federationSecurityRules,
   reverseFederationRules,
   sep30Rules,
+  promotionalPricingRules,
 };

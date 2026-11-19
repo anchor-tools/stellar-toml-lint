@@ -9,6 +9,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--verify-promotions` / `stellar-toml-lint verify-promotions --domain <domain>`
+  (`src/protocols/promotionalPricingVerifier.ts`): parses "0% fee", "1.5% fee" and "until
+  YYYY-MM-DD" claims from `[DOCUMENTATION]` and `CURRENCIES` text, flags expired claims
+  (`promotions/expired-claim`) and, under `--check-network`, compares them with SEP-38 `/price` fees
+  at test volumes using exact integer math (`promotions/fee-mismatch`,
+  `promotions/unverifiable-claim`). `/quote` needs a SEP-10 session, so indicative `/price` is used.
+
 - `--audit-sep30-recovery` (`src/protocols/sep30Verifier.ts`): validates `RECOVERY_SERVER` and
   `RECOVERY_SIGNING_KEYS` (`sep30/invalid-recovery-server`, `sep30/invalid-signing-key`,
   `sep30/insufficient-recovery-quorum`) and, under `--check-network`, probes `POST`/`GET`/`PUT`
