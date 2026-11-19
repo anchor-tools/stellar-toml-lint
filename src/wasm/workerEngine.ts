@@ -129,7 +129,8 @@ export class WebWorkerLinterEngine {
 
   constructor(options: WorkerEngineOptions = {}) {
     this.options = options;
-    this.fallbackLint = options.fallbackLint ?? ((source, lintOptions) => lint(source, lintOptions));
+    this.fallbackLint =
+      options.fallbackLint ?? ((source, lintOptions) => lint(source, lintOptions));
     this.size = workersAvailable(options.workerFactory)
       ? Math.max(1, options.poolSize ?? defaultPoolSize())
       : 0;
@@ -309,7 +310,12 @@ export class WebWorkerLinterEngine {
 
     if (message.type === 'error') {
       this.counters.failed++;
-      active.entry.resolve({ id: message.id, status: 'failed', durationMs, error: message.message });
+      active.entry.resolve({
+        id: message.id,
+        status: 'failed',
+        durationMs,
+        error: message.message,
+      });
     } else {
       try {
         const result = decodeLintResponse(message.payload);

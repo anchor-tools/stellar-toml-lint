@@ -490,3 +490,69 @@ export type {
   EsgReport,
   EsgResult,
 } from './protocols/esgComplianceVerifier.js';
+export {
+  ChainlinkPorVerifier,
+  MAX_HEARTBEAT_SECONDS,
+  chainlinkPorRuleIds,
+  chainlinkPorRules,
+  collectPorFeeds,
+  decodeLatestRoundData,
+  verifyPorFeeds,
+} from './bridges/chainlinkPorVerifier.js';
+export type {
+  ChainlinkPorOptions,
+  ChainlinkPorResult,
+  PorFeed,
+  PorFeedReport,
+  PorRound,
+} from './bridges/chainlinkPorVerifier.js';
+export {
+  WORMHOLE_CHAINS,
+  WormholeVaaAuditor,
+  auditWormholeVaa,
+  decodeVaaInput,
+  parseGuardianSet,
+  parseVaa,
+  quorumFor,
+  renderVaaReport,
+  wormholeRuleIds,
+  wormholeRules,
+} from './bridges/wormholeVaaAuditor.js';
+export type {
+  GuardianSet,
+  ParsedVaa,
+  TokenTransfer,
+  VaaSignature,
+  WormholeAuditOptions,
+  WormholeAuditResult,
+} from './bridges/wormholeVaaAuditor.js';
+export {
+  DEFAULT_SOLANA_RPC,
+  SPL_TOKEN_PROGRAMS,
+  SolanaEscrowInvariantVerifier,
+  base58Decode,
+  isSolanaAddress,
+  solanaEscrowRuleIds,
+  solanaEscrowRules,
+  verifySolanaBridges,
+} from './bridges/solanaEscrowVerifier.js';
+export type {
+  SolanaBridge,
+  SolanaBridgeReport,
+  SolanaEscrowOptions,
+  SolanaEscrowResult,
+} from './bridges/solanaEscrowVerifier.js';
+export {
+  Erc4626VaultAuditor,
+  auditErc4626Vaults,
+  erc4626RuleIds,
+  erc4626Rules,
+  erc4626Selectors,
+} from './bridges/erc4626VaultAuditor.js';
+export type {
+  CurrencyNav,
+  Erc4626Options,
+  Erc4626Result,
+  VaultReport,
+} from './bridges/erc4626VaultAuditor.js';
+export { keccak256, publicKeyToAddress, recoverPublicKey } from './bridges/evmCrypto.js';
