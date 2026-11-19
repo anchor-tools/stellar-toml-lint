@@ -209,5 +209,10 @@ function at(lines: string[], index: number): string {
  * and `a//etc/stellar.toml` is not a path anyone can paste back into a shell.
  */
 function label(side: 'a' | 'b', path: string): string {
-  return path.startsWith('/') ? path : `${side}/${path}`;
+  // An absolute path is already pasteable, so prefixing `a/`/`b/` would only
+  // mangle it (`a//tmp/...`). Windows drive letters and UNC shares count too,
+  // even when the diff is rendered on a POSIX host (e.g. CI diffing a path
+  // supplied by a Windows caller).
+  const absolute = path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\');
+  return absolute ? path : `${side}/${path}`;
 }
