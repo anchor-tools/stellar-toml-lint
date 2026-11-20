@@ -15,6 +15,11 @@ const NOW_S = BigInt(NOW / 1000);
 const RPC = 'https://rpc.example.com';
 const HORIZON = 'https://horizon.example.com';
 
+/** True when url belongs to the mocked Horizon origin (compared by origin, not by prefix). */
+function isHorizon(url: string): boolean {
+  return new URL(url).origin === new URL(HORIZON).origin;
+}
+
 const doc = (feed: Record<string, unknown> = {}): Record<string, unknown> => ({
   HORIZON_URL: HORIZON,
   CURRENCIES: [{ code: 'USDX', issuer: ISSUER }],
@@ -37,7 +42,7 @@ interface Round {
 /** Mock aggregator (8 decimals) plus a Horizon /assets endpoint. */
 function chain(round: Round, supply = '1000000.0000000', status = 200): typeof fetch {
   return (async (url: string, init?: RequestInit) => {
-    if (url.startsWith(HORIZON)) {
+    if (isHorizon(url)) {
       return new Response(JSON.stringify({ _embedded: { records: [{ amount: supply }] } }));
     }
     if (status !== 200) return new Response('{}', { status });
@@ -188,7 +193,7 @@ describe('ChainlinkPorVerifier', () => {
     let calls = 0;
     const inner = chain({ answer: 100_000_000_000_000n, updatedAt: NOW_S });
     const flaky = (async (url: string, init?: RequestInit) => {
-      if (!url.startsWith(HORIZON) && calls++ === 0) return new Response('{}', { status: 429 });
+      if (!isHorizon(url) && calls++ === 0) return new Response('{}', { status: 429 });
       return inner(url, init);
     }) as unknown as typeof fetch;
     const r = await verifyPorFeeds(doc(), flaky, probe);

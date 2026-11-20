@@ -11,6 +11,11 @@ const VAULT = '0x2222222222222222222222222222222222222222';
 const ASSET = '0x3333333333333333333333333333333333333333';
 const RPC = 'https://rpc.example.com';
 const HORIZON = 'https://horizon.example.com';
+
+/** True when url belongs to the mocked Horizon origin (compared by origin, not by prefix). */
+function isHorizon(url: string): boolean {
+  return new URL(url).origin === new URL(HORIZON).origin;
+}
 const E18 = 10n ** 18n;
 
 const doc = (
@@ -43,7 +48,7 @@ const word = (v: bigint): string => `0x${v.toString(16).padStart(64, '0')}`;
 /** Mock ERC-4626 vault (18-decimal shares over a 6-decimal asset) plus Horizon. */
 function network(state: VaultState, supply = '1000000'): typeof fetch {
   return (async (url: string, init?: RequestInit) => {
-    if (url.startsWith(HORIZON)) {
+    if (isHorizon(url)) {
       return new Response(JSON.stringify({ _embedded: { records: [{ amount: supply }] } }));
     }
     const { params, id } = JSON.parse(String(init?.body));

@@ -14,6 +14,7 @@
  */
 
 import { parse as parseToml } from 'smol-toml';
+import { trimTrailingSlashes } from './verifierSupport.js';
 
 export type DirectorySyncStatus = 'in-sync' | 'drift' | 'expired' | 'unresolvable' | 'invalid-toml';
 
@@ -168,10 +169,10 @@ export function normalizeUrl(value: string): string {
   const trimmed = value.trim();
   try {
     const url = new URL(trimmed);
-    const path = url.pathname.replace(/\/+$/, '');
+    const path = trimTrailingSlashes(url.pathname);
     return `${url.protocol}//${url.host.toLowerCase()}${path}`;
   } catch {
-    return trimmed.replace(/\/+$/, '');
+    return trimTrailingSlashes(trimmed);
   }
 }
 

@@ -18,6 +18,7 @@ import {
   isRecord,
   severityFor,
   toScaled,
+  trimTrailingSlashes,
 } from '../protocols/verifierSupport.js';
 import { bytesToBigInt, hexToBytes } from './evmCrypto.js';
 
@@ -188,7 +189,7 @@ export function resolveAsset(doc: Record<string, unknown>, ref: unknown): Stella
 
 export function horizonFor(doc: Record<string, unknown>, override?: string): string {
   const url = override ?? (isHttpsUrl(doc.HORIZON_URL) ? (doc.HORIZON_URL as string) : undefined);
-  return (url ?? DEFAULT_HORIZON).replace(/\/+$/, '');
+  return trimTrailingSlashes(url ?? DEFAULT_HORIZON);
 }
 
 const SUPPLY_FIELDS = [

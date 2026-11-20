@@ -13,6 +13,11 @@ const PROGRAM = 'worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth';
 const ESCROW = 'So11111111111111111111111111111111111111112';
 const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const HORIZON = 'https://horizon.example.com';
+
+/** True when url belongs to the mocked Horizon origin (compared by origin, not by prefix). */
+function isHorizon(url: string): boolean {
+  return new URL(url).origin === new URL(HORIZON).origin;
+}
 const SOLANA = 'https://solana.example.com';
 
 const doc = (bridge: Record<string, unknown> = {}): Record<string, unknown> => ({
@@ -43,7 +48,7 @@ interface Escrow {
 /** Mock Solana JSON-RPC node and Horizon `/assets`. */
 function network(escrow: Escrow, supply = '1000.0000000'): typeof fetch {
   return (async (url: string, init?: RequestInit) => {
-    if (url.startsWith(HORIZON)) {
+    if (isHorizon(url)) {
       const record = {
         balances: {
           authorized: supply,
@@ -157,7 +162,7 @@ describe('SolanaEscrowInvariantVerifier', () => {
   it('warns when Horizon is unavailable and accepts provided supplies', async () => {
     const solanaOnly = network({});
     const noHorizon = (async (url: string, init?: RequestInit) =>
-      url.startsWith(HORIZON)
+      isHorizon(url)
         ? new Response('down', { status: 503 })
         : solanaOnly(url, init)) as unknown as typeof fetch;
     const r = await verifySolanaBridges(doc(), noHorizon, probe);
