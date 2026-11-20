@@ -75,7 +75,7 @@ chmod +x stellar-toml-lint-linux-x64
 sudo install -m 0755 stellar-toml-lint-linux-x64 /usr/local/bin/stellar-toml-lint
 ```
 
-Assets are published for Linux x64 (glibc and musl), Linux ARM64, macOS Intel, macOS Apple Silicon, and Windows x64. These binaries have no Node.js runtime dependency. The npm package remains available for Node.js 20+ users. Runtime dependencies for the npm package are `smol-toml`, `@stellar/stellar-base`, and the pure-JS `@noble/curves` and `@noble/hashes` that `@stellar/stellar-base` already installs.
+Assets are published for Linux x64 (glibc and musl), Linux ARM64, macOS Intel, macOS Apple Silicon, and Windows x64. These binaries have no Node.js runtime dependency. The npm package remains available for Node.js 20+ users. Runtime dependencies for the npm package are `smol-toml`, `@stellar/stellar-base`, and `openpgp`; the pure-JS `@noble/curves` and `@noble/hashes` are installed transitively by `@stellar/stellar-base`.
 
 Releases are generated from Conventional Commits on `main`: `fix:` creates a patch release, `feat:` creates a minor release, and `BREAKING CHANGE:` creates a major release. The release workflow updates the npm and VS Code versions, changelog, GitHub release, and npm provenance.
 Commit a `.stellartomlrc.json` next to your `stellar.toml` to record the project's rule policy once
@@ -159,6 +159,7 @@ and only `--write` changes the file. `--split` instead emits modular partials gr
 | `--verify-promotions`         | Compare promotional fee claims with SEP-38 `/price` fees (also `verify-promotions --domain <domain>`)                               |
 | `--verify-federation-srv`     | Check `_stellar-federation._tcp.<domain>` SRV records against `FEDERATION_SERVER` (use with `--domain`)                             |
 | `--audit-esg-disclosures`     | Verify `DOCUMENTATION.ORG_ESG` disclosures and attestation signature, and print a sustainability rating                             |
+| `--audit-opentelemetry`       | Probe SEP-6, SEP-24, SEP-31 and SEP-38 `/info` endpoints with W3C Trace Context headers and inspect response correlation evidence   |
 | `--audit-kyc-fsm`             | Audit SEP-12 customer status state machines for stuck or circular onboarding (use with `--domain`)                                  |
 | `--crawl-peers`               | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                             |
 | `--verify-dnssec`             | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                              |
@@ -200,6 +201,33 @@ and only `--write` changes the file. `--split` instead emits modular partials gr
 
 Every flag above takes precedence over the [configuration file](#configuration-file), and
 `--preset` — being a flag — takes precedence over it too.
+
+### OpenTelemetry trace context audit
+
+Run `stellar-toml-lint --audit-opentelemetry stellar.toml` to probe each declared
+`TRANSFER_SERVER` (SEP-6), `TRANSFER_SERVER_SEP0024` (SEP-24),
+`DIRECT_PAYMENT_SERVER` (SEP-31), and `ANCHOR_QUOTE_SERVER` (SEP-38). The audit
+sends a read-only `GET` to the service's `/info` endpoint with a fresh W3C
+Trace Context version `00` `traceparent`. It does not send `tracestate`, since
+the linter has no vendor-specific state to propagate.
+
+The report inspects a valid `traceresponse` header or a `Server-Timing` `trace`
+metric containing trace context. Either may expose a different trace ID because
+a service can legitimately restart a trace. No response echo is required by
+W3C Trace Context: when there is no observable correlation metadata, the result
+is **unobservable**, not a propagation failure. Malformed or conflicting
+metadata is reported as **non-compliant**; unsafe URLs, redirects, timeouts and
+network failures are **unreachable**. A valid observed response context is
+reported as **compliant** for the observable HTTP exchange.
+
+This is an external trace context and response observability audit, not a full
+OpenTelemetry instrumentation test. It cannot prove that context reached
+invisible downstream services, that spans were exported, or that the trace ID
+belongs to the initiating request when the server starts a new trace. Probe
+requests require HTTPS, reject private or local destinations, pin public DNS
+answers, do not follow redirects, and discard response bodies after headers.
+Only the read-only `/info` endpoint is requested; transactions, quotes and
+financial operations are never called.
 
 Exit codes: **0** no errors, **1** problems found, **2** bad usage, an unmatched glob, or I/O
 failure.
@@ -678,6 +706,44 @@ This catches the failure mode nobody notices: a CDN or hosting change quietly dr
 `Access-Control-Allow-Origin` header, which makes the file unreadable to every browser-based wallet
 while looking perfectly fine to `curl`.
 
+### Telemetry and SLA tooling
+
+Four subcommands audit how a live anchor behaves operationally. Every network probe is a
+read-only `GET`; none of them creates, updates or deletes anything. Exit codes match the
+rest of the CLI: `0` clean, `1` findings, `2` bad usage or I/O failure.
+
+```sh
+# Prometheus text 0.0.4 / OpenMetrics 1.0.0 compliance of a /metrics endpoint
+stellar-toml-lint verify-metrics --url https://anchor.example/metrics
+stellar-toml-lint verify-metrics --domain anchor.example   # finds METRICS_URL etc. in stellar.toml
+
+# p50 / p95 / p99 TTFB, TCP connect and TLS handshake for each SEP server's /info
+stellar-toml-lint probe-sla --domain anchor.example --samples 20 --threshold-ms 500
+
+# Invalid read-only requests to each SEP endpoint: are errors RFC 7807 or {"error": "..."}?
+# Flags HTML error pages, plain-text errors, and leaked stack traces, secrets or DB URLs.
+stellar-toml-lint --audit-error-taxonomy --domain anchor.example
+
+# Availability over 24h / 7d / 30d, incidents and the longest downtime streak
+stellar-toml-lint calculate-uptime --log-file health.csv --format markdown \
+  --badge-svg uptime.svg --badge-json uptime.json --min-availability 99.9
+```
+
+- **`verify-metrics`** streams the scrape through an incremental parser, so very large expositions
+  validate in bounded memory. It checks metric and label names, `TYPE` (per standard), missing
+  `HELP`/`TYPE`, NaN gauges, negative counters, histogram `le`/`+Inf`/`_sum`/`_count`, `# EOF` for
+  OpenMetrics, and the anchor metrics `stellar_anchor_balance`, `stellar_tx_processed_total` and
+  `stellar_sep_request_duration_seconds` (override with `--require <name>` or `--no-required-metrics`).
+- **`probe-sla`** probes `TRANSFER_SERVER`, `TRANSFER_SERVER_SEP0024`, `DIRECT_PAYMENT_SERVER` and
+  `ANCHOR_QUOTE_SERVER` on a fresh connection each time and prints an ASCII TTFB histogram. A p50 or
+  p95 above the threshold is an error; a slow p99 tail is a warning.
+- **`--audit-error-taxonomy`** sorts every response into `client-input`, `authentication`,
+  `authorization`, `not-found`, `conflict`, `rate-limited`, `server`, `unexpected-success` or `other`.
+- **`calculate-uptime`** reads JSON arrays, `{ "records": [...] }`, NDJSON or CSV with flexible
+  column names (`timestamp`/`time`/`ts`, `status`/`up`/`ok`/HTTP code, optional `service`).
+  Availability is time-weighted and truncated, never rounded up, so 99.989% is never reported as
+  99.99%.
+
 ## Programmatic API
 
 ```ts
@@ -853,6 +919,45 @@ previous-ledger pointers when checkpoint metadata provides them. A missing categ
 `history/missing-category-archive` (error); an inconsistent hash or pointer emits
 `history/broken-checkpoint-chain` (error). The check uses the injected network transport, so
 `--mock-fixtures` remains hermetic.
+
+**Detached archive signature verification** — `verify-archive-gpg` reads the standard
+`.well-known/stellar-history.json` History Archive State document, takes its `currentLedger`, and
+downloads that checkpoint's ledger-header XDR gzip file using Stellar Core's documented
+`ledger/aa/bb/cc/ledger-XXXXXXXX.xdr.gz` naming scheme. It verifies the exact downloaded bytes with
+OpenPGP.js and a caller-supplied public key:
+
+```sh
+stellar-toml-lint verify-archive-gpg \
+  --url https://history.example.org/prd/core-live/core_live_001/ \
+  --pubkey ./operator-public-key.asc
+
+# Pin an independently obtained fingerprint if you know which operator key is expected.
+stellar-toml-lint verify-archive-gpg \
+  --url https://history.example.org/prd/core-live/core_live_001/ \
+  --pubkey ./operator-public-key.asc \
+  --trusted-fingerprint 0123456789abcdef0123456789abcdef01234567 \
+  --format json
+```
+
+Stellar Core's archive format does **not** define GPG signatures, a `.sig` sidecar, or a GPG public
+key field in `stellar.toml`. The verifier therefore checks the optional sidecar at
+`<ledger-file>.sig` as a best-effort convention, or uses an explicit `--signature-url`; it does not
+claim that ordinary Stellar archives publish signatures. A missing signature fails verification.
+The public key must be provided locally with `--pubkey`; the verifier does not download keys from
+the archive host or a keyserver. OpenPGP verification accepts RSA signing keys of at least 2048 bits
+and Ed25519 signing keys, checks key and signature expiry and revocation, and permits SHA-256,
+SHA-384, or SHA-512 signature hashes. Other key or signature algorithms are rejected.
+
+`Cryptographic verification: VALID` means that OpenPGP.js verified the detached signature over the
+downloaded bytes using the supplied key. It does not prove that the key belongs to the validator
+operator. The result reports `Operator identity trust: UNKNOWN` unless `--trusted-fingerprint`
+matches the signing key's primary fingerprint; the fingerprint must come from an independent
+trusted source. A cryptographically valid result without a pin exits successfully but is not
+reported as identity-trusted. `--format json` emits the structured result. Requests require HTTPS,
+reject redirects and non-public DNS destinations, and have bounded time and response sizes.
+
+This standalone check is not included in the general linter or a health scorecard: SEP-1 has no
+operator GPG-key field, and the project has no cross-check scorecard for arbitrary archive trust.
 
 **Overlay peer discovery** (with `--check-network --crawl-peers`) — each `VALIDATORS[i].HOST`
 is contacted over TCP and sent a Stellar overlay `GET_PEERS` XDR message. Returned `PEERS`

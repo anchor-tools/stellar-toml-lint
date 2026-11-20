@@ -29,6 +29,34 @@ export { probeTls } from './tls.js';
 export type { TlsProbe } from './tls.js';
 export { createFixtureFetch, fixtureCandidates, MissingFixtureError } from './mock-fixtures.js';
 export type { FixtureFile } from './mock-fixtures.js';
+export { ArchiveGpgVerifier, verifyArchiveGpg } from './overlay/archiveGpgVerifier.js';
+export type {
+  ArchiveGpgIdentityTrust,
+  ArchiveGpgSigner,
+  ArchiveGpgStatus,
+  ArchiveGpgVerificationResult,
+  ArchiveGpgVerifierOptions,
+  VerifyArchiveOptions,
+  VerifyDetachedOptions,
+} from './overlay/archiveGpgVerifier.js';
+export {
+  OpenTelemetryTraceValidator,
+  discoverTraceEndpoints,
+  generateTraceContext,
+  parseTraceparent,
+  renderTraceAuditReport,
+} from './telemetry/traceValidator.js';
+export type {
+  ParsedTraceparent,
+  TraceAuditResult,
+  TraceAuditStatus,
+  TraceContext,
+  TraceEndpointDefinition,
+  TraceEndpointResult,
+  TraceEvidence,
+  TraceSep,
+  TraceValidatorOptions,
+} from './telemetry/traceValidator.js';
 export {
   auditCryptoFraming,
   auditCryptoSession,

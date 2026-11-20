@@ -8,7 +8,7 @@
  */
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { parse as parseToml } from 'smol-toml';
-import { watch } from 'node:fs';
+import { createReadStream, watch } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
@@ -69,9 +69,17 @@ import { scanSecrets, renderSecretReport } from './security/secretDetector.js';
 import { scanSsrf, renderSsrfReport, ssrfDiagnostics } from './security/ssrfScanner.js';
 import { StructuralRefactoringEngine, renderRefactorSummary } from './cst/structuralRefactoring.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
+import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
+import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
 import { CrossOriginIsolationAuditor, renderIsolationReport } from './wasm/isolationAuditor.js';
+import {
+  auditErrorTaxonomyCommand,
+  calculateUptimeCommand,
+  probeSlaCommand,
+  verifyMetricsCommand,
+} from './telemetry/commands.js';
 import {
   BrowserBoundaryVerifier,
   renderBrowserBoundaryReport,
@@ -152,6 +160,7 @@ interface Cli {
   verifyPromotions: boolean;
   verifyFederationSrv: boolean;
   auditEsgDisclosures: boolean;
+  auditOpenTelemetry: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
@@ -207,13 +216,25 @@ USAGE
   stellar-toml-lint sync-directory --feed <url|file> [--format text|json]
                                          Diff a multi-tenant anchor directory feed
                                          against each anchor's live stellar.toml
+  stellar-toml-lint verify-archive-gpg --url <archive-url> --pubkey <key-file>
+                                         Verify the latest ledger checkpoint's detached GPG signature
   stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]
                                          Audit a WASM binary for SIMD opcodes and
                                          unbounded memory growth
-  stellar-toml-lint refactor <file> [--deduplicate-assets] [--split]
-                                    [--max-bytes <n>] [--out-dir <dir>] [--write]
-                                          Deduplicate assets / split a large stellar.toml
-                                          and print a diff for review
+  stellar-toml-lint verify-metrics --url <metrics_url> [--format text|json]
+                                         Scrape a Prometheus/OpenMetrics endpoint and
+                                         validate names, TYPE/HELP and anchor gauges
+                                         (--domain discovers it from stellar.toml)
+  stellar-toml-lint probe-sla --domain <domain> [--samples <n>] [--threshold-ms <ms>]
+                                         Probe SEP /info endpoints read-only and report
+                                         p50/p95/p99 TTFB against the SLA (500 ms)
+  stellar-toml-lint --audit-error-taxonomy --domain <domain>
+                                         Send invalid read-only requests to SEP
+                                         endpoints; check RFC 7807 / SEP error JSON
+                                         and flag leaked stack traces or secrets
+  stellar-toml-lint calculate-uptime --log-file <path> [--format text|markdown|json]
+                                         Availability over 24h/7d/30d, incidents and
+                                         downtime streaks from JSON/CSV health logs
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -270,6 +291,9 @@ OPTIONS
                           Verify DOCUMENTATION.ORG_ESG disclosures, check the
                           attestation signature with --check-network, and print
                           a sustainability rating
+      --audit-opentelemetry
+                          Probe declared SEP-6, SEP-24, SEP-31 and SEP-38 /info
+                          endpoints with W3C trace context and inspect response evidence
       --audit-offline-pwa <path>
                           Audit a Service Worker script (or manifest.json) for offline
                           precaching, cache versioning, and PWA manifest requirements
@@ -315,6 +339,10 @@ OPTIONS
       --verify-wasm-streaming <url>
                           Check that a .wasm URL is served as application/wasm and
                           benchmark instantiateStreaming against buffered compile
+      verify-archive-gpg --url <archive-url> --pubkey <key-file>
+                          [--signature-url <url>] [--trusted-fingerprint <hex>]
+                          [--format text|json] [--timeout <ms>]
+                          Checks the latest ledger checkpoint's optional .sig sidecar
       --run-sandboxed-plugin <file.wasm>
                           Run a third-party validator plugin inside the WASI
                           preview 1 capability sandbox: in-memory files only,
@@ -437,15 +465,15 @@ async function runExtraAudits(
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
   }
-  if (cli.auditDnsTakeover) {
-    const report = await scanSubdomainTakeover(parsed, { rules, fetchImpl, domain });
-    out.push(...takeoverDiagnostics(report, rules));
-    process.stderr.write(renderTakeoverReport(report));
-  }
-  if (cli.auditSsrf) {
-    const report = await scanSsrf(parsed, { rules, fetchImpl, domain });
-    out.push(...ssrfDiagnostics(report, rules));
-    process.stderr.write(renderSsrfReport(report));
+  if (cli.auditOpenTelemetry) {
+    const verifier = new OpenTelemetryTraceValidator(
+      // Recorded fixture transport is explicitly requested; ordinary network
+      // probes use the verifier's DNS-pinned HTTPS transport.
+      cli.mockFixtures === undefined ? {} : { fetchImpl },
+    );
+    const result = await verifier.verify(parsed, rules);
+    out.push(...result.diagnostics);
+    process.stderr.write(renderTraceAuditReport(result));
   }
   return out;
 }
@@ -685,6 +713,120 @@ async function syncDirectory(args: string[]): Promise<number> {
     );
     for (const problem of parsedFeed.problems) process.stderr.write(`feed: ${problem}\n`);
     return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+async function readArchivePublicKey(input: string): Promise<string> {
+  const maxBytes = 1024 * 1024;
+  if (input.includes('-----BEGIN PGP PUBLIC KEY BLOCK-----')) {
+    if (Buffer.byteLength(input, 'utf8') > maxBytes) {
+      throw new Error('The supplied public key exceeds the 1 MiB size limit');
+    }
+    return input;
+  }
+
+  const stream = createReadStream(resolve(input));
+  const chunks: Buffer[] = [];
+  let size = 0;
+  try {
+    for await (const chunk of stream) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += bytes.length;
+      if (size > maxBytes) {
+        throw new Error('The public key file exceeds the 1 MiB size limit');
+      }
+      chunks.push(bytes);
+    }
+  } finally {
+    stream.destroy();
+  }
+  return Buffer.concat(chunks, size).toString('utf8');
+}
+
+/** `stellar-toml-lint verify-archive-gpg --url <archive-url> --pubkey <key-file>` */
+async function verifyArchiveGpgCommand(args: string[]): Promise<number> {
+  let archiveUrl: string | undefined;
+  let publicKeyInput: string | undefined;
+  let signatureUrl: string | undefined;
+  let trustedFingerprint: string | undefined;
+  let format: 'text' | 'json' = 'text';
+  let timeoutMs = 10_000;
+
+  try {
+    for (let index = 0; index < args.length; index++) {
+      const arg = args[index] as string;
+      if (arg === '--url') archiveUrl = requireValue(args, ++index, arg);
+      else if (arg === '--pubkey') publicKeyInput = requireValue(args, ++index, arg);
+      else if (arg === '--signature-url') signatureUrl = requireValue(args, ++index, arg);
+      else if (arg === '--trusted-fingerprint') {
+        trustedFingerprint = requireValue(args, ++index, arg);
+      } else if (arg === '--format') {
+        const value = requireValue(args, ++index, arg);
+        if (value !== 'text' && value !== 'json') {
+          process.stderr.write(`Unknown format "${value}". Expected text or json.\n`);
+          return 2;
+        }
+        format = value;
+      } else if (arg === '--timeout') {
+        timeoutMs = Number(requireValue(args, ++index, arg));
+        if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000) {
+          process.stderr.write('--timeout expects an integer from 1 to 120000 milliseconds.\n');
+          return 2;
+        }
+      } else {
+        process.stderr.write(`Unknown option ${arg} for verify-archive-gpg\n`);
+        return 2;
+      }
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  if (archiveUrl === undefined || publicKeyInput === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint verify-archive-gpg --url <archive-url> --pubkey <key-file> ' +
+        '[--signature-url <url>] [--trusted-fingerprint <hex>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const publicKey = await readArchivePublicKey(publicKeyInput);
+    const verifier = new ArchiveGpgVerifier({ timeoutMs });
+    const result = await verifier.verifyArchive({
+      archiveUrl,
+      publicKey,
+      ...(signatureUrl === undefined ? {} : { signatureUrl }),
+      ...(trustedFingerprint === undefined ? {} : { trustedFingerprint }),
+    });
+    if (format === 'json') {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    } else {
+      process.stdout.write(`Archive GPG verification: ${result.status.toUpperCase()}\n`);
+      if (result.checkpointSequence !== undefined) {
+        process.stdout.write(`Checkpoint ledger: ${result.checkpointSequence}\n`);
+      }
+      if (result.payloadUrl !== undefined) process.stdout.write(`Payload: ${result.payloadUrl}\n`);
+      if (result.signatureUrl !== undefined) {
+        process.stdout.write(`Signature: ${result.signatureUrl}\n`);
+      }
+      for (const signer of result.signers) {
+        process.stdout.write(
+          `Signing key: ${signer.fingerprint} (${signer.algorithm}${signer.keyBits === undefined ? '' : `, ${signer.keyBits} bits`})\n`,
+        );
+        process.stdout.write(`Primary key: ${signer.primaryFingerprint}\n`);
+      }
+      process.stdout.write(
+        `Cryptographic verification: ${result.cryptographicallyValid ? 'VALID' : 'FAILED'}\n`,
+      );
+      process.stdout.write(`Operator identity trust: ${result.identityTrust.toUpperCase()}\n`);
+      if (result.error !== undefined) process.stdout.write(`Result: ${result.error}\n`);
+    }
+    return result.ok ? 0 : 1;
   } catch (error) {
     process.stderr.write(`${message(error)}\n`);
     return 2;
@@ -970,7 +1112,14 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-federation-sync') return verifyFederationSyncCommand(argv.slice(1));
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
+  if (argv[0] === 'verify-archive-gpg') return verifyArchiveGpgCommand(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
+  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
+  if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
+  if (argv[0] === 'probe-sla') return probeSlaCommand(argv.slice(1));
+  if (argv[0] === 'calculate-uptime') return calculateUptimeCommand(argv.slice(1));
+  if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
+  if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -1514,6 +1663,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     verifyPromotions: false,
     verifyFederationSrv: false,
     auditEsgDisclosures: false,
+    auditOpenTelemetry: false,
     crawlPeers: false,
     verifyDnssec: false,
     auditDnsTakeover: false,
@@ -1649,6 +1799,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-esg-disclosures':
         cli.auditEsgDisclosures = true;
+        break;
+
+      case '--audit-opentelemetry':
+        cli.auditOpenTelemetry = true;
         break;
 
       case '--audit-offline-pwa':

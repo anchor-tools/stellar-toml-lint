@@ -65,8 +65,27 @@ describe('cli', () => {
     expect(stdout).toContain('USAGE');
     expect(stdout).toContain('EXIT CODES');
     expect(stdout).toContain('--check-contracts');
+    expect(stdout).toContain('--audit-opentelemetry');
     expect(stdout).toContain('--soroban-rpc');
     expect(stdout).toContain('checkstyle');
+    expect(stdout).toContain('verify-archive-gpg');
+  });
+
+  it('validates the required archive GPG command arguments', async () => {
+    const missing = await cli(['verify-archive-gpg', '--url', 'https://history.example.test/']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('--pubkey <key-file>');
+
+    const unknown = await cli([
+      'verify-archive-gpg',
+      '--url',
+      'https://history.example.test/',
+      '--pubkey',
+      'test-key.asc',
+      '--not-an-option',
+    ]);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option');
   });
 
   it('prints the version', async () => {
@@ -83,6 +102,7 @@ describe('cli', () => {
     expect(stdout).toContain('currencies/regulated-missing-auth-revocable-flag');
     expect(stdout).toContain('soroban/contract-ttl-expiring-soon');
     expect(stdout).toContain('soroban/contract-expired');
+    expect(stdout).toContain('telemetry/invalid-correlation');
     expect(stdout).toMatch(/^\d+ rules/);
   });
 
@@ -101,6 +121,22 @@ describe('cli', () => {
 
     const { code } = await cli([fixture('valid.toml'), '--audit-quotes']);
     expect(code).toBe(0);
+  });
+
+  it('runs the OpenTelemetry trace audit with hermetic fixtures', async () => {
+    const { code, stderr } = await cli([
+      fixture('valid.toml'),
+      '--audit-opentelemetry',
+      '--mock-fixtures',
+      fixture('network'),
+    ]);
+    expect(code).toBe(0);
+    expect(stderr).toContain('OpenTelemetry trace context audit');
+    expect(stderr).toContain('COMPLIANT SEP-6 TRANSFER_SERVER');
+    expect(stderr).toContain('COMPLIANT SEP-24 TRANSFER_SERVER_SEP0024');
+    expect(stderr).toContain('COMPLIANT SEP-31 DIRECT_PAYMENT_SERVER');
+    expect(stderr).toContain('COMPLIANT SEP-38 ANCHOR_QUOTE_SERVER');
+    expect(stderr).toContain('cannot prove downstream propagation');
   });
 
   it('accepts severity overrides on the network-bound rules', async () => {

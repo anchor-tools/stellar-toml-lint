@@ -32,9 +32,7 @@ import { sep30Rules } from '../protocols/sep30Verifier.js';
 import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
-import { subdomainTakeoverRules } from '../security/subdomainScanner.js';
-import { secretDetectorRules } from '../security/secretDetector.js';
-import { ssrfRules } from '../security/ssrfScanner.js';
+import { telemetryRules } from '../telemetry/rules.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -73,9 +71,7 @@ export const allRules: Rule[] = [
   ...promotionalPricingRules,
   ...federationSrvRules,
   ...esgRules,
-  ...subdomainTakeoverRules,
-  ...secretDetectorRules,
-  ...ssrfRules,
+  ...telemetryRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -113,7 +109,5 @@ export {
   promotionalPricingRules,
   federationSrvRules,
   esgRules,
-  subdomainTakeoverRules,
-  secretDetectorRules,
-  ssrfRules,
+  telemetryRules,
 };
