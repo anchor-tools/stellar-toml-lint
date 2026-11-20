@@ -6,9 +6,9 @@
  * set is small and stable, and a linter that anchors run in CI benefits from a
  * dependency tree small enough to audit by eye.
  */
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { parse as parseToml } from 'smol-toml';
-import { watch } from 'node:fs';
+import { createReadStream, watch } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
@@ -47,6 +47,8 @@ import {
   renderClawbackMarkdown,
 } from './protocols/clawbackAuditGenerator.js';
 import { validateUnicode } from './cst/unicodeValidator.js';
+import { sortCanonical } from './cst/canonicalSortCodemod.js';
+import { formatUnifiedDiff } from './line-diff.js';
 import {
   auditConsumerProtection,
   renderScorecard,
@@ -56,12 +58,32 @@ import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { verifyFederationSrv } from './protocols/federationSrvVerifier.js';
 import { auditEsgDisclosures, renderEsgReport } from './protocols/esgComplianceVerifier.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
+import { auditCors, renderCorsReport } from './security/corsAuditor.js';
+import { auditAssetSecurity, renderMimeReport } from './security/mimeScanner.js';
+import { auditClickjacking, renderClickjackingReport } from './security/clickjackingAuditor.js';
+import { auditKeySeparation, renderKeySeparationReport } from './security/keySeparationAuditor.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
+import {
+  scanSubdomainTakeover,
+  renderTakeoverReport,
+  takeoverDiagnostics,
+} from './security/subdomainScanner.js';
+import { scanSecrets, renderSecretReport } from './security/secretDetector.js';
+import { scanSsrf, renderSsrfReport, ssrfDiagnostics } from './security/ssrfScanner.js';
+import { StructuralRefactoringEngine, renderRefactorSummary } from './cst/structuralRefactoring.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
+import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
+import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
 import { CrossOriginIsolationAuditor, renderIsolationReport } from './wasm/isolationAuditor.js';
+import {
+  auditErrorTaxonomyCommand,
+  calculateUptimeCommand,
+  probeSlaCommand,
+  verifyMetricsCommand,
+} from './telemetry/commands.js';
 import {
   BrowserBoundaryVerifier,
   renderBrowserBoundaryReport,
@@ -139,13 +161,20 @@ interface Cli {
   auditKycFsm: boolean;
   auditFederationSecurity: boolean;
   auditSep30Recovery: boolean;
+  auditCors: boolean;
+  auditAssetSecurity: boolean;
+  auditClickjacking: boolean;
   verifyPromotions: boolean;
   verifyFederationSrv: boolean;
   auditEsgDisclosures: boolean;
+  auditOpenTelemetry: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
   verifyDnssec: boolean;
+  auditDnsTakeover: boolean;
+  auditSecrets: boolean;
+  auditSsrf: boolean;
   badgeSvg?: string;
   badgeJson?: string;
   exportApConfig?: boolean;
@@ -162,6 +191,8 @@ interface Cli {
   policy?: string;
   mockFixtures?: string;
   lsp?: boolean;
+  sortKeys?: boolean;
+  dryRun?: boolean;
   runSandboxedPlugin?: string;
   sandboxFuel?: number;
   verifyWasmStreaming?: string;
@@ -183,14 +214,43 @@ USAGE
                                          expanding it (or failing to)
   stellar-toml-lint --domain <domain>    Fetch and lint https://<domain>/.well-known/stellar.toml
   cat stellar.toml | stellar-toml-lint - Lint stdin
+  stellar-toml-lint --sort-keys [file...]
+                                         Reorder table keys into canonical order
+                                         in place; --dry-run prints the diff
+                                         instead of writing
   stellar-toml-lint profile-wasm-heap --wasm <plugin.wasm> --iterations <n>
                                          Run a plugin repeatedly and report heap growth
   stellar-toml-lint sync-directory --feed <url|file> [--format text|json]
                                          Diff a multi-tenant anchor directory feed
                                          against each anchor's live stellar.toml
+  stellar-toml-lint verify-archive-gpg --url <archive-url> --pubkey <key-file>
+                                         Verify the latest ledger checkpoint's detached GPG signature
+  stellar-toml-lint refactor <file> [--deduplicate-assets] [--split]
+                                    [--max-bytes <n>] [--out-dir <dir>] [--write]
+                                          Deduplicate assets / split a large stellar.toml
+                                          and print a diff for review
   stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]
                                          Audit a WASM binary for SIMD opcodes and
                                          unbounded memory growth
+  stellar-toml-lint verify-metrics --url <metrics_url> [--format text|json]
+                                         Scrape a Prometheus/OpenMetrics endpoint and
+                                         validate names, TYPE/HELP and anchor gauges
+                                         (--domain discovers it from stellar.toml)
+  stellar-toml-lint probe-sla --domain <domain> [--samples <n>] [--threshold-ms <ms>]
+                                         Probe SEP /info endpoints read-only and report
+                                         p50/p95/p99 TTFB against the SLA (500 ms)
+  stellar-toml-lint --audit-error-taxonomy --domain <domain>
+                                         Send invalid read-only requests to SEP
+                                         endpoints; check RFC 7807 / SEP error JSON
+                                         and flag leaked stack traces or secrets
+  stellar-toml-lint calculate-uptime --log-file <path> [--format text|markdown|json]
+                                         Availability over 24h/7d/30d, incidents and
+                                         downtime streaks from JSON/CSV health logs
+  stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>]
+                                         [--format text|json]
+                                         Map every public key in the file to its roles
+                                         and report reused signing, issuer, account and
+                                         validator keys
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -208,6 +268,14 @@ OPTIONS
                           without one the text reporter is used instead
       --lsp               Run as a Language Server on stdio (diagnostics,
                           quick-fix code actions, and SEP-1 hover docs)
+      --sort-keys         Rewrite files into canonical key order: SEP-1 fields in
+                          spec order inside each table, [[CURRENCIES]] sorted by
+                          code, [[VALIDATORS]] by public_key, and keys this tool
+                          does not know pushed to the end of their table. Leading
+                          comments travel with the key they describe.
+      --dry-run           With --sort-keys, print a unified diff and change
+                          nothing. Exits 1 when a file is not already canonical,
+                          so CI can check ordering without writing to the tree.
   -q, --quiet             Report errors only
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
@@ -239,6 +307,9 @@ OPTIONS
                           Verify DOCUMENTATION.ORG_ESG disclosures, check the
                           attestation signature with --check-network, and print
                           a sustainability rating
+      --audit-opentelemetry
+                          Probe declared SEP-6, SEP-24, SEP-31 and SEP-38 /info
+                          endpoints with W3C trace context and inspect response evidence
       --audit-offline-pwa <path>
                           Audit a Service Worker script (or manifest.json) for offline
                           precaching, cache versioning, and PWA manifest requirements
@@ -250,8 +321,25 @@ OPTIONS
       --audit-federation-security
                           Probe FEDERATION_SERVER with non-destructive injection
                           payloads and check for leaked internals (use with --domain)
+      --audit-cors        Send browser-shaped pre-flight and actual requests to every
+                          declared endpoint and report wildcard-with-credentials CORS
+                          policies and unvalidated Origin echoing
+      --audit-asset-security
+                          Check the Content-Type and X-Content-Type-Options of every
+                          linked logo, image and document, and scan SVG payloads for
+                          scripts and entity declarations
+      --audit-clickjacking
+                          Probe interactive endpoints for Content-Security-Policy
+                          frame-ancestors and X-Frame-Options framing defenses
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
+       --audit-dns-takeover
+                           Query CNAME/NS records for every referenced domain and
+                           flag dangling pointers to claimable cloud resources
+       --audit-secrets     Halt with exit 1 on leaked Stellar seeds, cloud keys,
+                           bearer tokens or PEM blocks; output is always redacted
+       --audit-ssrf        Flag advertised URLs resolving to private, loopback,
+                           link-local or multicast IPs, including DNS rebinding
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
                           (implied by --domain)
       --check-contracts   Verify Soroban contract and WASM TTL liveliness
@@ -277,6 +365,10 @@ OPTIONS
       --verify-wasm-streaming <url>
                           Check that a .wasm URL is served as application/wasm and
                           benchmark instantiateStreaming against buffered compile
+      verify-archive-gpg --url <archive-url> --pubkey <key-file>
+                          [--signature-url <url>] [--trusted-fingerprint <hex>]
+                          [--format text|json] [--timeout <ms>]
+                          Checks the latest ledger checkpoint's optional .sig sidecar
       --run-sandboxed-plugin <file.wasm>
                           Run a third-party validator plugin inside the WASI
                           preview 1 capability sandbox: in-memory files only,
@@ -337,6 +429,8 @@ EXAMPLES
   stellar-toml-lint --graph mermaid > diagram.mmd
   stellar-toml-lint --graph dot --graph-contracts > diagram.dot
   stellar-toml-lint --policy policy.yaml public/.well-known/stellar.toml
+  stellar-toml-lint --sort-keys --dry-run          # show the reorder, change nothing
+  stellar-toml-lint --sort-keys                    # apply it
   stellar-toml-lint public/.well-known/stellar.toml --check-network \\\\
     --mock-fixtures ./test/fixtures/network
 `;
@@ -374,6 +468,24 @@ async function runExtraAudits(
     const result = await auditSep30Recovery(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
     out.push(...result.diagnostics);
   }
+  if (cli.auditCors) {
+    const result = await auditCors(parsed, fetchImpl, {
+      rules,
+      ...(domain === undefined ? {} : { domain }),
+    });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderCorsReport(result.report));
+  }
+  if (cli.auditAssetSecurity) {
+    const result = await auditAssetSecurity(parsed, fetchImpl, { rules });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderMimeReport(result.report));
+  }
+  if (cli.auditClickjacking) {
+    const result = await auditClickjacking(parsed, fetchImpl, { rules });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderClickjackingReport(result.report));
+  }
   if (cli.verifyPromotions) {
     const result = await verifyPromotions(parsed, fetchImpl, {
       rules,
@@ -397,7 +509,43 @@ async function runExtraAudits(
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
   }
+  if (cli.auditDnsTakeover) {
+    const report = await scanSubdomainTakeover(parsed, { rules, fetchImpl, domain });
+    out.push(...takeoverDiagnostics(report, rules));
+    process.stderr.write(renderTakeoverReport(report));
+  }
+  if (cli.auditSsrf) {
+    const report = await scanSsrf(parsed, { rules, fetchImpl, domain });
+    out.push(...ssrfDiagnostics(report, rules));
+    process.stderr.write(renderSsrfReport(report));
+  }
+  if (cli.auditOpenTelemetry) {
+    const verifier = new OpenTelemetryTraceValidator(
+      // Recorded fixture transport is explicitly requested; ordinary network
+      // probes use the verifier's DNS-pinned HTTPS transport.
+      cli.mockFixtures === undefined ? {} : { fetchImpl },
+    );
+    const result = await verifier.verify(parsed, rules);
+    out.push(...result.diagnostics);
+    process.stderr.write(renderTraceAuditReport(result));
+  }
   return out;
+}
+
+/**
+ * Secrets are the one audit that halts the whole run: a leaked credential must
+ * never reach a reporter (SARIF embeds source snippets) and no further network
+ * work should happen with a compromised key in hand. All output is masked.
+ */
+async function auditSecretsOrHalt(
+  parsed: Record<string, unknown> | undefined,
+  source: string | undefined,
+  rules: RuleOverrides,
+): Promise<number | undefined> {
+  const result = scanSecrets(source ?? '', parsed, { rules });
+  if (!result.halt) return undefined;
+  process.stderr.write(renderSecretReport(result));
+  return 1;
 }
 
 /** `stellar-toml-lint audit-clawbacks --asset CODE:ISSUER [--horizon <url>] [--format json|markdown]` */
@@ -625,6 +773,120 @@ async function syncDirectory(args: string[]): Promise<number> {
   }
 }
 
+async function readArchivePublicKey(input: string): Promise<string> {
+  const maxBytes = 1024 * 1024;
+  if (input.includes('-----BEGIN PGP PUBLIC KEY BLOCK-----')) {
+    if (Buffer.byteLength(input, 'utf8') > maxBytes) {
+      throw new Error('The supplied public key exceeds the 1 MiB size limit');
+    }
+    return input;
+  }
+
+  const stream = createReadStream(resolve(input));
+  const chunks: Buffer[] = [];
+  let size = 0;
+  try {
+    for await (const chunk of stream) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += bytes.length;
+      if (size > maxBytes) {
+        throw new Error('The public key file exceeds the 1 MiB size limit');
+      }
+      chunks.push(bytes);
+    }
+  } finally {
+    stream.destroy();
+  }
+  return Buffer.concat(chunks, size).toString('utf8');
+}
+
+/** `stellar-toml-lint verify-archive-gpg --url <archive-url> --pubkey <key-file>` */
+async function verifyArchiveGpgCommand(args: string[]): Promise<number> {
+  let archiveUrl: string | undefined;
+  let publicKeyInput: string | undefined;
+  let signatureUrl: string | undefined;
+  let trustedFingerprint: string | undefined;
+  let format: 'text' | 'json' = 'text';
+  let timeoutMs = 10_000;
+
+  try {
+    for (let index = 0; index < args.length; index++) {
+      const arg = args[index] as string;
+      if (arg === '--url') archiveUrl = requireValue(args, ++index, arg);
+      else if (arg === '--pubkey') publicKeyInput = requireValue(args, ++index, arg);
+      else if (arg === '--signature-url') signatureUrl = requireValue(args, ++index, arg);
+      else if (arg === '--trusted-fingerprint') {
+        trustedFingerprint = requireValue(args, ++index, arg);
+      } else if (arg === '--format') {
+        const value = requireValue(args, ++index, arg);
+        if (value !== 'text' && value !== 'json') {
+          process.stderr.write(`Unknown format "${value}". Expected text or json.\n`);
+          return 2;
+        }
+        format = value;
+      } else if (arg === '--timeout') {
+        timeoutMs = Number(requireValue(args, ++index, arg));
+        if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000) {
+          process.stderr.write('--timeout expects an integer from 1 to 120000 milliseconds.\n');
+          return 2;
+        }
+      } else {
+        process.stderr.write(`Unknown option ${arg} for verify-archive-gpg\n`);
+        return 2;
+      }
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  if (archiveUrl === undefined || publicKeyInput === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint verify-archive-gpg --url <archive-url> --pubkey <key-file> ' +
+        '[--signature-url <url>] [--trusted-fingerprint <hex>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const publicKey = await readArchivePublicKey(publicKeyInput);
+    const verifier = new ArchiveGpgVerifier({ timeoutMs });
+    const result = await verifier.verifyArchive({
+      archiveUrl,
+      publicKey,
+      ...(signatureUrl === undefined ? {} : { signatureUrl }),
+      ...(trustedFingerprint === undefined ? {} : { trustedFingerprint }),
+    });
+    if (format === 'json') {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    } else {
+      process.stdout.write(`Archive GPG verification: ${result.status.toUpperCase()}\n`);
+      if (result.checkpointSequence !== undefined) {
+        process.stdout.write(`Checkpoint ledger: ${result.checkpointSequence}\n`);
+      }
+      if (result.payloadUrl !== undefined) process.stdout.write(`Payload: ${result.payloadUrl}\n`);
+      if (result.signatureUrl !== undefined) {
+        process.stdout.write(`Signature: ${result.signatureUrl}\n`);
+      }
+      for (const signer of result.signers) {
+        process.stdout.write(
+          `Signing key: ${signer.fingerprint} (${signer.algorithm}${signer.keyBits === undefined ? '' : `, ${signer.keyBits} bits`})\n`,
+        );
+        process.stdout.write(`Primary key: ${signer.primaryFingerprint}\n`);
+      }
+      process.stdout.write(
+        `Cryptographic verification: ${result.cryptographicallyValid ? 'VALID' : 'FAILED'}\n`,
+      );
+      process.stdout.write(`Operator identity trust: ${result.identityTrust.toUpperCase()}\n`);
+      if (result.error !== undefined) process.stdout.write(`Result: ${result.error}\n`);
+    }
+    return result.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 /** `stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]` */
 async function auditWasmSimd(args: string[]): Promise<number> {
   let file: string | undefined;
@@ -727,6 +989,52 @@ async function verifyFederationSyncCommand(args: string[]): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>] [--format text|json]` */
+async function auditKeySeparationCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let horizon: string | undefined;
+  let format = 'text';
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--horizon') horizon = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-key-separation\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const host = domain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const url = `https://${host}/.well-known/stellar.toml`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      process.stderr.write(`Could not fetch ${url}: HTTP ${response.status}\n`);
+      return 2;
+    }
+    const doc = parseToml(await response.text()) as Record<string, unknown>;
+    const result = await auditKeySeparation(doc, fetch, {
+      ...(horizon === undefined ? {} : { horizonUrl: horizon }),
+    });
+    process.stdout.write(
+      format === 'json'
+        ? `${JSON.stringify({ ...result.report, diagnostics: result.diagnostics }, null, 2)}\n`
+        : renderKeySeparationReport(result.report),
+    );
+    return result.report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 /** `stellar-toml-lint verify-browser-bundle [--dir dist/browser]` */
 async function verifyBrowserBundleCommand(args: string[]): Promise<number> {
   let dir = 'dist/browser';
@@ -763,18 +1071,156 @@ async function verifyBrowserBundleCommand(args: string[]): Promise<number> {
   }
 }
 
+/**
+ * `--sort-keys` rewrites files into canonical key order; `--dry-run` prints the
+ * diff and leaves the tree alone. Both go through this one pass so a preview can
+ * never disagree with what the write would have done.
+ */
+async function sortKeysCommand(cli: Cli, color: boolean): Promise<number> {
+  if (cli.domain !== undefined) {
+    process.stderr.write(
+      '--sort-keys rewrites files on disk, so it cannot be combined with --domain.\n\nRun with --help for usage.\n',
+    );
+    return 2;
+  }
+
+  let wouldChange = 0;
+  let unparseable = 0;
+
+  try {
+    const paths = await expandInputs(cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH]);
+    for (const path of paths) {
+      const name = path === '-' ? 'stdin' : path;
+      const source = path === '-' ? await readStdin() : await readFile(resolve(path), 'utf8');
+      const sorted = sortCanonical(source);
+      for (const warning of sorted.warnings) process.stderr.write(`${name}: ${warning}\n`);
+      if (!sorted.parsed) unparseable++;
+      if (!sorted.changed) continue;
+
+      wouldChange++;
+      // A dry run only ever shows the diff; stdin has no file to write back to,
+      // so there the sorted text is the output.
+      if (cli.dryRun) {
+        process.stdout.write(formatUnifiedDiff(name, source, sorted.output, { color }));
+      } else if (path === '-') {
+        process.stdout.write(sorted.output);
+      } else {
+        await writeFile(resolve(path), sorted.output);
+        process.stdout.write(`${name}: sorted\n`);
+      }
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  // Only a dry run fails on a change — that is what makes it usable as a CI
+  // ordering gate. In apply mode the sort *is* the success, so a file that
+  // could not be parsed is the only non-zero exit.
+  if (cli.dryRun) {
+    if (wouldChange === 0 && unparseable === 0 && !cli.quiet) {
+      process.stdout.write('All files are in canonical key order.\n');
+    }
+    return wouldChange > 0 || unparseable > 0 ? 1 : 0;
+  }
+  return unparseable > 0 ? 1 : 0;
+}
+
+/** `stellar-toml-lint refactor <file> [options]` */
+async function refactorCommand(args: string[]): Promise<number> {
+  let file: string | undefined;
+  let split = false;
+  let write = false;
+  let json = false;
+  let maxBytes: number | undefined;
+  let outDir: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--deduplicate-assets') continue;
+    else if (arg === '--split') split = true;
+    else if (arg === '--write') write = true;
+    else if (arg === '--json') json = true;
+    else if (arg === '--max-bytes') {
+      const value = Number(requireValue(args, ++i, arg));
+      if (!Number.isInteger(value) || value <= 0) {
+        process.stderr.write('--max-bytes expects a positive integer.\n');
+        return 2;
+      }
+      maxBytes = value;
+    } else if (arg === '--out-dir') outDir = requireValue(args, ++i, arg);
+    else if (!arg.startsWith('-')) file = arg;
+    else {
+      process.stderr.write(`Unknown option ${arg} for refactor\n`);
+      return 2;
+    }
+  }
+
+  if (file === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint refactor <file> [--deduplicate-assets] [--split] ' +
+        '[--max-bytes <n>] [--out-dir <dir>] [--write] [--json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const source = await readFile(resolve(file), 'utf8');
+    const engine = new StructuralRefactoringEngine(source);
+
+    if (split) {
+      const result = engine.split({
+        ...(maxBytes === undefined ? {} : { maxBytes }),
+        ...(outDir === undefined ? {} : { baseName: basename(file, '.toml') }),
+      });
+      if (outDir !== undefined) {
+        await mkdir(resolve(outDir), { recursive: true });
+        for (const partial of result.files) {
+          await writeFile(resolve(outDir, partial.name), partial.source, 'utf8');
+        }
+      }
+      process.stdout.write(
+        json
+          ? `${JSON.stringify(result, null, 2)}\n`
+          : `${result.files.map((partial) => partial.name).join('\n')}\n` +
+              `Validation: ${result.validation.ok ? 'passed' : `FAILED: ${result.validation.errors.join('; ')}`}\n`,
+      );
+      return result.validation.ok ? 0 : 1;
+    }
+
+    const result = engine.deduplicateAssets();
+    process.stderr.write(renderRefactorSummary(result));
+    process.stdout.write(json ? `${JSON.stringify(result, null, 2)}\n` : result.diff);
+    if (write && result.validation.ok) await writeFile(resolve(file), result.source, 'utf8');
+    return result.validation.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
   // `verify-promotions --domain <domain>` is the flag form with quotes enabled.
   if (argv[0] === 'verify-promotions') {
     argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
   }
+  if (argv[0] === 'refactor') return refactorCommand(argv.slice(1));
+  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
   if (argv[0] === 'dispatch-alert') return dispatchAlert(argv.slice(1));
   if (argv[0] === 'audit-coop-coep') return auditCoopCoep(argv.slice(1));
   if (argv[0] === 'verify-federation-sync') return verifyFederationSyncCommand(argv.slice(1));
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
+  if (argv[0] === 'verify-archive-gpg') return verifyArchiveGpgCommand(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
+  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
+  if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
+  if (argv[0] === 'probe-sla') return probeSlaCommand(argv.slice(1));
+  if (argv[0] === 'calculate-uptime') return calculateUptimeCommand(argv.slice(1));
+  if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
+  if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
+  if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -785,6 +1231,9 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
+  if (cli.runSandboxedPlugin !== undefined) {
+    return runSandboxedPlugin(cli.runSandboxedPlugin, cli.sandboxFuel);
+  }
   if (cli.auditOfflinePwa !== undefined) return auditOfflinePwa(cli.auditOfflinePwa);
   if (cli.auditEdgeCompatibility !== undefined) {
     return auditEdgeCompatibility(cli.auditEdgeCompatibility);
@@ -793,7 +1242,16 @@ async function main(argv: string[]): Promise<number> {
     return verifyWasmStreaming(cli.verifyWasmStreaming);
   }
 
+  if (cli.dryRun && !cli.sortKeys) {
+    process.stderr.write(
+      '--dry-run has nothing to preview without --sort-keys.\n\nRun with --help for usage.\n',
+    );
+    return 2;
+  }
+
   const color = cli.color ?? shouldUseColor();
+
+  if (cli.sortKeys) return sortKeysCommand(cli, color);
 
   const runLint = async (cli: Cli, color: boolean): Promise<number> => {
     if (cli.lsp) {
@@ -831,6 +1289,20 @@ async function main(argv: string[]): Promise<number> {
           },
           fetchImpl,
         );
+        if (cli.auditSecrets) {
+          const host = cli.domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+          let secretSource: string | undefined;
+          try {
+            const response = await fetchImpl(`https://${host}/.well-known/stellar.toml`, {
+              redirect: 'follow',
+            });
+            if (response.ok) secretSource = await response.text();
+          } catch {
+            // The parsed document is still scanned when the refetch fails.
+          }
+          const halted = await auditSecretsOrHalt(domainResult.parsed, secretSource, rules);
+          if (halted !== undefined) return halted;
+        }
         if (domainResult.parsed && cli.checkNetwork) {
           const networkDiagnostics: Diagnostic[] = [
             ...(await checkHistoryPublish(domainResult.parsed, fetchImpl, { rules })),
@@ -889,6 +1361,11 @@ async function main(argv: string[]): Promise<number> {
             checkNetwork: cli.checkNetwork,
             ...(cli.domain ? { domain: cli.domain } : {}),
           });
+
+          if (cli.auditSecrets) {
+            const halted = await auditSecretsOrHalt(fileResult.parsed, source, rules);
+            if (halted !== undefined) return halted;
+          }
 
           if (fileResult.parsed) {
             const extra = await runExtraAudits(
@@ -1284,11 +1761,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditKycFsm: false,
     auditFederationSecurity: false,
     auditSep30Recovery: false,
+    auditCors: false,
+    auditAssetSecurity: false,
+    auditClickjacking: false,
     verifyPromotions: false,
     verifyFederationSrv: false,
     auditEsgDisclosures: false,
+    auditOpenTelemetry: false,
     crawlPeers: false,
     verifyDnssec: false,
+    auditDnsTakeover: false,
+    auditSecrets: false,
+    auditSsrf: false,
     checkContracts: false,
     graphIncludeContracts: false,
     graphIncludeValidators: false,
@@ -1328,6 +1812,14 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--lsp':
         cli.lsp = true;
+        break;
+
+      case '--sort-keys':
+        cli.sortKeys = true;
+        break;
+
+      case '--dry-run':
+        cli.dryRun = true;
         break;
 
       case '-d':
@@ -1401,6 +1893,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.auditSep30Recovery = true;
         break;
 
+      case '--audit-cors':
+        cli.auditCors = true;
+        break;
+
+      case '--audit-asset-security':
+        cli.auditAssetSecurity = true;
+        break;
+
+      case '--audit-clickjacking':
+        cli.auditClickjacking = true;
+        break;
+
       case '--verify-promotions':
         cli.verifyPromotions = true;
         break;
@@ -1411,6 +1915,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-esg-disclosures':
         cli.auditEsgDisclosures = true;
+        break;
+
+      case '--audit-opentelemetry':
+        cli.auditOpenTelemetry = true;
         break;
 
       case '--audit-offline-pwa':
@@ -1431,6 +1939,17 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-dnssec':
         cli.verifyDnssec = true;
+        break;
+      case '--audit-dns-takeover':
+        cli.auditDnsTakeover = true;
+        break;
+
+      case '--audit-secrets':
+        cli.auditSecrets = true;
+        break;
+
+      case '--audit-ssrf':
+        cli.auditSsrf = true;
         break;
 
       case '--follow-links':

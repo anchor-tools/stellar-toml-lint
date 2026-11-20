@@ -75,7 +75,7 @@ chmod +x stellar-toml-lint-linux-x64
 sudo install -m 0755 stellar-toml-lint-linux-x64 /usr/local/bin/stellar-toml-lint
 ```
 
-Assets are published for Linux x64 (glibc and musl), Linux ARM64, macOS Intel, macOS Apple Silicon, and Windows x64. These binaries have no Node.js runtime dependency. The npm package remains available for Node.js 20+ users. Runtime dependencies for the npm package are `smol-toml`, `@stellar/stellar-base`, and the pure-JS `@noble/curves` and `@noble/hashes` that `@stellar/stellar-base` already installs.
+Assets are published for Linux x64 (glibc and musl), Linux ARM64, macOS Intel, macOS Apple Silicon, and Windows x64. These binaries have no Node.js runtime dependency. The npm package remains available for Node.js 20+ users. Runtime dependencies for the npm package are `smol-toml`, `@stellar/stellar-base`, and `openpgp`; the pure-JS `@noble/curves` and `@noble/hashes` are installed transitively by `@stellar/stellar-base`.
 
 Releases are generated from Conventional Commits on `main`: `fix:` creates a patch release, `feat:` creates a minor release, and `BREAKING CHANGE:` creates a major release. The release workflow updates the npm and VS Code versions, changelog, GitHub release, and npm provenance.
 Commit a `.stellartomlrc.json` next to your `stellar.toml` to record the project's rule policy once
@@ -134,6 +134,14 @@ each transaction memo carries an audit reference (a URL, a 64-hex hash, a hash m
 exact 7-decimal amounts. It exits 1 when any clawback lacks a reference. Claimable-balance
 clawbacks carry no amount on the operation, so their amount is reported as `n/a`.
 
+`stellar-toml-lint refactor <file> [--deduplicate-assets] [--split] [--max-bytes <n>] [--out-dir <dir>]
+[--write] [--json]` merges `[[CURRENCIES]]` entries that share a code and issuer, keeping comments and
+non-conflicting metadata from every declaration. Conflicting fields keep the first value and are
+both recorded in the summary and preserved as `# refactor: conflict` comments. A post-refactor CST
+validation checks that no currency or non-conflicting value was lost; the diff is printed for review
+and only `--write` changes the file. `--split` instead emits modular partials grouped by table
+(`base`, `currencies`, `validators`, …), optionally written to `--out-dir`.
+
 ### Options
 
 | Flag                          | Effect                                                                                                                              |
@@ -151,9 +159,16 @@ clawbacks carry no amount on the operation, so their amount is reported as `n/a`
 | `--verify-promotions`         | Compare promotional fee claims with SEP-38 `/price` fees (also `verify-promotions --domain <domain>`)                               |
 | `--verify-federation-srv`     | Check `_stellar-federation._tcp.<domain>` SRV records against `FEDERATION_SERVER` (use with `--domain`)                             |
 | `--audit-esg-disclosures`     | Verify `DOCUMENTATION.ORG_ESG` disclosures and attestation signature, and print a sustainability rating                             |
+| `--audit-opentelemetry`       | Probe SEP-6, SEP-24, SEP-31 and SEP-38 `/info` endpoints with W3C Trace Context headers and inspect response correlation evidence   |
 | `--audit-kyc-fsm`             | Audit SEP-12 customer status state machines for stuck or circular onboarding (use with `--domain`)                                  |
+| `--audit-cors`                | Probe every declared endpoint for wildcard-plus-credentials and unvalidated `Origin` CORS policies (OWASP)                          |
+| `--audit-asset-security`      | Scan linked logos, images and attestations for Content-Type confusion, missing `nosniff` and SVG script vectors                     |
+| `--audit-clickjacking`        | Read `Content-Security-Policy: frame-ancestors` and `X-Frame-Options` on every interactive endpoint                                 |
 | `--crawl-peers`               | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                             |
 | `--verify-dnssec`             | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                              |
+| `--audit-dns-takeover`        | Query CNAME/NS for every referenced domain and flag dangling pointers to claimable cloud resources                                  |
+| `--audit-secrets`             | Halt with exit 1 on leaked Stellar seeds, cloud keys, tokens or PEM blocks; all output is redacted                                  |
+| `--audit-ssrf`                | Flag advertised URLs resolving to private, loopback, link-local or multicast IPs, including DNS rebinding                           |
 | `--follow-links`              | Fetch and lint the `toml` pointers in `CURRENCIES` (implied by `--domain`)                                                          |
 | `--check-contracts`           | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                               |
 | `--soroban-rpc <url>`         | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                                   |
@@ -174,6 +189,8 @@ clawbacks carry no amount on the operation, so their amount is reported as `n/a`
 | `-w, --watch`                 | Watch files and re-run on changes                                                                                                   |
 | `-i, --interactive`           | Full-screen dashboard to walk the findings (falls back to text)                                                                     |
 | `--lsp`                       | Run as a Language Server on stdio (diagnostics, quick-fixes, hover)                                                                 |
+| `--sort-keys`                 | Rewrite files into canonical SEP-1 key order; a comment moves with the key it annotates                                             |
+| `--dry-run`                   | With `--sort-keys`, print the diff instead of writing and exit 1 if a file is not already canonical                                 |
 | `--graph <fmt>`               | Generate architecture diagram: `mermaid` or `dot`                                                                                   |
 | `--graph-contracts`           | Include Soroban contracts in diagram                                                                                                |
 | `--graph-validators`          | Include validators in diagram                                                                                                       |
@@ -188,12 +205,75 @@ clawbacks carry no amount on the operation, so their amount is reported as `n/a`
 Every flag above takes precedence over the [configuration file](#configuration-file), and
 `--preset` — being a flag — takes precedence over it too.
 
+### OpenTelemetry trace context audit
+
+Run `stellar-toml-lint --audit-opentelemetry stellar.toml` to probe each declared
+`TRANSFER_SERVER` (SEP-6), `TRANSFER_SERVER_SEP0024` (SEP-24),
+`DIRECT_PAYMENT_SERVER` (SEP-31), and `ANCHOR_QUOTE_SERVER` (SEP-38). The audit
+sends a read-only `GET` to the service's `/info` endpoint with a fresh W3C
+Trace Context version `00` `traceparent`. It does not send `tracestate`, since
+the linter has no vendor-specific state to propagate.
+
+The report inspects a valid `traceresponse` header or a `Server-Timing` `trace`
+metric containing trace context. Either may expose a different trace ID because
+a service can legitimately restart a trace. No response echo is required by
+W3C Trace Context: when there is no observable correlation metadata, the result
+is **unobservable**, not a propagation failure. Malformed or conflicting
+metadata is reported as **non-compliant**; unsafe URLs, redirects, timeouts and
+network failures are **unreachable**. A valid observed response context is
+reported as **compliant** for the observable HTTP exchange.
+
+This is an external trace context and response observability audit, not a full
+OpenTelemetry instrumentation test. It cannot prove that context reached
+invisible downstream services, that spans were exported, or that the trace ID
+belongs to the initiating request when the server starts a new trace. Probe
+requests require HTTPS, reject private or local destinations, pin public DNS
+answers, do not follow redirects, and discard response bodies after headers.
+Only the read-only `/info` endpoint is requested; transactions, quotes and
+financial operations are never called.
+
 Exit codes: **0** no errors, **1** problems found, **2** bad usage, an unmatched glob, or I/O
 failure.
 
 Colour output follows the [NO_COLOR standard](https://no-color.org): setting `NO_COLOR` to any
 non-empty value disables it, an empty value counts as unset, and stdout not being a terminal
 disables it too. An explicit `--color` is the only thing that overrides `NO_COLOR`.
+
+### Canonical key order
+
+Anchors edit `stellar.toml` by hand, so the fields land in whatever order the last edit happened to
+touch. The next person who adds one currency to a five-currency file produces a diff that moves
+half the file, and the reviewer has to read all of it to find the one line that matters.
+
+`--sort-keys` reorders the tables SEP-1 defines a reading order for — `[DOCUMENTATION]`,
+`[[PRINCIPALS]]`, `[[CURRENCIES]]`, `[[VALIDATORS]]` — into that order, and sorts `[[CURRENCIES]]`
+by `code` and `[[VALIDATORS]]` by `PUBLIC_KEY` so the entries themselves are findable:
+
+```bash
+stellar-toml-lint --sort-keys                    # apply
+stellar-toml-lint --sort-keys --dry-run          # preview; exit 1 if anything is out of order
+stellar-toml-lint --sort-keys --dry-run > keys.diff
+cat broken.toml | stellar-toml-lint --sort-keys - # stdin to stdout
+```
+
+What it guarantees:
+
+- **It only moves lines.** Nothing is reformatted, re-quoted, or re-rendered, so `issuer = "GABC" #
+our account` keeps its trailing comment, its quoting, and its multi-line `"""` value byte for byte.
+- **A comment travels with the key under it.** A blank line separates a comment from the key below,
+  which makes it floating layout rather than an annotation, and floating whitespace stays where the
+  author put it.
+- **Fields the spec does not name stay last, in the order written.** The codemod has no opinion
+  about `sep38`, so it will not invent one and will not reorder your custom keys against each other.
+- **It is idempotent.** A second pass reports no change, which is what makes `--dry-run` usable as a
+  CI gate and `--sort-keys` safe in a pre-commit hook.
+- **A file that does not parse is left alone** and reported on stderr with exit 1. Fix the syntax
+  first; a reorder is not the place to guess at intent.
+
+Two limits worth knowing: the keys above the first table header are left where they are, since
+there is no canonical order for the global preamble that everyone agrees on, and an array whose
+entries are interrupted by another table is not reordered, because moving it would change which
+table its keys belong to.
 
 ### Rule presets
 
@@ -629,6 +709,44 @@ This catches the failure mode nobody notices: a CDN or hosting change quietly dr
 `Access-Control-Allow-Origin` header, which makes the file unreadable to every browser-based wallet
 while looking perfectly fine to `curl`.
 
+### Telemetry and SLA tooling
+
+Four subcommands audit how a live anchor behaves operationally. Every network probe is a
+read-only `GET`; none of them creates, updates or deletes anything. Exit codes match the
+rest of the CLI: `0` clean, `1` findings, `2` bad usage or I/O failure.
+
+```sh
+# Prometheus text 0.0.4 / OpenMetrics 1.0.0 compliance of a /metrics endpoint
+stellar-toml-lint verify-metrics --url https://anchor.example/metrics
+stellar-toml-lint verify-metrics --domain anchor.example   # finds METRICS_URL etc. in stellar.toml
+
+# p50 / p95 / p99 TTFB, TCP connect and TLS handshake for each SEP server's /info
+stellar-toml-lint probe-sla --domain anchor.example --samples 20 --threshold-ms 500
+
+# Invalid read-only requests to each SEP endpoint: are errors RFC 7807 or {"error": "..."}?
+# Flags HTML error pages, plain-text errors, and leaked stack traces, secrets or DB URLs.
+stellar-toml-lint --audit-error-taxonomy --domain anchor.example
+
+# Availability over 24h / 7d / 30d, incidents and the longest downtime streak
+stellar-toml-lint calculate-uptime --log-file health.csv --format markdown \
+  --badge-svg uptime.svg --badge-json uptime.json --min-availability 99.9
+```
+
+- **`verify-metrics`** streams the scrape through an incremental parser, so very large expositions
+  validate in bounded memory. It checks metric and label names, `TYPE` (per standard), missing
+  `HELP`/`TYPE`, NaN gauges, negative counters, histogram `le`/`+Inf`/`_sum`/`_count`, `# EOF` for
+  OpenMetrics, and the anchor metrics `stellar_anchor_balance`, `stellar_tx_processed_total` and
+  `stellar_sep_request_duration_seconds` (override with `--require <name>` or `--no-required-metrics`).
+- **`probe-sla`** probes `TRANSFER_SERVER`, `TRANSFER_SERVER_SEP0024`, `DIRECT_PAYMENT_SERVER` and
+  `ANCHOR_QUOTE_SERVER` on a fresh connection each time and prints an ASCII TTFB histogram. A p50 or
+  p95 above the threshold is an error; a slow p99 tail is a warning.
+- **`--audit-error-taxonomy`** sorts every response into `client-input`, `authentication`,
+  `authorization`, `not-found`, `conflict`, `rate-limited`, `server`, `unexpected-success` or `other`.
+- **`calculate-uptime`** reads JSON arrays, `{ "records": [...] }`, NDJSON or CSV with flexible
+  column names (`timestamp`/`time`/`ts`, `status`/`up`/`ok`/HTTP code, optional `service`).
+  Availability is time-weighted and truncated, never rounded up, so 99.989% is never reported as
+  99.99%.
+
 ## Programmatic API
 
 ```ts
@@ -805,6 +923,45 @@ previous-ledger pointers when checkpoint metadata provides them. A missing categ
 `history/broken-checkpoint-chain` (error). The check uses the injected network transport, so
 `--mock-fixtures` remains hermetic.
 
+**Detached archive signature verification** — `verify-archive-gpg` reads the standard
+`.well-known/stellar-history.json` History Archive State document, takes its `currentLedger`, and
+downloads that checkpoint's ledger-header XDR gzip file using Stellar Core's documented
+`ledger/aa/bb/cc/ledger-XXXXXXXX.xdr.gz` naming scheme. It verifies the exact downloaded bytes with
+OpenPGP.js and a caller-supplied public key:
+
+```sh
+stellar-toml-lint verify-archive-gpg \
+  --url https://history.example.org/prd/core-live/core_live_001/ \
+  --pubkey ./operator-public-key.asc
+
+# Pin an independently obtained fingerprint if you know which operator key is expected.
+stellar-toml-lint verify-archive-gpg \
+  --url https://history.example.org/prd/core-live/core_live_001/ \
+  --pubkey ./operator-public-key.asc \
+  --trusted-fingerprint 0123456789abcdef0123456789abcdef01234567 \
+  --format json
+```
+
+Stellar Core's archive format does **not** define GPG signatures, a `.sig` sidecar, or a GPG public
+key field in `stellar.toml`. The verifier therefore checks the optional sidecar at
+`<ledger-file>.sig` as a best-effort convention, or uses an explicit `--signature-url`; it does not
+claim that ordinary Stellar archives publish signatures. A missing signature fails verification.
+The public key must be provided locally with `--pubkey`; the verifier does not download keys from
+the archive host or a keyserver. OpenPGP verification accepts RSA signing keys of at least 2048 bits
+and Ed25519 signing keys, checks key and signature expiry and revocation, and permits SHA-256,
+SHA-384, or SHA-512 signature hashes. Other key or signature algorithms are rejected.
+
+`Cryptographic verification: VALID` means that OpenPGP.js verified the detached signature over the
+downloaded bytes using the supplied key. It does not prove that the key belongs to the validator
+operator. The result reports `Operator identity trust: UNKNOWN` unless `--trusted-fingerprint`
+matches the signing key's primary fingerprint; the fingerprint must come from an independent
+trusted source. A cryptographically valid result without a pin exits successfully but is not
+reported as identity-trusted. `--format json` emits the structured result. Requests require HTTPS,
+reject redirects and non-public DNS destinations, and have bounded time and response sizes.
+
+This standalone check is not included in the general linter or a health scorecard: SEP-1 has no
+operator GPG-key field, and the project has no cross-check scorecard for arbitrary archive trust.
+
 **Overlay peer discovery** (with `--check-network --crawl-peers`) — each `VALIDATORS[i].HOST`
 is contacted over TCP and sent a Stellar overlay `GET_PEERS` XDR message. Returned `PEERS`
 records are decoded, deduplicated, and crawled recursively with bounded depth and timeouts. A
@@ -823,6 +980,23 @@ Cloudflare (`1.1.1.1`), Google (`8.8.8.8`), and Quad9 (`9.9.9.9`) through their 
 endpoints. Resolver sets are normalized and compared; disagreement emits
 `security/dns-resolver-divergence` (error), while an explicit unauthenticated response emits
 `security/dnssec-not-enabled` (warning).
+
+**DNS takeover and SSRF** (`--audit-dns-takeover`, `--audit-ssrf`) — the takeover audit collects the
+apex domain and every hostname referenced by the file, then queries CNAME and NS records through a
+DNS-over-HTTPS resolver. A CNAME whose target matches a known cloud signature (S3, GitHub Pages,
+Fastly, Cloudflare, Azure, Heroku, Netlify or Vercel) and does not resolve is reported as
+`security/dns-takeover-cname` at **critical** severity; dangling Route 53 delegations are reported as
+`security/dns-takeover-ns`. The SSRF audit resolves every advertised URL twice (passively, through
+the same resolver) and reports RFC 1918, loopback, link-local, multicast and IPv4-mapped IPv6 targets
+as `security/ssrf-private-ip`, with public→private answer changes reported as
+`security/ssrf-dns-rebinding`. Both audits carry per-query timeouts, so a slow resolver degrades to a
+warning instead of hanging CI. Neither audit connects to the target resource.
+
+**Secret leak detection** (`--audit-secrets`) — scans the raw source, its comments and the parsed
+values for checksum-valid Stellar seeds (`S…`), AWS keys, GitHub tokens, PEM blocks, bearer tokens and
+high-entropy values in credential-looking fields. A finding halts the run immediately with exit 1;
+only masked values (`SABC...XYZ`) ever reach stdout, stderr or reports, and public `G…`/`C…` keys are
+never flagged.
 
 The same flag sends browser-shaped `OPTIONS` requests to each declared `WEB_AUTH_ENDPOINT`,
 `TRANSFER_SERVER`, `KYC_SERVER`, and `ANCHOR_QUOTE_SERVER`. The response must allow the requesting
@@ -917,6 +1091,54 @@ Required field keys that are not standard [SEP-9][sep9] names (`first_name`, `la
 `email_address`, `id_country_code`, …) emit `sep12/unknown-kyc-field-name` (warning), and a customer
 type whose name is not a lowercase identifier emits `sep12/invalid-customer-type-syntax` (error).
 Nothing here fires for a local file without the flag: offline linting never opens a connection.
+
+### Response header and key hygiene audits
+
+**CORS policy** (with `--audit-cors`, `src/security/corsAuditor.ts`) — every endpoint the file
+declares is probed three times the way a browser would send it: an `OPTIONS` pre-flight, an actual
+request from a wallet origin, and an actual request from an origin no whitelist should ever contain.
+`/.well-known/stellar.toml` and the SEP-38 `/info` reads are public by specification, so a served
+`Access-Control-Allow-Origin` other than `*` emits `cors/public-endpoint-missing-wildcard` (error).
+On an authenticated or interactive endpoint the opposite is the defect: `*` together with
+`Access-Control-Allow-Credentials: true` emits `cors/wildcard-origin-with-credentials` (error), and an
+endpoint that echoes back the unlisted origin has no whitelist at all, so any site can read a
+logged-in user's SEP-10 or SEP-12 responses (`cors/unlisted-origin-echoed`, error). A refused
+pre-flight is `cors/preflight-not-allowed` (warning). No request is ever sent with credentials.
+
+**Linked assets** (with `--audit-asset-security`, `src/security/mimeScanner.ts`) — `ORG_LOGO`,
+`CURRENCIES[].image`, and the attestation URLs are fetched and read from their headers first. A
+payload served without `X-Content-Type-Options: nosniff` emits `mime/missing-nosniff` (warning), one
+served as a type the client may execute emits `mime/active-content-type` (error), and one whose
+`Content-Type` contradicts the extension in the URL emits `mime/content-type-mismatch` (warning).
+Text-bearing bodies are then scanned as raw markup for `<script>`, an `on*=` handler, a
+`javascript:` href, `foreignObject`, an embedded document, or a `DOCTYPE`/`ENTITY` declaration —
+`svg/embedded-script` (error) and `svg/entity-declaration` (warning). The scan is a token match, not
+an XML parse: no entity is expanded, so an XXE or billion-laughs payload is reported rather than
+dereferenced. Binary payloads are classified from headers alone and never buffered, and a text body
+is read up to a bound (`svg/embedded-script` says how many bytes were scanned).
+
+**Key separation** (`stellar-toml-lint audit-key-separation --domain <domain>`,
+`src/security/keySeparationAuditor.ts`) — builds the role graph from the file: which account signs
+SEP-10 sessions, which one issues each asset, which are operational `ACCOUNTS`, which vote as
+validators, and which hold collateral. One account in two roles is a NIST SP 800-57 separation
+failure, so `SIGNING_KEY` reuse as an issuer emits `keys/signing-issuer-reuse` (error), an issuer in
+`ACCOUNTS` emits `keys/issuer-operational-account` (error), and a validator identity reused for an
+anchor role emits `keys/validator-key-reuse` (error). Horizon then answers the two questions the file
+cannot: a root key held by one signer at one threshold emits `keys/single-signer-root-account`
+(warning), and an issuer with recent payment or offer operations of its own emits
+`keys/issuer-operational-activity` (warning). Issuer administration (`allow_trust`, `set_options`) is
+not counted as operational traffic. Accounts Horizon cannot serve stay silent. The report prints the
+role graph as a tree, and `--format json` adds the diagnostics.
+
+**Frame embedding** (with `--audit-clickjacking`, `src/security/clickjackingAuditor.ts`) — the URLs a
+wallet opens in an iframe (SEP-24 interactive endpoints, `KYC_SERVER`, `DIRECT_PAYMENT_SERVER`,
+`WEB_AUTH_ENDPOINT`, `CURRENCIES[].approval_server`, and `ORG_URL`) are requested as an embedded
+navigation with `Sec-Fetch-Dest: iframe`, and both framing headers are read. `frame-ancestors *`
+frames the page for every site on the internet and emits `clickjacking/wildcard-frame-ancestors`
+(error); an endpoint that states no policy at all emits `clickjacking/missing-frame-protection`
+(warning); `X-Frame-Options: ALLOW-FROM`, which no current browser implements, emits
+`clickjacking/deprecated-allow-from` (warning). CSP wins when both headers are present, exactly as it
+does in a browser, and a report-only policy counts as nothing sent.
 
 ### Severity
 

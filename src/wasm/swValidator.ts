@@ -302,7 +302,8 @@ function manifestFindings(
     findings.push({
       code: 'pwa/missing-manifest-field',
       severity: 'warning',
-      message: 'manifest.json uses display: browser, so the app never gets a standalone offline window',
+      message:
+        'manifest.json uses display: browser, so the app never gets a standalone offline window',
       suggestion: 'Use display: standalone, minimal-ui, or fullscreen.',
     });
   }
@@ -333,7 +334,8 @@ function serviceWorkerFindings(
       code: 'pwa/missing-precache',
       severity: 'error',
       message: 'the Service Worker precaches no assets, so the app cannot boot offline',
-      suggestion: 'Add cache.addAll([...]) or Workbox precacheAndRoute([...]) in the install handler.',
+      suggestion:
+        'Add cache.addAll([...]) or Workbox precacheAndRoute([...]) in the install handler.',
     });
   } else if (!analysis.hasInstallHandler) {
     findings.push({
@@ -370,7 +372,7 @@ function serviceWorkerFindings(
       severity: analysis.hasActivateHandler ? 'error' : 'warning',
       message: 'old caches are never deleted, so previous linter rules stay on disk',
       suggestion:
-        "In the activate handler, list caches.keys() and delete every cache that is not the current version.",
+        'In the activate handler, list caches.keys() and delete every cache that is not the current version.',
     });
   }
 
