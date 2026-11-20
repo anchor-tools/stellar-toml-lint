@@ -6,7 +6,7 @@
  * set is small and stable, and a linter that anchors run in CI benefits from a
  * dependency tree small enough to audit by eye.
  */
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { parse as parseToml } from 'smol-toml';
 import { createReadStream, watch } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
@@ -64,6 +64,14 @@ import { auditClickjacking, renderClickjackingReport } from './security/clickjac
 import { auditKeySeparation, renderKeySeparationReport } from './security/keySeparationAuditor.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
+import {
+  scanSubdomainTakeover,
+  renderTakeoverReport,
+  takeoverDiagnostics,
+} from './security/subdomainScanner.js';
+import { scanSecrets, renderSecretReport } from './security/secretDetector.js';
+import { scanSsrf, renderSsrfReport, ssrfDiagnostics } from './security/ssrfScanner.js';
+import { StructuralRefactoringEngine, renderRefactorSummary } from './cst/structuralRefactoring.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
 import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
@@ -164,6 +172,9 @@ interface Cli {
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
   verifyDnssec: boolean;
+  auditDnsTakeover: boolean;
+  auditSecrets: boolean;
+  auditSsrf: boolean;
   badgeSvg?: string;
   badgeJson?: string;
   exportApConfig?: boolean;
@@ -214,6 +225,10 @@ USAGE
                                          against each anchor's live stellar.toml
   stellar-toml-lint verify-archive-gpg --url <archive-url> --pubkey <key-file>
                                          Verify the latest ledger checkpoint's detached GPG signature
+  stellar-toml-lint refactor <file> [--deduplicate-assets] [--split]
+                                    [--max-bytes <n>] [--out-dir <dir>] [--write]
+                                          Deduplicate assets / split a large stellar.toml
+                                          and print a diff for review
   stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]
                                          Audit a WASM binary for SIMD opcodes and
                                          unbounded memory growth
@@ -318,6 +333,13 @@ OPTIONS
                           frame-ancestors and X-Frame-Options framing defenses
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
+       --audit-dns-takeover
+                           Query CNAME/NS records for every referenced domain and
+                           flag dangling pointers to claimable cloud resources
+       --audit-secrets     Halt with exit 1 on leaked Stellar seeds, cloud keys,
+                           bearer tokens or PEM blocks; output is always redacted
+       --audit-ssrf        Flag advertised URLs resolving to private, loopback,
+                           link-local or multicast IPs, including DNS rebinding
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
                           (implied by --domain)
       --check-contracts   Verify Soroban contract and WASM TTL liveliness
@@ -487,6 +509,16 @@ async function runExtraAudits(
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
   }
+  if (cli.auditDnsTakeover) {
+    const report = await scanSubdomainTakeover(parsed, { rules, fetchImpl, domain });
+    out.push(...takeoverDiagnostics(report, rules));
+    process.stderr.write(renderTakeoverReport(report));
+  }
+  if (cli.auditSsrf) {
+    const report = await scanSsrf(parsed, { rules, fetchImpl, domain });
+    out.push(...ssrfDiagnostics(report, rules));
+    process.stderr.write(renderSsrfReport(report));
+  }
   if (cli.auditOpenTelemetry) {
     const verifier = new OpenTelemetryTraceValidator(
       // Recorded fixture transport is explicitly requested; ordinary network
@@ -498,6 +530,22 @@ async function runExtraAudits(
     process.stderr.write(renderTraceAuditReport(result));
   }
   return out;
+}
+
+/**
+ * Secrets are the one audit that halts the whole run: a leaked credential must
+ * never reach a reporter (SARIF embeds source snippets) and no further network
+ * work should happen with a compromised key in hand. All output is masked.
+ */
+async function auditSecretsOrHalt(
+  parsed: Record<string, unknown> | undefined,
+  source: string | undefined,
+  rules: RuleOverrides,
+): Promise<number | undefined> {
+  const result = scanSecrets(source ?? '', parsed, { rules });
+  if (!result.halt) return undefined;
+  process.stderr.write(renderSecretReport(result));
+  return 1;
 }
 
 /** `stellar-toml-lint audit-clawbacks --asset CODE:ISSUER [--horizon <url>] [--format json|markdown]` */
@@ -1078,11 +1126,86 @@ async function sortKeysCommand(cli: Cli, color: boolean): Promise<number> {
   return unparseable > 0 ? 1 : 0;
 }
 
+/** `stellar-toml-lint refactor <file> [options]` */
+async function refactorCommand(args: string[]): Promise<number> {
+  let file: string | undefined;
+  let split = false;
+  let write = false;
+  let json = false;
+  let maxBytes: number | undefined;
+  let outDir: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--deduplicate-assets') continue;
+    else if (arg === '--split') split = true;
+    else if (arg === '--write') write = true;
+    else if (arg === '--json') json = true;
+    else if (arg === '--max-bytes') {
+      const value = Number(requireValue(args, ++i, arg));
+      if (!Number.isInteger(value) || value <= 0) {
+        process.stderr.write('--max-bytes expects a positive integer.\n');
+        return 2;
+      }
+      maxBytes = value;
+    } else if (arg === '--out-dir') outDir = requireValue(args, ++i, arg);
+    else if (!arg.startsWith('-')) file = arg;
+    else {
+      process.stderr.write(`Unknown option ${arg} for refactor\n`);
+      return 2;
+    }
+  }
+
+  if (file === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint refactor <file> [--deduplicate-assets] [--split] ' +
+        '[--max-bytes <n>] [--out-dir <dir>] [--write] [--json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const source = await readFile(resolve(file), 'utf8');
+    const engine = new StructuralRefactoringEngine(source);
+
+    if (split) {
+      const result = engine.split({
+        ...(maxBytes === undefined ? {} : { maxBytes }),
+        ...(outDir === undefined ? {} : { baseName: basename(file, '.toml') }),
+      });
+      if (outDir !== undefined) {
+        await mkdir(resolve(outDir), { recursive: true });
+        for (const partial of result.files) {
+          await writeFile(resolve(outDir, partial.name), partial.source, 'utf8');
+        }
+      }
+      process.stdout.write(
+        json
+          ? `${JSON.stringify(result, null, 2)}\n`
+          : `${result.files.map((partial) => partial.name).join('\n')}\n` +
+              `Validation: ${result.validation.ok ? 'passed' : `FAILED: ${result.validation.errors.join('; ')}`}\n`,
+      );
+      return result.validation.ok ? 0 : 1;
+    }
+
+    const result = engine.deduplicateAssets();
+    process.stderr.write(renderRefactorSummary(result));
+    process.stdout.write(json ? `${JSON.stringify(result, null, 2)}\n` : result.diff);
+    if (write && result.validation.ok) await writeFile(resolve(file), result.source, 'utf8');
+    return result.validation.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
   // `verify-promotions --domain <domain>` is the flag form with quotes enabled.
   if (argv[0] === 'verify-promotions') {
     argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
   }
+  if (argv[0] === 'refactor') return refactorCommand(argv.slice(1));
+  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
   if (argv[0] === 'dispatch-alert') return dispatchAlert(argv.slice(1));
   if (argv[0] === 'audit-coop-coep') return auditCoopCoep(argv.slice(1));
@@ -1166,6 +1289,20 @@ async function main(argv: string[]): Promise<number> {
           },
           fetchImpl,
         );
+        if (cli.auditSecrets) {
+          const host = cli.domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+          let secretSource: string | undefined;
+          try {
+            const response = await fetchImpl(`https://${host}/.well-known/stellar.toml`, {
+              redirect: 'follow',
+            });
+            if (response.ok) secretSource = await response.text();
+          } catch {
+            // The parsed document is still scanned when the refetch fails.
+          }
+          const halted = await auditSecretsOrHalt(domainResult.parsed, secretSource, rules);
+          if (halted !== undefined) return halted;
+        }
         if (domainResult.parsed && cli.checkNetwork) {
           const networkDiagnostics: Diagnostic[] = [
             ...(await checkHistoryPublish(domainResult.parsed, fetchImpl, { rules })),
@@ -1224,6 +1361,11 @@ async function main(argv: string[]): Promise<number> {
             checkNetwork: cli.checkNetwork,
             ...(cli.domain ? { domain: cli.domain } : {}),
           });
+
+          if (cli.auditSecrets) {
+            const halted = await auditSecretsOrHalt(fileResult.parsed, source, rules);
+            if (halted !== undefined) return halted;
+          }
 
           if (fileResult.parsed) {
             const extra = await runExtraAudits(
@@ -1628,6 +1770,9 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditOpenTelemetry: false,
     crawlPeers: false,
     verifyDnssec: false,
+    auditDnsTakeover: false,
+    auditSecrets: false,
+    auditSsrf: false,
     checkContracts: false,
     graphIncludeContracts: false,
     graphIncludeValidators: false,
@@ -1794,6 +1939,17 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-dnssec':
         cli.verifyDnssec = true;
+        break;
+      case '--audit-dns-takeover':
+        cli.auditDnsTakeover = true;
+        break;
+
+      case '--audit-secrets':
+        cli.auditSecrets = true;
+        break;
+
+      case '--audit-ssrf':
+        cli.auditSsrf = true;
         break;
 
       case '--follow-links':
