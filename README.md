@@ -277,6 +277,69 @@ there is no canonical order for the global preamble that everyone agrees on, and
 entries are interrupted by another table is not reordered, because moving it would change which
 table its keys belong to.
 
+### Semantic diff
+
+A revised `stellar.toml` is published, and the question is never which lines moved. It is which
+field changed, and whether a wallet that read the old one breaks. `diff` parses both documents and
+compares the configuration they describe, so a file that was hand-edited, re-indented, or run
+through `--sort-keys` diffs as nothing.
+
+```bash
+stellar-toml-lint diff live.toml candidate.toml                       # two files
+stellar-toml-lint diff https://example.com/.well-known/stellar.toml candidate.toml
+cat candidate.toml | stellar-toml-lint diff live.toml -                # one side from stdin
+stellar-toml-lint diff live.toml candidate.toml --json > changelog.json
+```
+
+Exit codes follow the lint run: **0** when nothing a client depends on changed, **1** when the
+target has breaking changes, and **2** when the two sides could not be compared at all — a side that
+does not parse, an unreachable URL, or a missing file.
+
+```console
+$ stellar-toml-lint diff live.toml candidate.toml
+# stellar.toml semantic diff
+
+- **source:** `live.toml` (17 fields)
+- **target:** `candidate.toml` (15 fields)
+
+2 added · 4 removed · 7 modified · BREAKING: 6 breaking changes
+
+## Changes
+
+- `ANCHOR_QUOTE_SERVER` BREAKING
+  - "https://api.example.com/sep38"
+  ! ANCHOR_QUOTE_SERVER is how clients discover SEP-38 quotes; it is now gone
+~ `SIGNING_KEY` BREAKING
+  - "GCM5YCQPFIW4ICBPPSKACX56ZTGG6KZ7A53JGUWWAFRZW462YFIK4BZS"
+  + "GA3TONZXG43TONZXG43TONZXG43TONZXG43TONZXG43TONZXG43TO5MU"
+  ! SEP-10 and SEP-45 responses are verified against this key, so clients holding the previous one start rejecting the anchor
+- `CURRENCIES[EXPL]` BREAKING
+  - {code="EXPL", contract="CACTZSQPCQSSZ5YG3PI3N7WO6JEERKEUHTPILKB4MBANF2K4D2UHKDDU", name="Example Points", … 4 more}
+  ! the asset is no longer advertised, so wallets and exchanges stop offering it
+```
+
+What it guarantees:
+
+- **Entries are paired by identity, not position.** `[[CURRENCIES]]` match on `code` and
+  `[[VALIDATORS]]` on `PUBLIC_KEY`, so inserting an asset in the middle of a five-asset file is one
+  added line rather than five modifications, and a delisting names the asset it took away.
+  `[[PRINCIPALS]]` has no key SEP-1 gives it, so it is compared in order and says so as `#1`, `#2`.
+- **Syntax is invisible to it.** Key order inside an entry, spacing around `=`, quoting style,
+  comments and blank lines are all layout. `1979-05-27T07:32:00Z` and `1979-05-27T09:32:00+02:00`
+  are the same instant, and an entry whose fields were merely re-sorted is not a change.
+- **`BREAKING` means a client that read the source stops working.** A rotated `SIGNING_KEY`, a
+  currency whose `issuer` or `contract` moved, an endpoint that disappears rather than moves, and an
+  asset or validator a client can no longer find. Each one says why in its own terms.
+- **An addition is never breaking,** and neither is dropping a field SEP-1 already deprecated —
+  clients were told to stop reading `AUTH_SERVER`, so removing it is the cleanup working as intended.
+- **Fields outside SEP-1 are reported, not graded.** The differ has no idea what your custom
+  `sep38` table means for your integrations, so it will tell you it changed and leave the judgement
+  to you.
+
+`--json` writes the same report as a changelog: one `changes` array with `path`, `kind`, `section`,
+`category`, `breaking`, `reason`, `before` and `after`, plus the per-side counts — which is what a
+release notes job or an anchor's status page consumes.
+
 ### Rule presets
 
 Nobody is all of the ecosystem at once. A validator operator publishes `[[VALIDATORS]]` and little
