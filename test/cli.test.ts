@@ -354,6 +354,60 @@ describe('cli --completion', () => {
   });
 });
 
+describe('cli security audits', () => {
+  it('documents the three audit flags and the key separation subcommand', async () => {
+    const { code, stdout } = await cli(['--help']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('--audit-cors');
+    expect(stdout).toContain('--audit-asset-security');
+    expect(stdout).toContain('--audit-clickjacking');
+    expect(stdout).toContain('audit-key-separation --domain <domain>');
+  });
+
+  it('lists every header, MIME, key separation and framing rule', async () => {
+    const { code, stdout } = await cli(['--list-rules']);
+    expect(code).toBe(0);
+    for (const rule of [
+      'cors/public-endpoint-missing-wildcard',
+      'cors/wildcard-origin-with-credentials',
+      'cors/unlisted-origin-echoed',
+      'mime/active-content-type',
+      'mime/missing-nosniff',
+      'svg/embedded-script',
+      'keys/signing-issuer-reuse',
+      'keys/validator-key-reuse',
+      'clickjacking/wildcard-frame-ancestors',
+      'clickjacking/missing-frame-protection',
+    ]) {
+      expect(stdout).toContain(rule);
+    }
+  });
+
+  it('accepts severity overrides for the new rule ids', async () => {
+    const { code, stderr } = await cli([
+      fixture('valid.toml'),
+      '--off',
+      'keys/signing-issuer-reuse',
+      '--warn',
+      'mime/missing-nosniff',
+      '--error',
+      'clickjacking/wildcard-frame-ancestors',
+    ]);
+    expect(stderr).not.toContain('Unknown rule');
+    expect(code).toBe(0);
+  });
+
+  it('requires a domain for the key separation subcommand', async () => {
+    const missing = await cli(['audit-key-separation']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('audit-key-separation --domain <domain>');
+
+    const unknown = await cli(['audit-key-separation', '--nope']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option --nope');
+  });
+});
+
 describe('cli -f markdown', () => {
   it('emits a step-summary table for a broken file and still exits 1', async () => {
     const { code, stdout } = await cli([fixture('broken.toml'), '-f', 'markdown']);

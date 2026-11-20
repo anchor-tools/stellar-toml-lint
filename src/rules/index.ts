@@ -36,6 +36,10 @@ import { subdomainTakeoverRules } from '../security/subdomainScanner.js';
 import { secretDetectorRules } from '../security/secretDetector.js';
 import { ssrfRules } from '../security/ssrfScanner.js';
 import { telemetryRules } from '../telemetry/rules.js';
+import { corsSecurityRules } from '../security/corsAuditor.js';
+import { mimeSecurityRules } from '../security/mimeScanner.js';
+import { keySeparationRules } from '../security/keySeparationAuditor.js';
+import { clickjackingRules } from '../security/clickjackingAuditor.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -78,6 +82,10 @@ export const allRules: Rule[] = [
   ...secretDetectorRules,
   ...ssrfRules,
   ...telemetryRules,
+  ...corsSecurityRules,
+  ...mimeSecurityRules,
+  ...keySeparationRules,
+  ...clickjackingRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -119,4 +127,8 @@ export {
   secretDetectorRules,
   ssrfRules,
   telemetryRules,
+  corsSecurityRules,
+  mimeSecurityRules,
+  keySeparationRules,
+  clickjackingRules,
 };

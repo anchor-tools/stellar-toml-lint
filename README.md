@@ -161,6 +161,9 @@ and only `--write` changes the file. `--split` instead emits modular partials gr
 | `--audit-esg-disclosures`     | Verify `DOCUMENTATION.ORG_ESG` disclosures and attestation signature, and print a sustainability rating                             |
 | `--audit-opentelemetry`       | Probe SEP-6, SEP-24, SEP-31 and SEP-38 `/info` endpoints with W3C Trace Context headers and inspect response correlation evidence   |
 | `--audit-kyc-fsm`             | Audit SEP-12 customer status state machines for stuck or circular onboarding (use with `--domain`)                                  |
+| `--audit-cors`                | Probe every declared endpoint for wildcard-plus-credentials and unvalidated `Origin` CORS policies (OWASP)                          |
+| `--audit-asset-security`      | Scan linked logos, images and attestations for Content-Type confusion, missing `nosniff` and SVG script vectors                     |
+| `--audit-clickjacking`        | Read `Content-Security-Policy: frame-ancestors` and `X-Frame-Options` on every interactive endpoint                                 |
 | `--crawl-peers`               | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                             |
 | `--verify-dnssec`             | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                              |
 | `--audit-dns-takeover`        | Query CNAME/NS for every referenced domain and flag dangling pointers to claimable cloud resources                                  |
@@ -1088,6 +1091,54 @@ Required field keys that are not standard [SEP-9][sep9] names (`first_name`, `la
 `email_address`, `id_country_code`, …) emit `sep12/unknown-kyc-field-name` (warning), and a customer
 type whose name is not a lowercase identifier emits `sep12/invalid-customer-type-syntax` (error).
 Nothing here fires for a local file without the flag: offline linting never opens a connection.
+
+### Response header and key hygiene audits
+
+**CORS policy** (with `--audit-cors`, `src/security/corsAuditor.ts`) — every endpoint the file
+declares is probed three times the way a browser would send it: an `OPTIONS` pre-flight, an actual
+request from a wallet origin, and an actual request from an origin no whitelist should ever contain.
+`/.well-known/stellar.toml` and the SEP-38 `/info` reads are public by specification, so a served
+`Access-Control-Allow-Origin` other than `*` emits `cors/public-endpoint-missing-wildcard` (error).
+On an authenticated or interactive endpoint the opposite is the defect: `*` together with
+`Access-Control-Allow-Credentials: true` emits `cors/wildcard-origin-with-credentials` (error), and an
+endpoint that echoes back the unlisted origin has no whitelist at all, so any site can read a
+logged-in user's SEP-10 or SEP-12 responses (`cors/unlisted-origin-echoed`, error). A refused
+pre-flight is `cors/preflight-not-allowed` (warning). No request is ever sent with credentials.
+
+**Linked assets** (with `--audit-asset-security`, `src/security/mimeScanner.ts`) — `ORG_LOGO`,
+`CURRENCIES[].image`, and the attestation URLs are fetched and read from their headers first. A
+payload served without `X-Content-Type-Options: nosniff` emits `mime/missing-nosniff` (warning), one
+served as a type the client may execute emits `mime/active-content-type` (error), and one whose
+`Content-Type` contradicts the extension in the URL emits `mime/content-type-mismatch` (warning).
+Text-bearing bodies are then scanned as raw markup for `<script>`, an `on*=` handler, a
+`javascript:` href, `foreignObject`, an embedded document, or a `DOCTYPE`/`ENTITY` declaration —
+`svg/embedded-script` (error) and `svg/entity-declaration` (warning). The scan is a token match, not
+an XML parse: no entity is expanded, so an XXE or billion-laughs payload is reported rather than
+dereferenced. Binary payloads are classified from headers alone and never buffered, and a text body
+is read up to a bound (`svg/embedded-script` says how many bytes were scanned).
+
+**Key separation** (`stellar-toml-lint audit-key-separation --domain <domain>`,
+`src/security/keySeparationAuditor.ts`) — builds the role graph from the file: which account signs
+SEP-10 sessions, which one issues each asset, which are operational `ACCOUNTS`, which vote as
+validators, and which hold collateral. One account in two roles is a NIST SP 800-57 separation
+failure, so `SIGNING_KEY` reuse as an issuer emits `keys/signing-issuer-reuse` (error), an issuer in
+`ACCOUNTS` emits `keys/issuer-operational-account` (error), and a validator identity reused for an
+anchor role emits `keys/validator-key-reuse` (error). Horizon then answers the two questions the file
+cannot: a root key held by one signer at one threshold emits `keys/single-signer-root-account`
+(warning), and an issuer with recent payment or offer operations of its own emits
+`keys/issuer-operational-activity` (warning). Issuer administration (`allow_trust`, `set_options`) is
+not counted as operational traffic. Accounts Horizon cannot serve stay silent. The report prints the
+role graph as a tree, and `--format json` adds the diagnostics.
+
+**Frame embedding** (with `--audit-clickjacking`, `src/security/clickjackingAuditor.ts`) — the URLs a
+wallet opens in an iframe (SEP-24 interactive endpoints, `KYC_SERVER`, `DIRECT_PAYMENT_SERVER`,
+`WEB_AUTH_ENDPOINT`, `CURRENCIES[].approval_server`, and `ORG_URL`) are requested as an embedded
+navigation with `Sec-Fetch-Dest: iframe`, and both framing headers are read. `frame-ancestors *`
+frames the page for every site on the internet and emits `clickjacking/wildcard-frame-ancestors`
+(error); an endpoint that states no policy at all emits `clickjacking/missing-frame-protection`
+(warning); `X-Frame-Options: ALLOW-FROM`, which no current browser implements, emits
+`clickjacking/deprecated-allow-from` (warning). CSP wins when both headers are present, exactly as it
+does in a browser, and a report-only policy counts as nothing sent.
 
 ### Severity
 

@@ -9,6 +9,45 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--audit-cors` (`src/security/corsAuditor.ts`): probes every endpoint the file declares with an
+  `OPTIONS` pre-flight, an actual request from a wallet origin, and an actual request from an origin no
+  whitelist should contain, reading nothing but response headers and never sending credentials. Public
+  `/.well-known/stellar.toml` and SEP-38 `/info` reads must allow every origin
+  (`cors/public-endpoint-missing-wildcard`); an authenticated or interactive endpoint that pairs
+  `Access-Control-Allow-Origin: *` with `Access-Control-Allow-Credentials: true`
+  (`cors/wildcard-origin-with-credentials`) or echoes the unlisted origin back
+  (`cors/unlisted-origin-echoed`) is reported as an error, a refused pre-flight as a warning
+  (`cors/preflight-not-allowed`), and an unreachable host as `cors/endpoint-unreachable`. The resolved
+  policy table prints to stderr.
+
+- `--audit-asset-security` (`src/security/mimeScanner.ts`): fetches `ORG_LOGO`, `CURRENCIES[].image`,
+  the address and phone attestations, reserve attestations and linked `toml` files and classifies each
+  from its headers — missing `X-Content-Type-Options: nosniff` (`mime/missing-nosniff`), an executable
+  `Content-Type` (`mime/active-content-type`), a type that contradicts the URL's extension
+  (`mime/content-type-mismatch`) — then scans text-bearing bodies as raw markup for `<script>`, `on*=`
+  handlers, `javascript:` hrefs, `foreignObject`, embedded documents and `DOCTYPE`/`ENTITY`
+  declarations (`svg/embedded-script`, `svg/entity-declaration`). No XML entity is expanded, so an XXE
+  or billion-laughs payload is reported instead of dereferenced; binary payloads are never buffered and
+  a scanned body is bounded, with the byte limit named in the finding.
+
+- `audit-key-separation --domain <domain> [--horizon <url>] [--format text|json]`
+  (`src/security/keySeparationAuditor.ts`): builds the key/role association graph from `SIGNING_KEY`,
+  `URI_REQUEST_SIGNING_KEY`, `ACCOUNTS`, `CURRENCIES[].issuer`, `collateral_addresses` and
+  `VALIDATORS[].PUBLIC_KEY` and reports every account carrying more than one role —
+  `keys/signing-issuer-reuse`, `keys/issuer-operational-account`, `keys/validator-key-reuse` (errors)
+  and `keys/collateral-issuer-reuse` (warning) — then asks Horizon for signers, thresholds and the last
+  ten operations, emitting `keys/single-signer-root-account` and `keys/issuer-operational-activity`.
+  Issuer administration operations are not counted as operational traffic, and accounts Horizon cannot
+  serve produce no finding. The report prints the role graph as a tree.
+
+- `--audit-clickjacking` (`src/security/clickjackingAuditor.ts`): requests every URL a wallet embeds —
+  SEP-24 interactive endpoints, `KYC_SERVER`, `DIRECT_PAYMENT_SERVER`, `WEB_AUTH_ENDPOINT`,
+  `CURRENCIES[].approval_server` and `ORG_URL` — as an `iframe` navigation and reads both framing
+  headers. `frame-ancestors *` is an error (`clickjacking/wildcard-frame-ancestors`), an absent policy
+  and the browser-ignored `X-Frame-Options: ALLOW-FROM` are warnings
+  (`clickjacking/missing-frame-protection`, `clickjacking/deprecated-allow-from`). CSP decides over
+  `X-Frame-Options`, as it does in a browser, and a report-only policy counts as nothing sent.
+
 - `verify-archive-gpg --url <archive> --pubkey <key-file>` (`src/overlay/archiveGpgVerifier.ts`):
   downloads the latest checkpoint ledger XDR gzip file described by `.well-known/stellar-history.json`
   and verifies it against a supplied detached OpenPGP signature with OpenPGP.js. The optional
