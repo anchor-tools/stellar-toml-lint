@@ -62,6 +62,7 @@ import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
+import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
 import { CrossOriginIsolationAuditor, renderIsolationReport } from './wasm/isolationAuditor.js';
@@ -151,6 +152,7 @@ interface Cli {
   verifyPromotions: boolean;
   verifyFederationSrv: boolean;
   auditEsgDisclosures: boolean;
+  auditOpenTelemetry: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
@@ -278,6 +280,9 @@ OPTIONS
                           Verify DOCUMENTATION.ORG_ESG disclosures, check the
                           attestation signature with --check-network, and print
                           a sustainability rating
+      --audit-opentelemetry
+                          Probe declared SEP-6, SEP-24, SEP-31 and SEP-38 /info
+                          endpoints with W3C trace context and inspect response evidence
       --audit-offline-pwa <path>
                           Audit a Service Worker script (or manifest.json) for offline
                           precaching, cache versioning, and PWA manifest requirements
@@ -441,6 +446,16 @@ async function runExtraAudits(
     });
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
+  }
+  if (cli.auditOpenTelemetry) {
+    const verifier = new OpenTelemetryTraceValidator(
+      // Recorded fixture transport is explicitly requested; ordinary network
+      // probes use the verifier's DNS-pinned HTTPS transport.
+      cli.mockFixtures === undefined ? {} : { fetchImpl },
+    );
+    const result = await verifier.verify(parsed, rules);
+    out.push(...result.diagnostics);
+    process.stderr.write(renderTraceAuditReport(result));
   }
   return out;
 }
@@ -1520,6 +1535,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     verifyPromotions: false,
     verifyFederationSrv: false,
     auditEsgDisclosures: false,
+    auditOpenTelemetry: false,
     crawlPeers: false,
     verifyDnssec: false,
     checkContracts: false,
@@ -1652,6 +1668,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-esg-disclosures':
         cli.auditEsgDisclosures = true;
+        break;
+
+      case '--audit-opentelemetry':
+        cli.auditOpenTelemetry = true;
         break;
 
       case '--audit-offline-pwa':
