@@ -80,10 +80,13 @@ import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVer
 import { CrossOriginIsolationAuditor, renderIsolationReport } from './wasm/isolationAuditor.js';
 import {
   auditErrorTaxonomyCommand,
+  auditTlsCommand,
   calculateUptimeCommand,
   probeSlaCommand,
   verifyMetricsCommand,
+  verifyRateHeadersCommand,
 } from './telemetry/commands.js';
+import { LosslessCstFormatter } from './cst/cstFormatter.js';
 import {
   BrowserBoundaryVerifier,
   renderBrowserBoundaryReport,
@@ -253,6 +256,12 @@ USAGE
   stellar-toml-lint calculate-uptime --log-file <path> [--format text|markdown|json]
                                          Availability over 24h/7d/30d, incidents and
                                          downtime streaks from JSON/CSV health logs
+  stellar-toml-lint format --file <file> [--write]
+                                         Format stellar.toml losslessly preserving comments
+  stellar-toml-lint verify-rate-headers --url <url> [--burst <n>] [--format text|json]
+                                         Verify API rate-limit headers (RFC 6585)
+  stellar-toml-lint audit-tls --domain <domain> [--format text|json]
+                                         Audit SSL/TLS renewal and OCSP stapling health
   stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>]
                                          [--format text|json]
                                          Map every public key in the file to its roles
@@ -1223,6 +1232,40 @@ async function refactorCommand(args: string[]): Promise<number> {
   }
 }
 
+async function formatCommand(argv: string[]): Promise<number> {
+  let file: string | undefined;
+  let write = false;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg === '--file' || arg === '-f') {
+      file = argv[++i];
+    } else if (arg === '--write' || arg === '-w') {
+      write = true;
+    } else if (!arg.startsWith('-')) {
+      file = arg;
+    }
+  }
+  if (!file) {
+    process.stderr.write('Usage: stellar-toml-lint format --file <stellar.toml> [--write]\n');
+    return 2;
+  }
+  try {
+    const formatter = new LosslessCstFormatter();
+    const result = await formatter.formatFile(file, write);
+    if (!write) {
+      process.stdout.write(result.formatted);
+    } else if (result.changed) {
+      process.stdout.write(`Formatted ${file}\n`);
+    } else {
+      process.stdout.write(`${file} is already formatted\n`);
+    }
+    return 0;
+  } catch (err) {
+    process.stderr.write(`Formatting error: ${err instanceof Error ? err.message : String(err)}\n`);
+    return 2;
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'test-kms-signer') {
     try {
@@ -1255,6 +1298,9 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
+  if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
+  if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
+  if (argv[0] === 'format') return formatCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);

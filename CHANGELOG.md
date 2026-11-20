@@ -9,6 +9,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `verify-rate-headers` (`src/telemetry/rateLimitHeaderVerifier.ts`): Anchor API rate-limit header standard
+  RFC 6585 compliance verifier checking IETF headers (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`),
+  legacy `X-RateLimit-*` headers, and `Retry-After` delta-seconds and HTTP-date formats under 429 status codes (#534).
+
+- `audit-tls` (`src/telemetry/tlsWatchdog.ts`): Automated SSL/TLS certificate renewal and OCSP stapling health
+  watchdog establishing non-blocking TLS handshakes to verify expiration dates (<30 day alerts), OCSP stapling
+  response flags, and revocation status (#535).
+
+- `format` / `LosslessCstFormatter` (`src/cst/cstFormatter.ts`): Lossless Concrete Syntax Tree comment- and
+  whitespace-preserving formatter supporting programmatic AST node mutations (currencies, signing keys,
+  section reordering) and round-trip byte-for-byte idempotency (#536).
+
+- `ResilientIncrementalParser` (`src/cst/resilientParser.ts`): Resilient incremental syntax parser with
+  panic-mode and synchronization-token error recovery for Language Servers, isolating syntax errors to
+  localized error nodes without crashing and providing responsive range re-parsing on 5,000+ line TOML files (#538).
+
 - `--audit-cors` (`src/security/corsAuditor.ts`): probes every endpoint the file declares with an
   `OPTIONS` pre-flight, an actual request from a wallet origin, and an actual request from an origin no
   whitelist should contain, reading nothing but response headers and never sending credentials. Public
