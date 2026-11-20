@@ -22,7 +22,11 @@ describe('package metadata', () => {
   it('declares the two runtime dependencies and no more', () => {
     // This tool runs inside other people's CI, so dependency growth is a
     // deliberate decision rather than an accident.
-    expect(Object.keys(pkg.dependencies).sort()).toEqual(['@stellar/stellar-base', 'smol-toml']);
+    expect(Object.keys(pkg.dependencies).sort()).toEqual([
+      '@stellar/stellar-base',
+      'openpgp',
+      'smol-toml',
+    ]);
   });
 
   it('publishes the built output and the license', () => {
