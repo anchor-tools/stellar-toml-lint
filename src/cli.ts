@@ -124,6 +124,15 @@ import { getTomlJsonSchema } from './schema.js';
 import { runCloudKmsSignerCheck, type KmsThresholdLevel } from './gitops/kmsSignerCoordinator.js';
 import { formatKmsSignerReport } from './gitops/kmsReport.js';
 import { KmsError } from './gitops/kmsTypes.js';
+import {
+  DriftDetectionError,
+  GitOpsDriftDetector,
+  liveUrlForDomain,
+  renderDriftErrorJson,
+  renderDriftJson,
+  renderDriftLineDiff,
+  renderDriftText,
+} from './gitops/driftDetector.js';
 import { generateCompletion, isCompletionShell } from './completion.js';
 import { WasiSandboxRunner } from './wasm/wasiRunner.js';
 import { WasiSandboxError } from './wasm/errors.js';
@@ -277,6 +286,13 @@ USAGE
                                          Format stellar.toml losslessly preserving comments
   stellar-toml-lint verify-rate-headers --url <url> [--burst <n>] [--format text|json]
                                          Verify API rate-limit headers (RFC 6585)
+  stellar-toml-lint detect-drift --domain <domain> [--git-path <path>] [--ref <ref>]
+                                         [--format text|json|diff] [--timeout <ms>]
+                                         [--url <live-url>] [--max-history <n>]
+                                         Compare the stellar.toml in Git with the live
+                                         one; report unreleased commits and out-of-band
+                                         production edits (exit 0 in sync, 1 drift,
+                                         2 on fetch/git errors)
   stellar-toml-lint audit-tls --domain <domain> [--format text|json]
                                          Audit SSL/TLS renewal and OCSP stapling health
   stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>]
@@ -1587,6 +1603,86 @@ async function formatCommand(argv: string[]): Promise<number> {
   }
 }
 
+/**
+ * `stellar-toml-lint detect-drift --domain <domain> [--git-path <path>]`
+ *
+ * Exit codes are the CI contract: 0 in sync, 1 drift, 2 when the check could
+ * not run (timeout, HTTP error, missing file, invalid TOML, bad arguments).
+ */
+async function detectDriftCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let url: string | undefined;
+  let gitPath: string | undefined;
+  let ref: string | undefined;
+  let format = 'text';
+  let timeoutMs: number | undefined;
+  let maxHistory: number | undefined;
+  let color: boolean | undefined;
+  const usage =
+    'Usage: stellar-toml-lint detect-drift --domain <domain> [--git-path <path>] [--ref <ref>] ' +
+    '[--format text|json|diff] [--timeout <ms>] [--url <live-url>] [--max-history <n>]\n';
+  const positive = (flag: string, raw: string): number => {
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value <= 0)
+      throw new Error(`${flag} expects a positive integer.`);
+    return value;
+  };
+
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] as string;
+      if (arg === '--domain') domain = requireValue(args, ++i, arg);
+      else if (arg === '--url') url = requireValue(args, ++i, arg);
+      else if (arg === '--git-path') gitPath = requireValue(args, ++i, arg);
+      else if (arg === '--ref') ref = requireValue(args, ++i, arg);
+      else if (arg === '--format') format = requireValue(args, ++i, arg);
+      else if (arg === '--timeout') timeoutMs = positive(arg, requireValue(args, ++i, arg));
+      else if (arg === '--max-history') maxHistory = positive(arg, requireValue(args, ++i, arg));
+      else if (arg === '--color') color = true;
+      else if (arg === '--no-color') color = false;
+      else throw new Error(`Unknown option ${arg} for detect-drift`);
+    }
+    if (!['text', 'json', 'diff'].includes(format)) {
+      throw new Error('--format expects text, json or diff.');
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n${usage}`);
+    return 2;
+  }
+  if (domain === undefined && url === undefined) {
+    process.stderr.write(usage);
+    return 2;
+  }
+
+  const useColor = color ?? shouldUseColor();
+  let liveUrl: string | undefined = url;
+  try {
+    liveUrl ??= liveUrlForDomain(domain!);
+    const report = await new GitOpsDriftDetector({
+      ...(domain !== undefined ? { domain } : {}),
+      url: liveUrl,
+      ...(gitPath !== undefined ? { gitPath } : {}),
+      ...(ref !== undefined ? { ref } : {}),
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+      ...(maxHistory !== undefined ? { maxHistory } : {}),
+    }).detect();
+    if (format === 'json') process.stdout.write(renderDriftJson(report));
+    else if (format === 'diff')
+      process.stdout.write(renderDriftLineDiff(report, { color: useColor }));
+    else process.stdout.write(renderDriftText(report, { color: useColor }));
+    return report.inSync ? 0 : 1;
+  } catch (error) {
+    if (format === 'json') {
+      process.stdout.write(
+        renderDriftErrorJson(error instanceof Error ? error : new Error(String(error)), liveUrl),
+      );
+    }
+    const prefix = error instanceof DriftDetectionError ? `${error.code}: ` : '';
+    process.stderr.write(`${prefix}${message(error)}\n`);
+    return 2;
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'test-kms-signer') {
     try {
@@ -1624,6 +1720,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'ci-scorecard') return ciScorecardCommand(argv.slice(1));
   if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
   if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
+  if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
   if (argv[0] === 'format') return formatCommand(argv.slice(1));
   let cli: Cli;
   try {

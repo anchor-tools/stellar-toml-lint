@@ -386,6 +386,11 @@ export {
   KmsThrottlingError,
   KmsUnsupportedAlgorithmError,
   withKmsRetry,
+  GitOpsDriftDetector,
+  DriftDetectionError,
+  detectDrift,
+  renderDriftText,
+  renderDriftJson,
 } from './gitops/index.js';
 export type {
   CloudKmsSignerCoordinatorOptions,
@@ -399,6 +404,10 @@ export type {
   KmsSignerCheck,
   KmsSignResult,
   KmsThresholdLevel,
+  DriftDetectionOptions,
+  DriftFinding,
+  DriftReport,
+  DriftType,
 } from './gitops/index.js';
 export type { LspCodeAction, LspRange, LspTextEdit, LspWorkspaceEdit } from './lsp/code-actions.js';
 export {
