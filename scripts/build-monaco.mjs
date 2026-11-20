@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
-import { nodeShimPlugin } from './build-browser.js';
+import { nodeShimPlugin, browserBanner as banner } from './esbuild-node-shim.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -13,10 +13,6 @@ const outDir = join(root, 'dist', 'monaco');
 const packageDir = join(root, 'packages', 'monaco');
 
 mkdirSync(outDir, { recursive: true });
-
-const banner = {
-  js: 'var self = typeof window !== "undefined" ? window : typeof globalThis !== "undefined" ? globalThis : this;',
-};
 
 /**
  * Builds the two ESM entry points the package exports:
