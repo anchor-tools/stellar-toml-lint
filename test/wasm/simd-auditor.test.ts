@@ -88,9 +88,7 @@ describe('auditWasmBinary', () => {
     expect(report.simdOpCount).toBe(1);
     expect(report.instructions[0]).toMatchObject({ name: 'v128.const', count: 1 });
     expect(report.dualBuildRecommended).toBe(true);
-    expect(report.findings.map((finding) => finding.code)).toContain(
-      'simd/instructions-detected',
-    );
+    expect(report.findings.map((finding) => finding.code)).toContain('simd/instructions-detected');
     expect(report.findings.some((finding) => finding.code === 'simd/unsupported-runtime')).toBe(
       false,
     );
@@ -101,12 +99,14 @@ describe('auditWasmBinary', () => {
   });
 
   it('errors when the runtime cannot validate SIMD', () => {
-    const report = auditWasmBinary(buildModule({ simd: true }), { runtime: { validate: () => false } });
+    const report = auditWasmBinary(buildModule({ simd: true }), {
+      runtime: { validate: () => false },
+    });
     expect(report.runtimeSupportsSimd).toBe(false);
     expect(report.findings.map((finding) => finding.code)).toContain('simd/unsupported-runtime');
-    expect(report.findings.find((finding) => finding.code === 'simd/unsupported-runtime')?.severity).toBe(
-      'error',
-    );
+    expect(
+      report.findings.find((finding) => finding.code === 'simd/unsupported-runtime')?.severity,
+    ).toBe('error');
   });
 
   it('audits memory page limits', () => {
@@ -134,9 +134,7 @@ describe('auditWasmBinary', () => {
     const capped = auditWasmBinary(buildModule({ memory: true, maxPages: 4, grow: true }), {
       runtime: { validate: () => true },
     });
-    expect(capped.findings.map((finding) => finding.code)).not.toContain(
-      'memory/unbounded-growth',
-    );
+    expect(capped.findings.map((finding) => finding.code)).not.toContain('memory/unbounded-growth');
   });
 
   it('reports an unparseable binary instead of throwing', () => {

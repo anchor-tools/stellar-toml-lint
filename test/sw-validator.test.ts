@@ -128,16 +128,13 @@ self.addEventListener('install', (event) => {
   });
 
   it('warns on missing icon sizes and required manifest fields', () => {
-    const result = validateOfflinePwa(
-      serviceWorker,
-      JSON.stringify({ name: 'Lint', icons: [] }),
-    );
+    const result = validateOfflinePwa(serviceWorker, JSON.stringify({ name: 'Lint', icons: [] }));
     expect(result.findings.some((finding) => finding.code === 'pwa/missing-manifest-field')).toBe(
       true,
     );
-    expect(result.findings.filter((finding) => finding.code === 'pwa/missing-icon-size')).toHaveLength(
-      2,
-    );
+    expect(
+      result.findings.filter((finding) => finding.code === 'pwa/missing-icon-size'),
+    ).toHaveLength(2);
   });
 
   it('fails a manifest that is not JSON', () => {

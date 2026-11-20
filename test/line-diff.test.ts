@@ -68,6 +68,19 @@ describe('formatUnifiedDiff', () => {
     ).toEqual(['--- /tmp/stellar.toml', '+++ /tmp/stellar.toml']);
   });
 
+  it('treats Windows drive and UNC paths as absolute too', () => {
+    for (const path of [
+      'C:\\Users\\runner\\stellar.toml',
+      'D:/anchor/stellar.toml',
+      '\\\\fileserver\\share\\stellar.toml',
+    ]) {
+      expect(formatUnifiedDiff(path, 'a = 1\n', 'b = 2\n').split('\n').slice(0, 2)).toEqual([
+        `--- ${path}`,
+        `+++ ${path}`,
+      ]);
+    }
+  });
+
   it('writes git headers and a hunk range', () => {
     expect(formatUnifiedDiff('stellar.toml', 'a = 1\nb = 2\n', 'b = 2\na = 1\n')).toBe(
       [

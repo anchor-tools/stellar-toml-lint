@@ -14,13 +14,9 @@
  */
 
 import { parse as parseToml } from 'smol-toml';
+import { trimTrailingSlashes } from '../strings.js';
 
-export type DirectorySyncStatus =
-  | 'in-sync'
-  | 'drift'
-  | 'expired'
-  | 'unresolvable'
-  | 'invalid-toml';
+export type DirectorySyncStatus = 'in-sync' | 'drift' | 'expired' | 'unresolvable' | 'invalid-toml';
 
 export type DirectorySyncFindingCode =
   | 'directory/out-of-sync'
@@ -133,9 +129,7 @@ export function normalizeDomain(input: unknown): string | undefined {
   value = value.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
   value = value.split(/[/?#]/)[0] ?? value;
   value = value.replace(/\.+$/, '').toLowerCase();
-  if (
-    !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(value)
-  ) {
+  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(value)) {
     return undefined;
   }
   return value;
@@ -175,10 +169,10 @@ export function normalizeUrl(value: string): string {
   const trimmed = value.trim();
   try {
     const url = new URL(trimmed);
-    const path = url.pathname.replace(/\/+$/, '');
+    const path = trimTrailingSlashes(url.pathname);
     return `${url.protocol}//${url.host.toLowerCase()}${path}`;
   } catch {
-    return trimmed.replace(/\/+$/, '');
+    return trimTrailingSlashes(trimmed);
   }
 }
 
@@ -191,7 +185,12 @@ function stringValue(...values: unknown[]): string | undefined {
 
 function collectServiceUrls(entry: Record<string, unknown>): Record<string, string> {
   const urls: Record<string, string> = {};
-  for (const container of [entry.services, entry.serviceUrls, entry.service_urls, entry.endpoints]) {
+  for (const container of [
+    entry.services,
+    entry.serviceUrls,
+    entry.service_urls,
+    entry.endpoints,
+  ]) {
     if (!isRecord(container)) continue;
     for (const [key, value] of Object.entries(container)) {
       if (typeof value === 'string' && value.trim() !== '') {
@@ -220,7 +219,9 @@ export function parseDirectoryFeed(input: unknown): DirectoryFeedParseResult {
   if (!Array.isArray(list)) {
     return {
       anchors: [],
-      problems: ['feed must be a JSON array or an object with an anchors/entries/directories array'],
+      problems: [
+        'feed must be a JSON array or an object with an anchors/entries/directories array',
+      ],
     };
   }
 
@@ -305,7 +306,10 @@ function sameSet(a: string[], b: string[]): boolean {
 }
 
 /** Compares a directory record against the live document's published fields. */
-export function diffAnchor(record: DirectoryAnchorRecord, published: PublishedAnchor): DriftField[] {
+export function diffAnchor(
+  record: DirectoryAnchorRecord,
+  published: PublishedAnchor,
+): DriftField[] {
   const drift: DriftField[] = [];
 
   if (record.signingKey !== undefined) {
@@ -426,9 +430,7 @@ export class DirectorySyncVerifier {
     anchors: readonly DirectoryAnchorRecord[],
     feed?: string,
   ): Promise<DirectorySyncReport> {
-    const results = await mapPool(anchors, this.concurrency, (anchor) =>
-      this.verifyAnchor(anchor),
-    );
+    const results = await mapPool(anchors, this.concurrency, (anchor) => this.verifyAnchor(anchor));
     const findings: DirectorySyncFinding[] = [];
 
     for (const result of results) {
@@ -438,7 +440,8 @@ export class DirectorySyncVerifier {
           severity: 'error',
           domain: result.domain,
           message: `${result.domain} is out of sync: ${result.drift.map((field) => field.field).join(', ')}`,
-          suggestion: 'Refresh the directory record from the published stellar.toml, or fix the document.',
+          suggestion:
+            'Refresh the directory record from the published stellar.toml, or fix the document.',
           fields: result.drift.map((field) => field.field),
         });
       } else if (result.status === 'expired') {
