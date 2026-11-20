@@ -89,6 +89,20 @@ describe('findSvgScriptVectors', () => {
     expect(findSvgScriptVectors('<svg><!-- <script>alert(1)</script> --></svg>')).toEqual([]);
   });
 
+  it('keeps markup after an abruptly closed comment visible to the scan', () => {
+    // The tokenizer closes `<!-->` and `<!--->` where they open, so the script
+    // that follows them executes. A search for the next `-->` would delete it.
+    expect(findSvgScriptVectors('<svg><!--><script>alert(1)</script></svg>')).toEqual([
+      'script-element',
+    ]);
+    expect(findSvgScriptVectors('<svg><!---><script>alert(1)</script></svg>')).toEqual([
+      'script-element',
+    ]);
+    expect(findSvgScriptVectors('<svg><!-- -- <script>x</script> --></svg>')).toEqual([]);
+    // An unterminated comment does run to the end of the document.
+    expect(findSvgScriptVectors('<svg><!-- <script>alert(1)')).toEqual([]);
+  });
+
   it('never expands an entity, so a billion-laughs payload stays inert text', () => {
     const bomb = '<!DOCTYPE a [<!ENTITY x SYSTEM "x">]><svg><text>&x;&x;&x;</text></svg>';
     expect(findSvgScriptVectors(bomb)).toEqual(['entity-declaration']);

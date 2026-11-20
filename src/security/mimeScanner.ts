@@ -153,6 +153,36 @@ export function isActiveContentType(contentType: string): boolean {
 }
 
 /**
+ * The markup with each comment spliced out, walked the way a tokenizer does.
+ *
+ * A single regex pass cannot do this: the HTML5 comment states close `<!-->`
+ * and `<!--->` right where they open, while a search for the next `-->` would
+ * swallow the live markup that follows them and hide it from the vector scan.
+ */
+function outsideComments(markup: string): string {
+  let kept = '';
+  let at = 0;
+  for (;;) {
+    const start = markup.indexOf('<!--', at);
+    if (start === -1) return kept + markup.slice(at);
+    kept += markup.slice(at, start);
+    const body = start + 4;
+    if (markup[body] === '>') {
+      at = body + 1;
+      continue;
+    }
+    if (markup[body] === '-' && markup[body + 1] === '>') {
+      at = body + 2;
+      continue;
+    }
+    const end = markup.indexOf('-->', body);
+    // An unterminated comment runs to the end of the document, as a parser reads it.
+    if (end === -1) return kept;
+    at = end + 3;
+  }
+}
+
+/**
  * Finds the vectors that make markup executable.
  *
  * Comments are removed first because a parser ignores them, so a `<script>`
@@ -161,7 +191,7 @@ export function isActiveContentType(contentType: string): boolean {
  * fetched.
  */
 export function findSvgScriptVectors(markup: string): SvgVector[] {
-  const stripped = markup.replace(/<!--(?:[^-]|-(?!>))*-->/gis, '');
+  const stripped = outsideComments(markup);
   // Attribute values reach the URL parser with tabs and newlines removed, and
   // `&#x3a;` reaches it as a colon, so both are folded away before matching.
   const normalised = stripped
