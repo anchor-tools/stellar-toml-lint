@@ -50,6 +50,11 @@ import {
 } from './protocols/clawbackAuditGenerator.js';
 import { validateUnicode } from './cst/unicodeValidator.js';
 import { sortCanonical } from './cst/canonicalSortCodemod.js';
+import {
+  renderSemanticDiff,
+  renderSemanticDiffJson,
+  SemanticTomlDiffer,
+} from './cst/semanticDiffer.js';
 import { formatUnifiedDiff } from './line-diff.js';
 import {
   auditConsumerProtection,
@@ -289,6 +294,10 @@ USAGE
                                          Map every public key in the file to its roles
                                          and report reused signing, issuer, account and
                                          validator keys
+  stellar-toml-lint diff <a> <b> [--json]
+                                         Compare two stellar.toml files, URLs or
+                                         - (stdin) by value rather than by line;
+                                         exit 1 on a breaking change
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -1262,6 +1271,55 @@ async function refactorCommand(args: string[]): Promise<number> {
   }
 }
 
+/**
+ * `stellar-toml-lint diff <source> <target> [--json]`
+ *
+ * Compares two documents by value rather than by line, which is what makes it
+ * usable as a deployment review gate: `git diff` of a restaged `stellar.toml` is
+ * mostly the canonical sort having done its job.
+ *
+ * The exit code follows the severity mapping the linter already uses — findings
+ * that would break a client are errors, everything else is information. So an
+ * identical pair and a harmless edit both exit 0, and a run exits 1 only when
+ * something a client is already relying on went away. A side that does not parse
+ * exits 2, because the comparison could not be made at all.
+ */
+async function diffCommand(args: string[]): Promise<number> {
+  const inputs: string[] = [];
+  let json = false;
+
+  for (const arg of args) {
+    if (arg === '--json') json = true;
+    else if (arg.startsWith('-') && arg !== '-') {
+      process.stderr.write(`Unknown option ${arg} for diff\n`);
+      return 2;
+    } else inputs.push(arg);
+  }
+
+  const usage = 'Usage: stellar-toml-lint diff <source> <target> [--json]\n';
+  if (inputs.length !== 2) {
+    process.stderr.write(usage);
+    return 2;
+  }
+  const [source = '-', target = '-'] = inputs;
+  if (source === '-' && target === '-') {
+    process.stderr.write('Only one side of a diff can come from stdin.\n');
+    return 2;
+  }
+
+  try {
+    const report = await new SemanticTomlDiffer().diffInputs(source, target);
+    process.stdout.write(
+      json ? renderSemanticDiffJson(report) : renderSemanticDiff(report, shouldUseColor()),
+    );
+    if (!report.source.parsed || !report.target.parsed) return 2;
+    return report.breaking > 0 ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 async function formatCommand(argv: string[]): Promise<number> {
   let file: string | undefined;
   let write = false;
@@ -1420,6 +1478,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
   if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
   if (argv[0] === 'format') return formatCommand(argv.slice(1));
+  if (argv[0] === 'diff') return diffCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);

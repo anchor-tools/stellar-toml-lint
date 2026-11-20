@@ -80,6 +80,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`clickjacking/missing-frame-protection`, `clickjacking/deprecated-allow-from`). CSP decides over
   `X-Frame-Options`, as it does in a browser, and a report-only policy counts as nothing sent.
 
+- `stellar-toml-lint diff <source> <target> [--json]` (`src/cst/semanticDiffer.ts`): compares two
+  documents by what they configure rather than by how they are typed, so an anchor's revised
+  `stellar.toml` reads as a changelog instead of a line diff. Both sides parse to value trees and
+  `[[CURRENCIES]]` / `[[VALIDATORS]]` entries pair on `code` and `PUBLIC_KEY`, which makes a
+  re-sort, a re-indent, a reordered key inside an entry and two spellings of the same instant all
+  invisible — the output of `--sort-keys` diffs as nothing. Either side can be a path, an `http(s)`
+  URL or `-` for stdin, and the report is markdown on a terminal or a JSON changelog with `path`,
+  `kind`, `section`, `category`, `breaking`, `reason`, `before` and `after`. Changes that stop a
+  client that read the source are tagged `BREAKING` with the reason in SEP-1 terms: a rotated
+  `SIGNING_KEY`, a currency whose `issuer` or `contract` moved, an endpoint that disappears instead
+  of moving, and an asset or validator that is no longer advertised. Additions are never breaking,
+  neither is dropping a field SEP-1 already deprecated, and fields outside SEP-1 are reported rather
+  than graded. Exit 0 with no breaking changes, 1 when there are, and 2 when a side cannot be parsed
+  or read.
+
 - `verify-archive-gpg --url <archive> --pubkey <key-file>` (`src/overlay/archiveGpgVerifier.ts`):
   downloads the latest checkpoint ledger XDR gzip file described by `.well-known/stellar-history.json`
   and verifies it against a supplied detached OpenPGP signature with OpenPGP.js. The optional
