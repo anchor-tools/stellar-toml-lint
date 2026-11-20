@@ -1574,6 +1574,8 @@ async function ciScorecardCommand(args: string[]): Promise<number> {
   if (output === undefined) process.stdout.write(markdown);
   else await writeFile(resolve(output), markdown, 'utf8');
   return 0;
+}
+
 async function formatCommand(argv: string[]): Promise<number> {
   let file: string | undefined;
   let write = false;
