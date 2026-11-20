@@ -18,6 +18,7 @@ export type RuleCategory =
   | 'currencies'
   | 'validators'
   | 'network'
+  | 'security'
   | 'policy'
   | 'sep12';
 

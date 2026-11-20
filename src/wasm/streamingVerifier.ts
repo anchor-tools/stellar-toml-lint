@@ -329,8 +329,7 @@ export function renderStreamingReport(result: StreamingVerificationResult): stri
   if (result.benchmark.ran) {
     const buffered =
       result.benchmark.bufferedMs === undefined ? 'n/a' : `${result.benchmark.bufferedMs}ms`;
-    const speedup =
-      result.benchmark.speedup === undefined ? '' : ` (${result.benchmark.speedup}x)`;
+    const speedup = result.benchmark.speedup === undefined ? '' : ` (${result.benchmark.speedup}x)`;
     lines.push(
       `  benchmark: streaming ${result.benchmark.streamingMs}ms vs buffered ${buffered}${speedup}`,
     );
