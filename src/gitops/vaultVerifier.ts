@@ -147,7 +147,8 @@ export type GitOpsFileType =
  * Parses a GitOps configuration file and extracts relevant sections.
  */
 export function parseGitOpsFile(filePath: string, content: string): GitOpsFile {
-  const ext = filePath.split('.').pop().toLowerCase();
+  const parts = filePath.split('.');
+  const ext = parts.length > 1 ? parts.pop()!.toLowerCase() : '';
   let parsed: Record<string, unknown> | undefined;
 
   try {
