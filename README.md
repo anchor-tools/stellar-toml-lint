@@ -957,6 +957,8 @@ interface Diagnostic {
     | 'currencies'
     | 'validators'
     | 'network'
+    | 'security'
+    | 'policy'
     | 'sep12';
   message: string;
   path?: string; // 'CURRENCIES[1].issuer'

@@ -17,6 +17,16 @@ import type {
 } from '../src/engine/semanticRuleEngine.js';
 import { lint } from '../src/lint.js';
 import { allRules } from '../src/rules/index.js';
+import type { RuleCategory } from '../src/types.js';
+
+/**
+ * `tsc` fails on the assertion below the day `types.ts` gains a category, while
+ * the runtime loop only notices once a built-in rule starts filing under it.
+ * `KNOWN_CATEGORIES` is declared `as const`, so its type still names the members
+ * instead of widening to the union the list is supposed to be checked against.
+ */
+type MissingCategory = Exclude<RuleCategory, (typeof KNOWN_CATEGORIES)[number]>;
+const noCategoryIsMissing: MissingCategory extends never ? true : never = true;
 
 /** A document shaped like a served `stellar.toml`, minus the noise. */
 const doc = (): Record<string, unknown> => ({
@@ -688,6 +698,7 @@ describe('rule shape', () => {
     for (const rule of allRules) {
       expect(KNOWN_CATEGORIES, rule.id).toContain(rule.category);
     }
+    expect(noCategoryIsMissing).toBe(true);
   });
 });
 

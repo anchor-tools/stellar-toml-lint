@@ -154,7 +154,7 @@ describe('loadPluginRules', () => {
     expect(error).toBeInstanceOf(PluginRuleError);
     expect((error as PluginRuleError).origin).toBe(`--rules-dir ${dir}`);
     expect((error as PluginRuleError).problems).toEqual([
-      '`category` must be one of file, general, documentation, principals, currencies, validators, network, policy, sep12',
+      '`category` must be one of file, general, documentation, principals, currencies, validators, network, security, policy, sep12',
       '`severity` must be one of error, warning, info',
       '`description` must be a non-empty string',
     ]);

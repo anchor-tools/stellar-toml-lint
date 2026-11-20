@@ -172,10 +172,13 @@ export interface SemanticRule {
 
 /**
  * The categories a diagnostic may carry. A plugin picks one of these so the
- * reporters group its findings with the built-ins instead of beside them; a test
- * fails if the union in `types.ts` ever outgrows this list.
+ * reporters group its findings with the built-ins instead of beside them.
+ *
+ * `as const` keeps the members in the type, which is what lets a test ask the
+ * compiler whether `types.ts` has grown a category this list does not have; a
+ * plain annotation would widen it to the full union and answer yes by definition.
  */
-export const KNOWN_CATEGORIES: readonly RuleCategory[] = [
+export const KNOWN_CATEGORIES = [
   'file',
   'general',
   'documentation',
@@ -183,9 +186,10 @@ export const KNOWN_CATEGORIES: readonly RuleCategory[] = [
   'currencies',
   'validators',
   'network',
+  'security',
   'policy',
   'sep12',
-];
+] as const satisfies readonly RuleCategory[];
 
 const SEVERITIES: readonly string[] = ['error', 'warning', 'info'];
 
