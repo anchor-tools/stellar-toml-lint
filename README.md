@@ -1148,6 +1148,36 @@ does in a browser, and a report-only policy counts as nothing sent.
 
 Tune any rule with `--off`, `--warn`, or `--error`.
 
+## Cloud KMS hardware signers
+
+Anchors that keep master signing keys in a cloud HSM can sign a transaction envelope without ever
+exporting the key:
+
+```bash
+stellar-toml-lint test-kms-signer \
+  --key-id arn:aws:kms:us-east-1:111122223333:key/1234abcd \
+  --envelope "AAAAAgAAAAA..." \
+  --threshold medium
+```
+
+The coordinator asks the provider to sign the envelope's 32-byte transaction hash, packs the result
+into a Stellar `DecoratedSignature` XDR, verifies it locally against the key's public key, and reads
+the account's signer list from Horizon to confirm the key's weight meets the requested threshold
+(`low`, `medium`, or `high`). `--json` emits the same report for a pipeline; `--no-quorum` skips the
+Horizon audit for offline runs, and `--mock-fixtures <dir>` serves it from recorded responses.
+
+| Provider         | Key identifier                                                | Standard credentials                                                                   |
+| ---------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| AWS KMS          | `arn:aws:kms:<region>:<account>:key/<id>` or `alias/<name>`   | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional `AWS_SESSION_TOKEN`             |
+| Google Cloud KMS | `projects/.../cryptoKeys/<key>[/cryptoKeyVersions/<version>]` | `GOOGLE_APPLICATION_CREDENTIALS` or `GOOGLE_OAUTH_ACCESS_TOKEN`                        |
+| Azure Key Vault  | `https://<vault>.vault.azure.net/keys/<name>[/<version>]`     | `AZURE_ACCESS_TOKEN`, or `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET` |
+
+Credentials are read from those standard environment sources at call time and are never written to
+a report, an error, or a descriptor. Ed25519 signatures pass through as 64 raw bytes; secp256k1
+signatures are converted from DER to `r || s`. Throttling (`429`, `ThrottlingException`, `5xx`) is
+retried with exponential backoff, honouring `Retry-After`; authorization failures are reported
+immediately instead of being retried.
+
 ## Architecture Diagram Generator
 
 Generate visual architecture diagrams from your `stellar.toml` showing the relationships between organizations, servers, issued assets, validators, and Soroban contracts.
