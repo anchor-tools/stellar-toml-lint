@@ -5,6 +5,7 @@
  * {@link Diagnostic}s. Everything else in this package is either a rule that
  * produces diagnostics or a reporter that formats them.
  */
+import type { SemanticRule } from './engine/semanticRuleEngine.js';
 
 /** How much a violation matters. Only `error` affects the default exit code. */
 export type Severity = 'error' | 'warning' | 'info';
@@ -111,6 +112,15 @@ export interface LintOptions {
    * exercised without opening a socket.
    */
   tls?: TlsSession;
+  /**
+   * Plugin rules to run after the built-in catalog, over the same document.
+   *
+   * The CLI fills this from `--rules-dir` and `--plugin`, which are read before
+   * the first file is linted so `lint()` itself stays synchronous and keeps the
+   * filesystem out of the core. Each rule resolves its severity through
+   * {@link LintOptions.rules} exactly as a built-in does.
+   */
+  semanticRules?: readonly SemanticRule[];
 }
 
 export interface LintResult {
