@@ -708,3 +708,11 @@ export type {
 } from './engine/astVisitor.js';
 export { LspDocumentSymbolProvider, SymbolKind } from './lsp/documentSymbolProvider.js';
 export type { DocumentSymbol, SymbolKindValue } from './lsp/documentSymbolProvider.js';
+export { SemanticTomlDiffer } from './cst/semanticDiffer.js';
+export type {
+  SemanticDelta,
+  BreakingChange,
+  SemanticDiffResult,
+  DifferOptions,
+  DiffChangeType,
+} from './cst/semanticDiffer.js';

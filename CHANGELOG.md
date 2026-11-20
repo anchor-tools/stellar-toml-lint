@@ -9,6 +9,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `SemanticTomlDiffer` (`src/cst/semanticDiffer.ts`): Automated semantic AST diff generator between live and
+  candidate `stellar.toml` files, computing structural deltas across currencies, validators, documentation,
+  and SEP service endpoints, identifying breaking changes (issuer changes, removed endpoints, removed currencies),
+  and outputting terminal markdown and JSON changelogs via CLI subcommand `diff` (#542).
+
 - `LspDocumentSymbolProvider` (`src/lsp/documentSymbolProvider.ts`): Language Server Protocol outline and
   document symbol provider (`textDocument/documentSymbol`) conforming to LSP specification 3.17, mapping
   TOML tables to `SymbolKind.Namespace` or `SymbolKind.Class`, currency entries to `SymbolKind.Interface`

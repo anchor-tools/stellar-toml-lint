@@ -255,6 +255,9 @@ USAGE
                                          Send invalid read-only requests to SEP
                                          endpoints; check RFC 7807 / SEP error JSON
                                          and flag leaked stack traces or secrets
+  stellar-toml-lint diff <source> <target> [--format text|markdown|json] [--exit-code]
+                                         Semantic AST diff between live and candidate
+                                         stellar.toml files with breaking change detection
   stellar-toml-lint calculate-uptime --log-file <path> [--format text|markdown|json]
                                          Availability over 24h/7d/30d, incidents and
                                          downtime streaks from JSON/CSV health logs
@@ -1228,7 +1231,54 @@ async function refactorCommand(args: string[]): Promise<number> {
   }
 }
 
+async function diffCommand(argv: string[]): Promise<number> {
+  let source: string | undefined;
+  let target: string | undefined;
+  let format: 'text' | 'markdown' | 'json' = 'text';
+  let exitCode = false;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg === '--format' || arg === '-f') {
+      const val = argv[++i];
+      if (val === 'text' || val === 'markdown' || val === 'json') {
+        format = val;
+      } else {
+        process.stderr.write(`Invalid --format: ${val}. Must be text, markdown, or json\n`);
+        return 2;
+      }
+    } else if (arg === '--exit-code') {
+      exitCode = true;
+    } else if (!arg.startsWith('-')) {
+      if (!source) source = arg;
+      else if (!target) target = arg;
+    }
+  }
+
+  if (!source || !target) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint diff <source> <target> [--format text|markdown|json] [--exit-code]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const { SemanticTomlDiffer } = await import('./cst/semanticDiffer.js');
+    const differ = new SemanticTomlDiffer();
+    const result = await differ.diffFiles(source, target);
+    process.stdout.write(differ.renderReport(result, format) + '\n');
+
+    if (result.hasBreakingChanges) return 1;
+    if (exitCode && result.hasDifferences) return 1;
+    return 0;
+  } catch (err) {
+    process.stderr.write(`diff error: ${err instanceof Error ? err.message : String(err)}\n`);
+    return 2;
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
+  if (argv[0] === 'diff') return diffCommand(argv.slice(1));
   if (argv[0] === 'test-kms-signer') {
     try {
       return await runKmsSignerCommand(argv.slice(1));
