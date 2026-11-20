@@ -14,6 +14,7 @@ import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
+import { VaultSecretEngineVerifier } from './gitops/vaultVerifier.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import {
   formatCheckstyle,
@@ -190,6 +191,7 @@ interface Cli {
   auditDnsTakeover: boolean;
   auditSecrets: boolean;
   auditSsrf: boolean;
+  auditVaultSecrets: boolean;
   badgeSvg?: string;
   badgeJson?: string;
   exportApConfig?: boolean;
@@ -370,6 +372,9 @@ OPTIONS
                            flag dangling pointers to claimable cloud resources
        --audit-secrets     Halt with exit 1 on leaked Stellar seeds, cloud keys,
                            bearer tokens or PEM blocks; output is always redacted
+       --audit-vault-secrets
+                           Halt with exit 1 on misconfigured Vault secret engine
+                           paths, exposed tokens, and TTL misconfigurations
        --audit-ssrf        Flag advertised URLs resolving to private, loopback,
                            link-local or multicast IPs, including DNS rebinding
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
@@ -1362,6 +1367,14 @@ async function detectDriftCommand(args: string[]): Promise<number> {
   }
 }
 
+/** Run the Vault secret engine verifier; returns 1 to halt, undefined to continue. */
+async function auditVaultSecretsOrHalt(path: string, source: string): Promise<number | undefined> {
+  const result = await new VaultSecretEngineVerifier().verifyFile(path, source);
+  if (result.passed) return undefined;
+  process.stderr.write(`${result.summary}\n`);
+  return 1;
+}
+
 async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'test-kms-signer') {
     try {
@@ -1480,6 +1493,20 @@ async function main(argv: string[]): Promise<number> {
           const halted = await auditSecretsOrHalt(domainResult.parsed, secretSource, rules);
           if (halted !== undefined) return halted;
         }
+        if (cli.auditVaultSecrets) {
+          const host = cli.domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+          const response = await fetchImpl(`https://${host}/.well-known/stellar.toml`, {
+            redirect: 'follow',
+          });
+          if (!response.ok) {
+            process.stderr.write(
+              `Could not fetch https://${host}/.well-known/stellar.toml: HTTP ${response.status}\n`,
+            );
+            return 2;
+          }
+          const halted = await auditVaultSecretsOrHalt('stellar.toml', await response.text());
+          if (halted !== undefined) return halted;
+        }
         if (domainResult.parsed && cli.checkNetwork) {
           const networkDiagnostics: Diagnostic[] = [
             ...(await checkHistoryPublish(domainResult.parsed, fetchImpl, { rules })),
@@ -1541,6 +1568,11 @@ async function main(argv: string[]): Promise<number> {
 
           if (cli.auditSecrets) {
             const halted = await auditSecretsOrHalt(fileResult.parsed, source, rules);
+            if (halted !== undefined) return halted;
+          }
+
+          if (cli.auditVaultSecrets) {
+            const halted = await auditVaultSecretsOrHalt(path === '-' ? 'stdin' : path, source);
             if (halted !== undefined) return halted;
           }
 
@@ -2068,6 +2100,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditDnsTakeover: false,
     auditSecrets: false,
     auditSsrf: false,
+    auditVaultSecrets: false,
     checkContracts: false,
     graphIncludeContracts: false,
     graphIncludeValidators: false,
@@ -2245,6 +2278,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-ssrf':
         cli.auditSsrf = true;
+        break;
+
+      case '--audit-vault-secrets':
+        cli.auditVaultSecrets = true;
         break;
 
       case '--follow-links':
