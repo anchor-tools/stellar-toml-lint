@@ -40,6 +40,24 @@ export type {
   VerifyDetachedOptions,
 } from './overlay/archiveGpgVerifier.js';
 export {
+  OpenTelemetryTraceValidator,
+  discoverTraceEndpoints,
+  generateTraceContext,
+  parseTraceparent,
+  renderTraceAuditReport,
+} from './telemetry/traceValidator.js';
+export type {
+  ParsedTraceparent,
+  TraceAuditResult,
+  TraceAuditStatus,
+  TraceContext,
+  TraceEndpointDefinition,
+  TraceEndpointResult,
+  TraceEvidence,
+  TraceSep,
+  TraceValidatorOptions,
+} from './telemetry/traceValidator.js';
+export {
   auditCryptoFraming,
   auditCryptoSession,
   auditOverlayCrypto,

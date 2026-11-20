@@ -151,6 +151,7 @@ clawbacks carry no amount on the operation, so their amount is reported as `n/a`
 | `--verify-promotions`         | Compare promotional fee claims with SEP-38 `/price` fees (also `verify-promotions --domain <domain>`)                               |
 | `--verify-federation-srv`     | Check `_stellar-federation._tcp.<domain>` SRV records against `FEDERATION_SERVER` (use with `--domain`)                             |
 | `--audit-esg-disclosures`     | Verify `DOCUMENTATION.ORG_ESG` disclosures and attestation signature, and print a sustainability rating                             |
+| `--audit-opentelemetry`       | Probe SEP-6, SEP-24, SEP-31 and SEP-38 `/info` endpoints with W3C Trace Context headers and inspect response correlation evidence   |
 | `--audit-kyc-fsm`             | Audit SEP-12 customer status state machines for stuck or circular onboarding (use with `--domain`)                                  |
 | `--crawl-peers`               | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                             |
 | `--verify-dnssec`             | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                              |
@@ -189,6 +190,33 @@ clawbacks carry no amount on the operation, so their amount is reported as `n/a`
 
 Every flag above takes precedence over the [configuration file](#configuration-file), and
 `--preset` — being a flag — takes precedence over it too.
+
+### OpenTelemetry trace context audit
+
+Run `stellar-toml-lint --audit-opentelemetry stellar.toml` to probe each declared
+`TRANSFER_SERVER` (SEP-6), `TRANSFER_SERVER_SEP0024` (SEP-24),
+`DIRECT_PAYMENT_SERVER` (SEP-31), and `ANCHOR_QUOTE_SERVER` (SEP-38). The audit
+sends a read-only `GET` to the service's `/info` endpoint with a fresh W3C
+Trace Context version `00` `traceparent`. It does not send `tracestate`, since
+the linter has no vendor-specific state to propagate.
+
+The report inspects a valid `traceresponse` header or a `Server-Timing` `trace`
+metric containing trace context. Either may expose a different trace ID because
+a service can legitimately restart a trace. No response echo is required by
+W3C Trace Context: when there is no observable correlation metadata, the result
+is **unobservable**, not a propagation failure. Malformed or conflicting
+metadata is reported as **non-compliant**; unsafe URLs, redirects, timeouts and
+network failures are **unreachable**. A valid observed response context is
+reported as **compliant** for the observable HTTP exchange.
+
+This is an external trace context and response observability audit, not a full
+OpenTelemetry instrumentation test. It cannot prove that context reached
+invisible downstream services, that spans were exported, or that the trace ID
+belongs to the initiating request when the server starts a new trace. Probe
+requests require HTTPS, reject private or local destinations, pin public DNS
+answers, do not follow redirects, and discard response bodies after headers.
+Only the read-only `/info` endpoint is requested; transactions, quotes and
+financial operations are never called.
 
 Exit codes: **0** no errors, **1** problems found, **2** bad usage, an unmatched glob, or I/O
 failure.
