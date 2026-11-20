@@ -6,23 +6,24 @@
  * set is small and stable, and a linter that anchors run in CI benefits from a
  * dependency tree small enough to audit by eye.
  */
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { parse as parseToml } from 'smol-toml';
-import { watch } from 'node:fs';
+import { createReadStream, watch } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
+import { VaultSecretEngineVerifier } from './gitops/vaultVerifier.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import {
   formatCheckstyle,
   formatGithub,
   formatHtml,
   formatJson,
+  formatJunit,
   formatMarkdown,
   formatNdjson,
-  formatJunit,
   formatSarif,
   formatSummary,
   formatText,
@@ -58,12 +59,35 @@ import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { verifyFederationSrv } from './protocols/federationSrvVerifier.js';
 import { auditEsgDisclosures, renderEsgReport } from './protocols/esgComplianceVerifier.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
+import { auditCors, renderCorsReport } from './security/corsAuditor.js';
+import { auditAssetSecurity, renderMimeReport } from './security/mimeScanner.js';
+import { auditClickjacking, renderClickjackingReport } from './security/clickjackingAuditor.js';
+import { auditKeySeparation, renderKeySeparationReport } from './security/keySeparationAuditor.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
+import {
+  scanSubdomainTakeover,
+  renderTakeoverReport,
+  takeoverDiagnostics,
+} from './security/subdomainScanner.js';
+import { scanSecrets, renderSecretReport } from './security/secretDetector.js';
+import { scanSsrf, renderSsrfReport, ssrfDiagnostics } from './security/ssrfScanner.js';
+import { StructuralRefactoringEngine, renderRefactorSummary } from './cst/structuralRefactoring.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
+import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
+import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
 import { CrossOriginIsolationAuditor, renderIsolationReport } from './wasm/isolationAuditor.js';
+import {
+  auditErrorTaxonomyCommand,
+  auditTlsCommand,
+  calculateUptimeCommand,
+  probeSlaCommand,
+  verifyMetricsCommand,
+  verifyRateHeadersCommand,
+} from './telemetry/commands.js';
+import { LosslessCstFormatter } from './cst/cstFormatter.js';
 import {
   BrowserBoundaryVerifier,
   renderBrowserBoundaryReport,
@@ -98,6 +122,18 @@ import { loadPolicy, validatePolicy, evaluatePolicy } from './policy/engine.js';
 import { createFixtureFetch } from './mock-fixtures.js';
 import { runLspServer } from './lsp/server.js';
 import { getTomlJsonSchema } from './schema.js';
+import { runCloudKmsSignerCheck, type KmsThresholdLevel } from './gitops/kmsSignerCoordinator.js';
+import { formatKmsSignerReport } from './gitops/kmsReport.js';
+import { KmsError } from './gitops/kmsTypes.js';
+import {
+  DriftDetectionError,
+  GitOpsDriftDetector,
+  liveUrlForDomain,
+  renderDriftErrorJson,
+  renderDriftJson,
+  renderDriftLineDiff,
+  renderDriftText,
+} from './gitops/driftDetector.js';
 import { generateCompletion, isCompletionShell } from './completion.js';
 import { WasiSandboxRunner } from './wasm/wasiRunner.js';
 import { WasiSandboxError } from './wasm/errors.js';
@@ -141,13 +177,21 @@ interface Cli {
   auditKycFsm: boolean;
   auditFederationSecurity: boolean;
   auditSep30Recovery: boolean;
+  auditCors: boolean;
+  auditAssetSecurity: boolean;
+  auditClickjacking: boolean;
   verifyPromotions: boolean;
   verifyFederationSrv: boolean;
   auditEsgDisclosures: boolean;
+  auditOpenTelemetry: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
   verifyDnssec: boolean;
+  auditDnsTakeover: boolean;
+  auditSecrets: boolean;
+  auditSsrf: boolean;
+  auditVaultSecrets: boolean;
   badgeSvg?: string;
   badgeJson?: string;
   exportApConfig?: boolean;
@@ -177,6 +221,10 @@ Validate a Stellar Info File (stellar.toml) against SEP-1 — offline.
 
 USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
+  stellar-toml-lint test-kms-signer --key-id <arn> --envelope <xdr>
+                                         Sign a transaction envelope with a cloud
+                                         KMS key and verify the signature and
+                                         Horizon signer weight threshold
   stellar-toml-lint audit-clawbacks --asset <code:issuer> [--horizon <url>] [--format json|markdown]
                                          Generate a clawback audit trail from Horizon
   stellar-toml-lint dispatch-alert --webhook <url> --type slack|discord|pagerduty
@@ -196,9 +244,47 @@ USAGE
   stellar-toml-lint sync-directory --feed <url|file> [--format text|json]
                                          Diff a multi-tenant anchor directory feed
                                          against each anchor's live stellar.toml
+  stellar-toml-lint verify-archive-gpg --url <archive-url> --pubkey <key-file>
+                                         Verify the latest ledger checkpoint's detached GPG signature
+  stellar-toml-lint refactor <file> [--deduplicate-assets] [--split]
+                                    [--max-bytes <n>] [--out-dir <dir>] [--write]
+                                          Deduplicate assets / split a large stellar.toml
+                                          and print a diff for review
   stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]
                                          Audit a WASM binary for SIMD opcodes and
                                          unbounded memory growth
+  stellar-toml-lint verify-metrics --url <metrics_url> [--format text|json]
+                                         Scrape a Prometheus/OpenMetrics endpoint and
+                                         validate names, TYPE/HELP and anchor gauges
+                                         (--domain discovers it from stellar.toml)
+  stellar-toml-lint probe-sla --domain <domain> [--samples <n>] [--threshold-ms <ms>]
+                                         Probe SEP /info endpoints read-only and report
+                                         p50/p95/p99 TTFB against the SLA (500 ms)
+  stellar-toml-lint --audit-error-taxonomy --domain <domain>
+                                         Send invalid read-only requests to SEP
+                                         endpoints; check RFC 7807 / SEP error JSON
+                                         and flag leaked stack traces or secrets
+  stellar-toml-lint calculate-uptime --log-file <path> [--format text|markdown|json]
+                                         Availability over 24h/7d/30d, incidents and
+                                         downtime streaks from JSON/CSV health logs
+  stellar-toml-lint format --file <file> [--write]
+                                         Format stellar.toml losslessly preserving comments
+  stellar-toml-lint verify-rate-headers --url <url> [--burst <n>] [--format text|json]
+                                         Verify API rate-limit headers (RFC 6585)
+  stellar-toml-lint detect-drift --domain <domain> [--git-path <path>] [--ref <ref>]
+                                         [--format text|json|diff] [--timeout <ms>]
+                                         [--url <live-url>] [--max-history <n>]
+                                         Compare the stellar.toml in Git with the live
+                                         one; report unreleased commits and out-of-band
+                                         production edits (exit 0 in sync, 1 drift,
+                                         2 on fetch/git errors)
+  stellar-toml-lint audit-tls --domain <domain> [--format text|json]
+                                         Audit SSL/TLS renewal and OCSP stapling health
+  stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>]
+                                         [--format text|json]
+                                         Map every public key in the file to its roles
+                                         and report reused signing, issuer, account and
+                                         validator keys
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -255,6 +341,9 @@ OPTIONS
                           Verify DOCUMENTATION.ORG_ESG disclosures, check the
                           attestation signature with --check-network, and print
                           a sustainability rating
+      --audit-opentelemetry
+                          Probe declared SEP-6, SEP-24, SEP-31 and SEP-38 /info
+                          endpoints with W3C trace context and inspect response evidence
       --audit-offline-pwa <path>
                           Audit a Service Worker script (or manifest.json) for offline
                           precaching, cache versioning, and PWA manifest requirements
@@ -266,8 +355,28 @@ OPTIONS
       --audit-federation-security
                           Probe FEDERATION_SERVER with non-destructive injection
                           payloads and check for leaked internals (use with --domain)
+      --audit-cors        Send browser-shaped pre-flight and actual requests to every
+                          declared endpoint and report wildcard-with-credentials CORS
+                          policies and unvalidated Origin echoing
+      --audit-asset-security
+                          Check the Content-Type and X-Content-Type-Options of every
+                          linked logo, image and document, and scan SVG payloads for
+                          scripts and entity declarations
+      --audit-clickjacking
+                          Probe interactive endpoints for Content-Security-Policy
+                          frame-ancestors and X-Frame-Options framing defenses
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
+       --audit-dns-takeover
+                           Query CNAME/NS records for every referenced domain and
+                           flag dangling pointers to claimable cloud resources
+       --audit-secrets     Halt with exit 1 on leaked Stellar seeds, cloud keys,
+                           bearer tokens or PEM blocks; output is always redacted
+       --audit-vault-secrets
+                           Halt with exit 1 on misconfigured Vault secret engine
+                           paths, exposed tokens, and TTL misconfigurations
+       --audit-ssrf        Flag advertised URLs resolving to private, loopback,
+                           link-local or multicast IPs, including DNS rebinding
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
                           (implied by --domain)
       --check-contracts   Verify Soroban contract and WASM TTL liveliness
@@ -293,6 +402,10 @@ OPTIONS
       --verify-wasm-streaming <url>
                           Check that a .wasm URL is served as application/wasm and
                           benchmark instantiateStreaming against buffered compile
+      verify-archive-gpg --url <archive-url> --pubkey <key-file>
+                          [--signature-url <url>] [--trusted-fingerprint <hex>]
+                          [--format text|json] [--timeout <ms>]
+                          Checks the latest ledger checkpoint's optional .sig sidecar
       --run-sandboxed-plugin <file.wasm>
                           Run a third-party validator plugin inside the WASI
                           preview 1 capability sandbox: in-memory files only,
@@ -304,6 +417,23 @@ OPTIONS
                           associations
       --color / --no-color
       --list-rules        Print every rule and exit
+
+test-kms-signer OPTIONS
+  --key-id <id>       AWS KMS ARN, GCP Cloud KMS resource name, or Azure Key
+                      Vault key URL. Credentials come from the provider's
+                      standard environment variables only
+  --envelope <xdr>    Base64 transaction envelope to sign
+  --network <name>    Network passphrase (default: Stellar public network)
+  --horizon <url>     Horizon base URL for the signer weight audit
+  --account <G...>    Account to audit (default: the envelope source)
+  --signer-key <G...> Override the Stellar signer matched to the KMS key
+  --threshold <level> low, medium (default), or high
+  --no-quorum         Skip the Horizon signer weight audit
+  --no-verify         Skip local signature verification
+  --mock-fixtures <dir>
+                      Serve the Horizon audit from recorded JSON fixtures
+  --json              Emit the report as JSON
+
       --completion <sh>   Print a shell completion script for bash, zsh, or fish
                           (e.g. eval "$(stellar-toml-lint --completion zsh)")
   -v, --version
@@ -392,6 +522,24 @@ async function runExtraAudits(
     const result = await auditSep30Recovery(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
     out.push(...result.diagnostics);
   }
+  if (cli.auditCors) {
+    const result = await auditCors(parsed, fetchImpl, {
+      rules,
+      ...(domain === undefined ? {} : { domain }),
+    });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderCorsReport(result.report));
+  }
+  if (cli.auditAssetSecurity) {
+    const result = await auditAssetSecurity(parsed, fetchImpl, { rules });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderMimeReport(result.report));
+  }
+  if (cli.auditClickjacking) {
+    const result = await auditClickjacking(parsed, fetchImpl, { rules });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderClickjackingReport(result.report));
+  }
   if (cli.verifyPromotions) {
     const result = await verifyPromotions(parsed, fetchImpl, {
       rules,
@@ -415,7 +563,43 @@ async function runExtraAudits(
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
   }
+  if (cli.auditDnsTakeover) {
+    const report = await scanSubdomainTakeover(parsed, { rules, fetchImpl, domain });
+    out.push(...takeoverDiagnostics(report, rules));
+    process.stderr.write(renderTakeoverReport(report));
+  }
+  if (cli.auditSsrf) {
+    const report = await scanSsrf(parsed, { rules, fetchImpl, domain });
+    out.push(...ssrfDiagnostics(report, rules));
+    process.stderr.write(renderSsrfReport(report));
+  }
+  if (cli.auditOpenTelemetry) {
+    const verifier = new OpenTelemetryTraceValidator(
+      // Recorded fixture transport is explicitly requested; ordinary network
+      // probes use the verifier's DNS-pinned HTTPS transport.
+      cli.mockFixtures === undefined ? {} : { fetchImpl },
+    );
+    const result = await verifier.verify(parsed, rules);
+    out.push(...result.diagnostics);
+    process.stderr.write(renderTraceAuditReport(result));
+  }
   return out;
+}
+
+/**
+ * Secrets are the one audit that halts the whole run: a leaked credential must
+ * never reach a reporter (SARIF embeds source snippets) and no further network
+ * work should happen with a compromised key in hand. All output is masked.
+ */
+async function auditSecretsOrHalt(
+  parsed: Record<string, unknown> | undefined,
+  source: string | undefined,
+  rules: RuleOverrides,
+): Promise<number | undefined> {
+  const result = scanSecrets(source ?? '', parsed, { rules });
+  if (!result.halt) return undefined;
+  process.stderr.write(renderSecretReport(result));
+  return 1;
 }
 
 /** `stellar-toml-lint audit-clawbacks --asset CODE:ISSUER [--horizon <url>] [--format json|markdown]` */
@@ -643,6 +827,120 @@ async function syncDirectory(args: string[]): Promise<number> {
   }
 }
 
+async function readArchivePublicKey(input: string): Promise<string> {
+  const maxBytes = 1024 * 1024;
+  if (input.includes('-----BEGIN PGP PUBLIC KEY BLOCK-----')) {
+    if (Buffer.byteLength(input, 'utf8') > maxBytes) {
+      throw new Error('The supplied public key exceeds the 1 MiB size limit');
+    }
+    return input;
+  }
+
+  const stream = createReadStream(resolve(input));
+  const chunks: Buffer[] = [];
+  let size = 0;
+  try {
+    for await (const chunk of stream) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += bytes.length;
+      if (size > maxBytes) {
+        throw new Error('The public key file exceeds the 1 MiB size limit');
+      }
+      chunks.push(bytes);
+    }
+  } finally {
+    stream.destroy();
+  }
+  return Buffer.concat(chunks, size).toString('utf8');
+}
+
+/** `stellar-toml-lint verify-archive-gpg --url <archive-url> --pubkey <key-file>` */
+async function verifyArchiveGpgCommand(args: string[]): Promise<number> {
+  let archiveUrl: string | undefined;
+  let publicKeyInput: string | undefined;
+  let signatureUrl: string | undefined;
+  let trustedFingerprint: string | undefined;
+  let format: 'text' | 'json' = 'text';
+  let timeoutMs = 10_000;
+
+  try {
+    for (let index = 0; index < args.length; index++) {
+      const arg = args[index] as string;
+      if (arg === '--url') archiveUrl = requireValue(args, ++index, arg);
+      else if (arg === '--pubkey') publicKeyInput = requireValue(args, ++index, arg);
+      else if (arg === '--signature-url') signatureUrl = requireValue(args, ++index, arg);
+      else if (arg === '--trusted-fingerprint') {
+        trustedFingerprint = requireValue(args, ++index, arg);
+      } else if (arg === '--format') {
+        const value = requireValue(args, ++index, arg);
+        if (value !== 'text' && value !== 'json') {
+          process.stderr.write(`Unknown format "${value}". Expected text or json.\n`);
+          return 2;
+        }
+        format = value;
+      } else if (arg === '--timeout') {
+        timeoutMs = Number(requireValue(args, ++index, arg));
+        if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000) {
+          process.stderr.write('--timeout expects an integer from 1 to 120000 milliseconds.\n');
+          return 2;
+        }
+      } else {
+        process.stderr.write(`Unknown option ${arg} for verify-archive-gpg\n`);
+        return 2;
+      }
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  if (archiveUrl === undefined || publicKeyInput === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint verify-archive-gpg --url <archive-url> --pubkey <key-file> ' +
+        '[--signature-url <url>] [--trusted-fingerprint <hex>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const publicKey = await readArchivePublicKey(publicKeyInput);
+    const verifier = new ArchiveGpgVerifier({ timeoutMs });
+    const result = await verifier.verifyArchive({
+      archiveUrl,
+      publicKey,
+      ...(signatureUrl === undefined ? {} : { signatureUrl }),
+      ...(trustedFingerprint === undefined ? {} : { trustedFingerprint }),
+    });
+    if (format === 'json') {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    } else {
+      process.stdout.write(`Archive GPG verification: ${result.status.toUpperCase()}\n`);
+      if (result.checkpointSequence !== undefined) {
+        process.stdout.write(`Checkpoint ledger: ${result.checkpointSequence}\n`);
+      }
+      if (result.payloadUrl !== undefined) process.stdout.write(`Payload: ${result.payloadUrl}\n`);
+      if (result.signatureUrl !== undefined) {
+        process.stdout.write(`Signature: ${result.signatureUrl}\n`);
+      }
+      for (const signer of result.signers) {
+        process.stdout.write(
+          `Signing key: ${signer.fingerprint} (${signer.algorithm}${signer.keyBits === undefined ? '' : `, ${signer.keyBits} bits`})\n`,
+        );
+        process.stdout.write(`Primary key: ${signer.primaryFingerprint}\n`);
+      }
+      process.stdout.write(
+        `Cryptographic verification: ${result.cryptographicallyValid ? 'VALID' : 'FAILED'}\n`,
+      );
+      process.stdout.write(`Operator identity trust: ${result.identityTrust.toUpperCase()}\n`);
+      if (result.error !== undefined) process.stdout.write(`Result: ${result.error}\n`);
+    }
+    return result.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 /** `stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]` */
 async function auditWasmSimd(args: string[]): Promise<number> {
   let file: string | undefined;
@@ -745,6 +1043,52 @@ async function verifyFederationSyncCommand(args: string[]): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>] [--format text|json]` */
+async function auditKeySeparationCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let horizon: string | undefined;
+  let format = 'text';
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--horizon') horizon = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-key-separation\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const host = domain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const url = `https://${host}/.well-known/stellar.toml`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      process.stderr.write(`Could not fetch ${url}: HTTP ${response.status}\n`);
+      return 2;
+    }
+    const doc = parseToml(await response.text()) as Record<string, unknown>;
+    const result = await auditKeySeparation(doc, fetch, {
+      ...(horizon === undefined ? {} : { horizonUrl: horizon }),
+    });
+    process.stdout.write(
+      format === 'json'
+        ? `${JSON.stringify({ ...result.report, diagnostics: result.diagnostics }, null, 2)}\n`
+        : renderKeySeparationReport(result.report),
+    );
+    return result.report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 /** `stellar-toml-lint verify-browser-bundle [--dir dist/browser]` */
 async function verifyBrowserBundleCommand(args: string[]): Promise<number> {
   let dir = 'dist/browser';
@@ -836,18 +1180,237 @@ async function sortKeysCommand(cli: Cli, color: boolean): Promise<number> {
   return unparseable > 0 ? 1 : 0;
 }
 
+/** `stellar-toml-lint refactor <file> [options]` */
+async function refactorCommand(args: string[]): Promise<number> {
+  let file: string | undefined;
+  let split = false;
+  let write = false;
+  let json = false;
+  let maxBytes: number | undefined;
+  let outDir: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--deduplicate-assets') continue;
+    else if (arg === '--split') split = true;
+    else if (arg === '--write') write = true;
+    else if (arg === '--json') json = true;
+    else if (arg === '--max-bytes') {
+      const value = Number(requireValue(args, ++i, arg));
+      if (!Number.isInteger(value) || value <= 0) {
+        process.stderr.write('--max-bytes expects a positive integer.\n');
+        return 2;
+      }
+      maxBytes = value;
+    } else if (arg === '--out-dir') outDir = requireValue(args, ++i, arg);
+    else if (!arg.startsWith('-')) file = arg;
+    else {
+      process.stderr.write(`Unknown option ${arg} for refactor\n`);
+      return 2;
+    }
+  }
+
+  if (file === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint refactor <file> [--deduplicate-assets] [--split] ' +
+        '[--max-bytes <n>] [--out-dir <dir>] [--write] [--json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const source = await readFile(resolve(file), 'utf8');
+    const engine = new StructuralRefactoringEngine(source);
+
+    if (split) {
+      const result = engine.split({
+        ...(maxBytes === undefined ? {} : { maxBytes }),
+        ...(outDir === undefined ? {} : { baseName: basename(file, '.toml') }),
+      });
+      if (outDir !== undefined) {
+        await mkdir(resolve(outDir), { recursive: true });
+        for (const partial of result.files) {
+          await writeFile(resolve(outDir, partial.name), partial.source, 'utf8');
+        }
+      }
+      process.stdout.write(
+        json
+          ? `${JSON.stringify(result, null, 2)}\n`
+          : `${result.files.map((partial) => partial.name).join('\n')}\n` +
+              `Validation: ${result.validation.ok ? 'passed' : `FAILED: ${result.validation.errors.join('; ')}`}\n`,
+      );
+      return result.validation.ok ? 0 : 1;
+    }
+
+    const result = engine.deduplicateAssets();
+    process.stderr.write(renderRefactorSummary(result));
+    process.stdout.write(json ? `${JSON.stringify(result, null, 2)}\n` : result.diff);
+    if (write && result.validation.ok) await writeFile(resolve(file), result.source, 'utf8');
+    return result.validation.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+async function formatCommand(argv: string[]): Promise<number> {
+  let file: string | undefined;
+  let write = false;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg === '--file' || arg === '-f') {
+      file = argv[++i];
+    } else if (arg === '--write' || arg === '-w') {
+      write = true;
+    } else if (!arg.startsWith('-')) {
+      file = arg;
+    }
+  }
+  if (!file) {
+    process.stderr.write('Usage: stellar-toml-lint format --file <stellar.toml> [--write]\n');
+    return 2;
+  }
+  try {
+    const formatter = new LosslessCstFormatter();
+    const result = await formatter.formatFile(file, write);
+    if (!write) {
+      process.stdout.write(result.formatted);
+    } else if (result.changed) {
+      process.stdout.write(`Formatted ${file}\n`);
+    } else {
+      process.stdout.write(`${file} is already formatted\n`);
+    }
+    return 0;
+  } catch (err) {
+    process.stderr.write(`Formatting error: ${err instanceof Error ? err.message : String(err)}\n`);
+    return 2;
+  }
+}
+
+/**
+ * `stellar-toml-lint detect-drift --domain <domain> [--git-path <path>]`
+ *
+ * Exit codes are the CI contract: 0 in sync, 1 drift, 2 when the check could
+ * not run (timeout, HTTP error, missing file, invalid TOML, bad arguments).
+ */
+async function detectDriftCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let url: string | undefined;
+  let gitPath: string | undefined;
+  let ref: string | undefined;
+  let format = 'text';
+  let timeoutMs: number | undefined;
+  let maxHistory: number | undefined;
+  let color: boolean | undefined;
+  const usage =
+    'Usage: stellar-toml-lint detect-drift --domain <domain> [--git-path <path>] [--ref <ref>] ' +
+    '[--format text|json|diff] [--timeout <ms>] [--url <live-url>] [--max-history <n>]\n';
+  const positive = (flag: string, raw: string): number => {
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value <= 0)
+      throw new Error(`${flag} expects a positive integer.`);
+    return value;
+  };
+
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] as string;
+      if (arg === '--domain') domain = requireValue(args, ++i, arg);
+      else if (arg === '--url') url = requireValue(args, ++i, arg);
+      else if (arg === '--git-path') gitPath = requireValue(args, ++i, arg);
+      else if (arg === '--ref') ref = requireValue(args, ++i, arg);
+      else if (arg === '--format') format = requireValue(args, ++i, arg);
+      else if (arg === '--timeout') timeoutMs = positive(arg, requireValue(args, ++i, arg));
+      else if (arg === '--max-history') maxHistory = positive(arg, requireValue(args, ++i, arg));
+      else if (arg === '--color') color = true;
+      else if (arg === '--no-color') color = false;
+      else throw new Error(`Unknown option ${arg} for detect-drift`);
+    }
+    if (!['text', 'json', 'diff'].includes(format)) {
+      throw new Error('--format expects text, json or diff.');
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n${usage}`);
+    return 2;
+  }
+  if (domain === undefined && url === undefined) {
+    process.stderr.write(usage);
+    return 2;
+  }
+
+  const useColor = color ?? shouldUseColor();
+  let liveUrl: string | undefined = url;
+  try {
+    liveUrl ??= liveUrlForDomain(domain!);
+    const report = await new GitOpsDriftDetector({
+      ...(domain !== undefined ? { domain } : {}),
+      url: liveUrl,
+      ...(gitPath !== undefined ? { gitPath } : {}),
+      ...(ref !== undefined ? { ref } : {}),
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+      ...(maxHistory !== undefined ? { maxHistory } : {}),
+    }).detect();
+    if (format === 'json') process.stdout.write(renderDriftJson(report));
+    else if (format === 'diff')
+      process.stdout.write(renderDriftLineDiff(report, { color: useColor }));
+    else process.stdout.write(renderDriftText(report, { color: useColor }));
+    return report.inSync ? 0 : 1;
+  } catch (error) {
+    if (format === 'json') {
+      process.stdout.write(
+        renderDriftErrorJson(error instanceof Error ? error : new Error(String(error)), liveUrl),
+      );
+    }
+    const prefix = error instanceof DriftDetectionError ? `${error.code}: ` : '';
+    process.stderr.write(`${prefix}${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** Run the Vault secret engine verifier; returns 1 to halt, undefined to continue. */
+async function auditVaultSecretsOrHalt(path: string, source: string): Promise<number | undefined> {
+  const result = await new VaultSecretEngineVerifier().verifyFile(path, source);
+  if (result.passed) return undefined;
+  process.stderr.write(`${result.summary}\n`);
+  return 1;
+}
+
 async function main(argv: string[]): Promise<number> {
+  if (argv[0] === 'test-kms-signer') {
+    try {
+      return await runKmsSignerCommand(argv.slice(1));
+    } catch (error) {
+      const text = error instanceof KmsError ? `${error.code}: ${error.message}` : message(error);
+      process.stderr.write(`${text}\n`);
+      return error instanceof KmsError && !isKmsUsageError(error.code) ? 1 : 2;
+    }
+  }
+
   // `verify-promotions --domain <domain>` is the flag form with quotes enabled.
   if (argv[0] === 'verify-promotions') {
     argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
   }
+  if (argv[0] === 'refactor') return refactorCommand(argv.slice(1));
+  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
   if (argv[0] === 'dispatch-alert') return dispatchAlert(argv.slice(1));
   if (argv[0] === 'audit-coop-coep') return auditCoopCoep(argv.slice(1));
   if (argv[0] === 'verify-federation-sync') return verifyFederationSyncCommand(argv.slice(1));
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
+  if (argv[0] === 'verify-archive-gpg') return verifyArchiveGpgCommand(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
+  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
+  if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
+  if (argv[0] === 'probe-sla') return probeSlaCommand(argv.slice(1));
+  if (argv[0] === 'calculate-uptime') return calculateUptimeCommand(argv.slice(1));
+  if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
+  if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
+  if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
+  if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
+  if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
+  if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
+  if (argv[0] === 'format') return formatCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -858,6 +1421,9 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
+  if (cli.runSandboxedPlugin !== undefined) {
+    return runSandboxedPlugin(cli.runSandboxedPlugin, cli.sandboxFuel);
+  }
   if (cli.auditOfflinePwa !== undefined) return auditOfflinePwa(cli.auditOfflinePwa);
   if (cli.auditEdgeCompatibility !== undefined) {
     return auditEdgeCompatibility(cli.auditEdgeCompatibility);
@@ -913,6 +1479,34 @@ async function main(argv: string[]): Promise<number> {
           },
           fetchImpl,
         );
+        if (cli.auditSecrets) {
+          const host = cli.domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+          let secretSource: string | undefined;
+          try {
+            const response = await fetchImpl(`https://${host}/.well-known/stellar.toml`, {
+              redirect: 'follow',
+            });
+            if (response.ok) secretSource = await response.text();
+          } catch {
+            // The parsed document is still scanned when the refetch fails.
+          }
+          const halted = await auditSecretsOrHalt(domainResult.parsed, secretSource, rules);
+          if (halted !== undefined) return halted;
+        }
+        if (cli.auditVaultSecrets) {
+          const host = cli.domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+          const response = await fetchImpl(`https://${host}/.well-known/stellar.toml`, {
+            redirect: 'follow',
+          });
+          if (!response.ok) {
+            process.stderr.write(
+              `Could not fetch https://${host}/.well-known/stellar.toml: HTTP ${response.status}\n`,
+            );
+            return 2;
+          }
+          const halted = await auditVaultSecretsOrHalt('stellar.toml', await response.text());
+          if (halted !== undefined) return halted;
+        }
         if (domainResult.parsed && cli.checkNetwork) {
           const networkDiagnostics: Diagnostic[] = [
             ...(await checkHistoryPublish(domainResult.parsed, fetchImpl, { rules })),
@@ -971,6 +1565,16 @@ async function main(argv: string[]): Promise<number> {
             checkNetwork: cli.checkNetwork,
             ...(cli.domain ? { domain: cli.domain } : {}),
           });
+
+          if (cli.auditSecrets) {
+            const halted = await auditSecretsOrHalt(fileResult.parsed, source, rules);
+            if (halted !== undefined) return halted;
+          }
+
+          if (cli.auditVaultSecrets) {
+            const halted = await auditVaultSecretsOrHalt(path === '-' ? 'stdin' : path, source);
+            if (halted !== undefined) return halted;
+          }
 
           if (fileResult.parsed) {
             const extra = await runExtraAudits(
@@ -1294,6 +1898,124 @@ async function expandInputs(inputs: string[]): Promise<string[]> {
   return [...new Set(paths)];
 }
 
+/**
+ * `test-kms-signer`: signs an envelope through a cloud HSM and verifies the
+ * result as a Stellar signature plus a Horizon quorum member.
+ *
+ * Exit codes follow the linter's convention: 0 verified, 1 a failed check or
+ * KMS denial, 2 bad usage.
+ */
+async function runKmsSignerCommand(argv: string[]): Promise<number> {
+  let keyId: string | undefined;
+  let envelope: string | undefined;
+  let networkPassphrase: string | undefined;
+  let horizonUrl: string | undefined;
+  let accountId: string | undefined;
+  let signerKey: string | undefined;
+  let threshold: KmsThresholdLevel | undefined;
+  let skipQuorumCheck = false;
+  let verifySignature = true;
+  let json = false;
+  let mockFixtures: string | undefined;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    switch (arg) {
+      case '-h':
+      case '--help':
+        process.stdout.write(USAGE);
+        return 0;
+      case '--key-id':
+      case '--key':
+        keyId = requireValue(argv, ++i, arg);
+        break;
+      case '--envelope':
+        envelope = requireValue(argv, ++i, arg);
+        break;
+      case '--network':
+      case '--network-passphrase':
+        networkPassphrase = requireValue(argv, ++i, arg);
+        break;
+      case '--horizon':
+        horizonUrl = requireValue(argv, ++i, arg);
+        break;
+      case '--account':
+        accountId = requireValue(argv, ++i, arg);
+        break;
+      case '--signer-key':
+        signerKey = requireValue(argv, ++i, arg);
+        break;
+      case '--threshold': {
+        const value = requireValue(argv, ++i, arg);
+        if (value !== 'low' && value !== 'medium' && value !== 'high') {
+          throw new KmsError('invalid-arguments', '--threshold expects low, medium, or high');
+        }
+        threshold = value;
+        break;
+      }
+      case '--no-quorum':
+        skipQuorumCheck = true;
+        break;
+      case '--no-verify':
+        verifySignature = false;
+        break;
+      case '--mock-fixtures':
+        mockFixtures = requireValue(argv, ++i, arg);
+        break;
+      case '--json':
+        json = true;
+        break;
+      default:
+        throw new KmsError('invalid-arguments', `Unknown option "${arg}" for test-kms-signer`);
+    }
+  }
+
+  if (keyId === undefined || envelope === undefined) {
+    throw new KmsError(
+      'invalid-arguments',
+      'test-kms-signer requires --key-id <arn> and --envelope <xdr>',
+    );
+  }
+
+  const fetchImpl = mockFixtures !== undefined ? createFixtureFetch(mockFixtures) : fetch;
+
+  let report;
+  try {
+    report = await runCloudKmsSignerCheck({
+      keyId,
+      envelope,
+      ...(networkPassphrase !== undefined ? { networkPassphrase } : {}),
+      ...(horizonUrl !== undefined ? { horizonUrl } : {}),
+      ...(accountId !== undefined ? { accountId } : {}),
+      ...(signerKey !== undefined ? { signerKey } : {}),
+      ...(threshold !== undefined ? { threshold } : {}),
+      skipQuorumCheck,
+      verifySignature,
+      fetchImpl,
+    });
+  } catch (error) {
+    if (error instanceof KmsError && isKmsUsageError(error.code)) throw error;
+    const detail = error instanceof KmsError ? `${error.code}: ${error.message}` : message(error);
+    process.stderr.write(`Cloud KMS signer check failed: ${detail}\n`);
+    return 1;
+  }
+
+  process.stdout.write(
+    json ? `${JSON.stringify(report, null, 2)}\n` : formatKmsSignerReport(report),
+  );
+  return report.ok ? 0 : 1;
+}
+
+/** Problems that mean the invocation was wrong, not that the key refused. */
+function isKmsUsageError(code: string): boolean {
+  return (
+    code === 'invalid-arguments' ||
+    code === 'invalid-envelope' ||
+    code === 'unsupported-key-id' ||
+    code === 'invalid-public-key'
+  );
+}
+
 function render(
   result: LintResult,
   name: string,
@@ -1366,11 +2088,19 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditKycFsm: false,
     auditFederationSecurity: false,
     auditSep30Recovery: false,
+    auditCors: false,
+    auditAssetSecurity: false,
+    auditClickjacking: false,
     verifyPromotions: false,
     verifyFederationSrv: false,
     auditEsgDisclosures: false,
+    auditOpenTelemetry: false,
     crawlPeers: false,
     verifyDnssec: false,
+    auditDnsTakeover: false,
+    auditSecrets: false,
+    auditSsrf: false,
+    auditVaultSecrets: false,
     checkContracts: false,
     graphIncludeContracts: false,
     graphIncludeValidators: false,
@@ -1491,6 +2221,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.auditSep30Recovery = true;
         break;
 
+      case '--audit-cors':
+        cli.auditCors = true;
+        break;
+
+      case '--audit-asset-security':
+        cli.auditAssetSecurity = true;
+        break;
+
+      case '--audit-clickjacking':
+        cli.auditClickjacking = true;
+        break;
+
       case '--verify-promotions':
         cli.verifyPromotions = true;
         break;
@@ -1501,6 +2243,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-esg-disclosures':
         cli.auditEsgDisclosures = true;
+        break;
+
+      case '--audit-opentelemetry':
+        cli.auditOpenTelemetry = true;
         break;
 
       case '--audit-offline-pwa':
@@ -1521,6 +2267,21 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--verify-dnssec':
         cli.verifyDnssec = true;
+        break;
+      case '--audit-dns-takeover':
+        cli.auditDnsTakeover = true;
+        break;
+
+      case '--audit-secrets':
+        cli.auditSecrets = true;
+        break;
+
+      case '--audit-ssrf':
+        cli.auditSsrf = true;
+        break;
+
+      case '--audit-vault-secrets':
+        cli.auditVaultSecrets = true;
         break;
 
       case '--follow-links':

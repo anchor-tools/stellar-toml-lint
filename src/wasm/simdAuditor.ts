@@ -79,12 +79,47 @@ export interface SimdAuditOptions {
  * answers the SIMD-capability question without compiling anything bigger.
  */
 export const SIMD_PROBE_MODULE = Uint8Array.from([
-  0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, // magic + version
-  0x01, 0x04, 0x01, 0x60, 0x00, 0x00, // type: () -> ()
-  0x03, 0x02, 0x01, 0x00, // function: one function of type 0
-  0x0a, 0x17, 0x01, 0x15, 0x00, // code: one body of 21 bytes, no locals
-  0xfd, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // v128.const
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00,
+  0x61,
+  0x73,
+  0x6d,
+  0x01,
+  0x00,
+  0x00,
+  0x00, // magic + version
+  0x01,
+  0x04,
+  0x01,
+  0x60,
+  0x00,
+  0x00, // type: () -> ()
+  0x03,
+  0x02,
+  0x01,
+  0x00, // function: one function of type 0
+  0x0a,
+  0x17,
+  0x01,
+  0x15,
+  0x00, // code: one body of 21 bytes, no locals
+  0xfd,
+  0x0c,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x00, // v128.const
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
   0x1a, // drop
   0x0b, // end
 ]);
@@ -255,12 +290,7 @@ interface ScanState {
   functionBodies: number;
 }
 
-function scanFunctionBody(
-  bytes: Uint8Array,
-  start: number,
-  end: number,
-  state: ScanState,
-): void {
+function scanFunctionBody(bytes: Uint8Array, start: number, end: number, state: ScanState): void {
   state.functionBodies++;
   let pos = start;
 
@@ -490,7 +520,9 @@ const runtimeWithSimd = (): SimdRuntimeLike | undefined =>
   (globalThis as unknown as { WebAssembly?: SimdRuntimeLike }).WebAssembly;
 
 /** Probes SIMD support with `WebAssembly.validate` on a tiny v128 module. */
-export function detectSimdSupport(runtime: SimdRuntimeLike | undefined = runtimeWithSimd()): boolean {
+export function detectSimdSupport(
+  runtime: SimdRuntimeLike | undefined = runtimeWithSimd(),
+): boolean {
   if (typeof runtime?.validate !== 'function') return false;
   try {
     return runtime.validate(SIMD_PROBE_MODULE);
@@ -511,7 +543,10 @@ function emptyMemoryAudit(): MemoryGrowthAudit {
 }
 
 /** Audits SIMD instructions, runtime support, and memory-growth behaviour. */
-export function auditWasmBinary(bytes: Uint8Array, options: SimdAuditOptions = {}): SimdAuditReport {
+export function auditWasmBinary(
+  bytes: Uint8Array,
+  options: SimdAuditOptions = {},
+): SimdAuditReport {
   const runtimeSupportsSimd = detectSimdSupport(options.runtime);
   const findings: SimdFinding[] = [];
 
@@ -524,7 +559,8 @@ export function auditWasmBinary(bytes: Uint8Array, options: SimdAuditOptions = {
       code: 'wasm/invalid-binary',
       severity: 'error',
       message: `Not a parseable WebAssembly binary: ${detail}`,
-      suggestion: 'Rebuild the artifact and confirm --file points at the compiled .wasm, not a source map.',
+      suggestion:
+        'Rebuild the artifact and confirm --file points at the compiled .wasm, not a source map.',
     });
     return {
       ...(options.file !== undefined ? { file: options.file } : {}),
@@ -579,7 +615,8 @@ export function auditWasmBinary(bytes: Uint8Array, options: SimdAuditOptions = {
       findings.push({
         code: 'simd/unsupported-runtime',
         severity: 'error',
-        message: 'The current runtime rejected the SIMD probe module, so this module cannot load here.',
+        message:
+          'The current runtime rejected the SIMD probe module, so this module cannot load here.',
         suggestion: 'Serve the MVP fallback artifact to this runtime instead of the SIMD build.',
       });
     }

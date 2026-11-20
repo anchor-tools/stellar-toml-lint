@@ -29,6 +29,34 @@ export { probeTls } from './tls.js';
 export type { TlsProbe } from './tls.js';
 export { createFixtureFetch, fixtureCandidates, MissingFixtureError } from './mock-fixtures.js';
 export type { FixtureFile } from './mock-fixtures.js';
+export { ArchiveGpgVerifier, verifyArchiveGpg } from './overlay/archiveGpgVerifier.js';
+export type {
+  ArchiveGpgIdentityTrust,
+  ArchiveGpgSigner,
+  ArchiveGpgStatus,
+  ArchiveGpgVerificationResult,
+  ArchiveGpgVerifierOptions,
+  VerifyArchiveOptions,
+  VerifyDetachedOptions,
+} from './overlay/archiveGpgVerifier.js';
+export {
+  OpenTelemetryTraceValidator,
+  discoverTraceEndpoints,
+  generateTraceContext,
+  parseTraceparent,
+  renderTraceAuditReport,
+} from './telemetry/traceValidator.js';
+export type {
+  ParsedTraceparent,
+  TraceAuditResult,
+  TraceAuditStatus,
+  TraceContext,
+  TraceEndpointDefinition,
+  TraceEndpointResult,
+  TraceEvidence,
+  TraceSep,
+  TraceValidatorOptions,
+} from './telemetry/traceValidator.js';
 export {
   auditCryptoFraming,
   auditCryptoSession,
@@ -123,6 +151,86 @@ export type {
   DnsResolver,
   DnsResolverResult,
 } from './security/dns-integrity.js';
+export {
+  checkSubdomainTakeover,
+  renderTakeoverReport,
+  scanSubdomainTakeover,
+  subdomainTakeoverRuleIds,
+  subdomainTakeoverRules,
+  takeoverDiagnostics,
+  TAKEOVER_SIGNATURES,
+  SECURITY_DNS_TAKEOVER_CNAME,
+  SECURITY_DNS_TAKEOVER_NS,
+  SECURITY_DNS_TAKEOVER_TIMEOUT,
+} from './security/subdomainScanner.js';
+export type {
+  SubdomainTakeoverOptions,
+  SubdomainTakeoverReport,
+  TakeoverDnsRecord,
+  TakeoverDnsResolver,
+  TakeoverDnsResponse,
+  TakeoverFinding,
+  TakeoverRisk,
+  TakeoverSignature,
+} from './security/subdomainScanner.js';
+export {
+  checkSecrets,
+  maskSecret,
+  renderSecretReport,
+  scanSecrets,
+  secretDetectorRuleIds,
+  secretDetectorRules,
+  SECURITY_SECRET_AWS_ACCESS_KEY,
+  SECURITY_SECRET_AWS_SECRET_KEY,
+  SECURITY_SECRET_BEARER_TOKEN,
+  SECURITY_SECRET_GITHUB_TOKEN,
+  SECURITY_SECRET_HIGH_ENTROPY,
+  SECURITY_SECRET_PRIVATE_KEY,
+  SECURITY_SECRET_STELLAR_SEED,
+  shannonEntropy,
+} from './security/secretDetector.js';
+export type {
+  SecretDetectorOptions,
+  SecretFinding,
+  SecretKind,
+  SecretScanResult,
+} from './security/secretDetector.js';
+export {
+  checkSsrf,
+  isBlockedIp,
+  normalizeIp,
+  renderSsrfReport,
+  scanSsrf,
+  ssrfDiagnostics,
+  ssrfRuleIds,
+  ssrfRules,
+  BLOCKED_CIDRS,
+  SECURITY_SSRF_DNS_REBINDING,
+  SECURITY_SSRF_PRIVATE_IP,
+  SECURITY_SSRF_TIMEOUT,
+} from './security/ssrfScanner.js';
+export type {
+  SsrfDnsResolver,
+  SsrfFinding,
+  SsrfOptions,
+  SsrfReport,
+} from './security/ssrfScanner.js';
+export {
+  deduplicateAssets,
+  diffText,
+  renderRefactorSummary,
+  splitLargeFile,
+  StructuralRefactoringEngine,
+} from './cst/structuralRefactoring.js';
+export type {
+  AssetDuplicateGroup,
+  FieldConflict,
+  PartialFile,
+  RefactorResult,
+  RefactorValidation,
+  SplitOptions,
+  SplitResult,
+} from './cst/structuralRefactoring.js';
 export type {
   Diagnostic,
   Fix,
@@ -221,6 +329,43 @@ export { SPEC_URL } from './spec.js';
 export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
 export { codeActionsFor } from './lsp/code-actions.js';
+export {
+  CloudKmsSignerCoordinator,
+  runCloudKmsSignerCheck,
+  formatKmsSignerReport,
+  createKmsClient,
+  detectKmsProvider,
+  AwsKmsClient,
+  GcpKmsClient,
+  AzureKeyVaultClient,
+  KmsError,
+  KmsAuthorizationError,
+  KmsThrottlingError,
+  KmsUnsupportedAlgorithmError,
+  withKmsRetry,
+  GitOpsDriftDetector,
+  DriftDetectionError,
+  detectDrift,
+  renderDriftText,
+  renderDriftJson,
+} from './gitops/index.js';
+export type {
+  CloudKmsSignerCoordinatorOptions,
+  CloudKmsSignerReport,
+  KmsClient,
+  KmsKeyAlgorithm,
+  KmsKeyDescriptor,
+  KmsProvider,
+  KmsQuorumReport,
+  KmsRetryOptions,
+  KmsSignerCheck,
+  KmsSignResult,
+  KmsThresholdLevel,
+  DriftDetectionOptions,
+  DriftFinding,
+  DriftReport,
+  DriftType,
+} from './gitops/index.js';
 export type { LspCodeAction, LspRange, LspTextEdit, LspWorkspaceEdit } from './lsp/code-actions.js';
 export {
   auditTomlAuthTree,
@@ -490,3 +635,97 @@ export type {
   EsgReport,
   EsgResult,
 } from './protocols/esgComplianceVerifier.js';
+export {
+  CorsSecurityAuditor,
+  REQUESTING_ORIGIN as CORS_REQUESTING_ORIGIN,
+  UNLISTED_ORIGIN as CORS_UNLISTED_ORIGIN,
+  auditCors,
+  corsSecurityRuleIds,
+  corsSecurityRules,
+  corsTargets,
+  renderCorsReport,
+} from './security/corsAuditor.js';
+export type {
+  CorsAuditOptions,
+  CorsAuditReport,
+  CorsEndpointRole,
+  CorsFinding,
+  CorsObservation,
+} from './security/corsAuditor.js';
+export {
+  MAX_SCAN_BYTES,
+  MimeSecurityScanner,
+  assetTargets,
+  auditAssetSecurity,
+  findSvgScriptVectors,
+  isActiveContentType,
+  mimeSecurityRuleIds,
+  mimeSecurityRules,
+  renderMimeReport,
+} from './security/mimeScanner.js';
+export type {
+  AssetKind,
+  MimeFinding,
+  MimeScanOptions,
+  MimeScanReport,
+  AssetObservation,
+  SvgVector,
+} from './security/mimeScanner.js';
+export {
+  KeySeparationAuditor,
+  OPERATIONAL_OPERATIONS,
+  auditKeySeparation,
+  collectKeyAssignments,
+  keySeparationRuleIds,
+  keySeparationRules,
+  renderKeyRoleDiagram,
+  renderKeySeparationReport,
+} from './security/keySeparationAuditor.js';
+export type {
+  AccountProfile,
+  KeyAssignment,
+  KeyRole,
+  KeyRoleOccurrence,
+  KeySeparationFinding,
+  KeySeparationOptions,
+  KeySeparationReport,
+} from './security/keySeparationAuditor.js';
+export {
+  ClickjackingAuditor,
+  auditClickjacking,
+  clickjackingRuleIds,
+  clickjackingRules,
+  frameAncestorsOf,
+  framingDecision,
+  framingTargets,
+  renderClickjackingReport,
+} from './security/clickjackingAuditor.js';
+export type {
+  ClickjackingFinding,
+  ClickjackingOptions,
+  ClickjackingReport,
+  FrameObservation,
+  FramingDecision,
+  FramingRole,
+} from './security/clickjackingAuditor.js';
+export { LosslessCstFormatter } from './cst/cstFormatter.js';
+export type { FormatterOptions } from './cst/cstFormatter.js';
+export { ResilientIncrementalParser } from './cst/resilientParser.js';
+export type {
+  ResilientParseResult,
+  ResilientDiagnostic,
+  EditRange,
+} from './cst/resilientParser.js';
+export { RateLimitHeaderVerifier } from './telemetry/rateLimitHeaderVerifier.js';
+export type {
+  RateLimitComplianceResult,
+  RateLimitFinding,
+  VerifyRateHeadersOptions,
+} from './telemetry/rateLimitHeaderVerifier.js';
+export { TlsCertificateWatchdog } from './telemetry/tlsWatchdog.js';
+export type {
+  TlsCertificateAuditResult,
+  TlsWatchdogFinding,
+  TlsRawCertInfo,
+  TlsWatchdogOptions,
+} from './telemetry/tlsWatchdog.js';

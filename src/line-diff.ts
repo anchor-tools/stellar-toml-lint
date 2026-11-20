@@ -203,11 +203,14 @@ function at(lines: string[], index: number): string {
   return lines[index] ?? '';
 }
 
+/** POSIX (`/x`), Windows drive (`C:\\x`, `C:/x`) or UNC (`\\\\host\\x`) absolute paths. */
+const ABSOLUTE_PATH = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/;
+
 /**
  * Git prefixes diff targets with `a/` and `b/` because its paths are relative to
  * the repository root. A standalone linter is handed whatever the user typed,
  * and `a//etc/stellar.toml` is not a path anyone can paste back into a shell.
  */
 function label(side: 'a' | 'b', path: string): string {
-  return path.startsWith('/') ? path : `${side}/${path}`;
+  return ABSOLUTE_PATH.test(path) ? path : `${side}/${path}`;
 }
