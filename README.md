@@ -318,6 +318,9 @@ $ stellar-toml-lint diff live.toml candidate.toml
   ! the asset is no longer advertised, so wallets and exchanges stop offering it
 ```
 
+_Excerpt — the report lists all thirteen changes in document order; these three are one removed
+endpoint, one modified field, and one removed entry._
+
 What it guarantees:
 
 - **Entries are paired by identity, not position.** `[[CURRENCIES]]` match on `code` and
