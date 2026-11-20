@@ -17,6 +17,9 @@ import { parseCst } from '../cst/parser.js';
 import type { CstDocument, CstEntry, CstKeyValueEntry, CstTableEntry } from '../cst/parser.js';
 import type { LspPosition, LspRange } from './code-actions.js';
 
+export { LspDocumentSymbolProvider, SymbolKind } from './documentSymbolProvider.js';
+export type { DocumentSymbol } from './documentSymbolProvider.js';
+
 /** SymbolKind values from the LSP specification. */
 export const DocumentSymbolKind = {
   Namespace: 3,

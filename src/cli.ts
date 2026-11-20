@@ -13,6 +13,7 @@ import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
+import { SemanticRuleEngine } from './engine/semanticRuleEngine.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import {
@@ -199,6 +200,8 @@ interface Cli {
   runSandboxedPlugin?: string;
   sandboxFuel?: number;
   verifyWasmStreaming?: string;
+  plugins?: string[];
+  rulesDirs?: string[];
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -207,6 +210,8 @@ Validate a Stellar Info File (stellar.toml) against SEP-1 — offline.
 
 USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
+  stellar-toml-lint [--plugin <module>] [--rules-dir <dir>] [file...]
+                                         Run pluggable semantic AST lint rules
   stellar-toml-lint test-kms-signer --key-id <arn> --envelope <xdr>
                                          Sign a transaction envelope with a cloud
                                          KMS key and verify the signature and
@@ -1378,6 +1383,40 @@ async function main(argv: string[]): Promise<number> {
             );
           }
         }
+        if (cli.plugins?.length || cli.rulesDirs?.length) {
+          const engine = new SemanticRuleEngine();
+          engine.configureSeverities(rules);
+          if (cli.plugins) {
+            for (const plugin of cli.plugins) {
+              await engine.loadPlugin(plugin);
+            }
+          }
+          if (cli.rulesDirs) {
+            for (const dir of cli.rulesDirs) {
+              await engine.loadRulesFromDir(dir);
+            }
+          }
+          let domainSource: string | undefined;
+          const host = cli.domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+          try {
+            const res = await fetchImpl(`https://${host}/.well-known/stellar.toml`, {
+              redirect: 'follow',
+            });
+            if (res.ok) domainSource = await res.text();
+          } catch {
+            // Ignore fetch error
+          }
+          if (domainSource) {
+            const engineResult = engine.run(domainSource);
+            if (engineResult.diagnostics.length > 0) {
+              domainResult = finalize(
+                [...domainResult.diagnostics, ...engineResult.diagnostics],
+                { strict },
+                domainResult.parsed,
+              );
+            }
+          }
+        }
         results.push({ name: cli.domain, result: domainResult });
       } else {
         const paths = await expandInputs(cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH]);
@@ -1521,6 +1560,29 @@ async function main(argv: string[]): Promise<number> {
             if (networkDiagnostics.length > 0) {
               fileResult = finalize(
                 [...fileResult.diagnostics, ...networkDiagnostics],
+                { strict: fileStrict },
+                fileResult.parsed,
+              );
+            }
+          }
+
+          if (cli.plugins?.length || cli.rulesDirs?.length) {
+            const engine = new SemanticRuleEngine();
+            engine.configureSeverities(rules);
+            if (cli.plugins) {
+              for (const plugin of cli.plugins) {
+                await engine.loadPlugin(plugin);
+              }
+            }
+            if (cli.rulesDirs) {
+              for (const dir of cli.rulesDirs) {
+                await engine.loadRulesFromDir(dir);
+              }
+            }
+            const engineResult = engine.run(source);
+            if (engineResult.diagnostics.length > 0) {
+              fileResult = finalize(
+                [...fileResult.diagnostics, ...engineResult.diagnostics],
                 { strict: fileStrict },
                 fileResult.parsed,
               );
@@ -2130,6 +2192,20 @@ function parseArgs(argv: string[]): Cli | 'handled' {
           throw new Error('--sandbox-fuel expects a positive integer.');
         }
         cli.sandboxFuel = value;
+        break;
+      }
+
+      case '--plugin': {
+        const value = requireValue(argv, ++i, arg);
+        if (!cli.plugins) cli.plugins = [];
+        cli.plugins.push(value);
+        break;
+      }
+
+      case '--rules-dir': {
+        const value = requireValue(argv, ++i, arg);
+        if (!cli.rulesDirs) cli.rulesDirs = [];
+        cli.rulesDirs.push(value);
         break;
       }
 

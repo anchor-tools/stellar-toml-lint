@@ -699,3 +699,12 @@ export type {
   FramingDecision,
   FramingRole,
 } from './security/clickjackingAuditor.js';
+export { SemanticRuleEngine } from './engine/semanticRuleEngine.js';
+export type {
+  AstVisitor,
+  AstRuleContext,
+  SemanticLintRule,
+  RulePlugin,
+} from './engine/astVisitor.js';
+export { LspDocumentSymbolProvider, SymbolKind } from './lsp/documentSymbolProvider.js';
+export type { DocumentSymbol, SymbolKindValue } from './lsp/documentSymbolProvider.js';

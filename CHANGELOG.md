@@ -9,6 +9,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `LspDocumentSymbolProvider` (`src/lsp/documentSymbolProvider.ts`): Language Server Protocol outline and
+  document symbol provider (`textDocument/documentSymbol`) conforming to LSP specification 3.17, mapping
+  TOML tables to `SymbolKind.Namespace` or `SymbolKind.Class`, currency entries to `SymbolKind.Interface`
+  labeled with asset code, and providing precise line/column selection ranges and enclosing body bounds (#544).
+
+- `SemanticRuleEngine` (`src/engine/semanticRuleEngine.ts`): Pluggable semantic AST visitor architecture with
+  lifecycle hooks (`enterDocument`, `exitDocument`, `enterTable`, `exitTable`, `visitKeyValue`, `visitCurrency`,
+  `visitValidator`, `visitDocumentation`), schema validation, dynamic plugin loading (`--plugin` and `--rules-dir`),
+  configurable severities, and error-isolated single-pass traversal under 10ms for 100+ rules (#540).
+
 - `--audit-cors` (`src/security/corsAuditor.ts`): probes every endpoint the file declares with an
   `OPTIONS` pre-flight, an actual request from a wallet origin, and an actual request from an origin no
   whitelist should contain, reading nothing but response headers and never sending credentials. Public
