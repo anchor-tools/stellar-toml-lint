@@ -182,7 +182,11 @@ describe('DirectorySyncVerifier', () => {
 
   it('separates unresolvable domains from invalid TOML', async () => {
     const parsed = parseDirectoryFeed({
-      anchors: [{ domain: 'dead.example' }, { domain: 'gone.example' }, { domain: 'broken.example' }],
+      anchors: [
+        { domain: 'dead.example' },
+        { domain: 'gone.example' },
+        { domain: 'broken.example' },
+      ],
     });
     const report = await new DirectorySyncVerifier({ fetchImpl }).verify(parsed.anchors);
     expect(report.ok).toBe(false);

@@ -185,9 +185,7 @@ describe('WasmPointerProtector traps', () => {
 
   it('translates async invocations too', async () => {
     await expect(
-      protector.invokeAsync('parse', () =>
-        Promise.reject(new runtime.RuntimeError('unreachable')),
-      ),
+      protector.invokeAsync('parse', () => Promise.reject(new runtime.RuntimeError('unreachable'))),
     ).rejects.toBeInstanceOf(WasmPointerError);
   });
 });
