@@ -79,8 +79,6 @@ const AWS_ACCESS_KEY = /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASCA)[A-Z0-
 const AWS_SECRET_ASSIGNMENT =
   /\b(?:aws_secret_access_key|aws_secret_key)\s*[:=]\s*["']?([A-Za-z0-9/+=]{40})["']?/gi;
 const GITHUB_TOKEN = /\b(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{40,255})\b/g;
-const PRIVATE_KEY_BLOCK =
-  /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----/g;
 const BEARER_TOKEN = /\bBearer\s+([A-Za-z0-9._~+/=-]{20,})/gi;
 const STELLAR_SEED = /\bS[A-Z2-7]{55}\b/g;
 const GENERIC_TOKEN = /\b[A-Za-z0-9+/=_-]{32,}\b/g;
@@ -134,21 +132,77 @@ function push(
   intervals.push([candidate.start, candidate.end]);
 }
 
+const PEM_BEGIN = '-----BEGIN ';
+const PEM_END = '-----END ';
+const PEM_KEY_SUFFIX = 'PRIVATE KEY-----';
+const PEM_LABELS = ['RSA', 'EC', 'DSA', 'OPENSSH', 'PGP', 'ENCRYPTED'] as const;
+
+/**
+ * Returns the offset just past a PEM private-key marker, or `undefined` when
+ * the marker at `start` is not a private-key marker.
+ *
+ * Used instead of a single `BEGIN … END` regex: `[\s\S]*?` combined with the
+ * optional key-type label made the old detector quadratic on input containing
+ * many BEGIN markers without a matching END (CodeQL js/polynomial-redos).
+ */
+function privateKeyMarkerEnd(text: string, start: number, prefix: string): number | undefined {
+  const suffixAt = start + prefix.length;
+  if (text.startsWith(PEM_KEY_SUFFIX, suffixAt)) return suffixAt + PEM_KEY_SUFFIX.length;
+  for (const label of PEM_LABELS) {
+    const afterLabel = suffixAt + label.length + 1;
+    if (text.startsWith(`${label} `, suffixAt) && text.startsWith(PEM_KEY_SUFFIX, afterLabel)) {
+      return afterLabel + PEM_KEY_SUFFIX.length;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Finds PEM private-key blocks in a single forward pass. Each marker is
+ * examined once, so repeated BEGIN/END markers cannot trigger backtracking.
+ */
+function findPrivateKeyBlocks(text: string): Array<[number, number]> {
+  const blocks: Array<[number, number]> = [];
+  let cursor = 0;
+  let open: number | undefined;
+  while (cursor < text.length) {
+    const begin = text.indexOf(PEM_BEGIN, cursor);
+    const end = text.indexOf(PEM_END, cursor);
+    if (begin !== -1 && (end === -1 || begin < end)) {
+      const markerEnd = privateKeyMarkerEnd(text, begin, PEM_BEGIN);
+      if (markerEnd !== undefined && open === undefined) open = begin;
+      cursor = markerEnd ?? begin + PEM_BEGIN.length;
+      continue;
+    }
+    if (end !== -1) {
+      const markerEnd = privateKeyMarkerEnd(text, end, PEM_END);
+      if (markerEnd !== undefined && open !== undefined) {
+        blocks.push([open, markerEnd]);
+        open = undefined;
+      }
+      cursor = markerEnd ?? end + PEM_END.length;
+      continue;
+    }
+    break;
+  }
+  return blocks;
+}
+
 /** Applies all regex detectors to one blob of text. */
 function detectInText(text: string, threshold: number, base = 0): DetectedSecret[] {
   const detected: DetectedSecret[] = [];
   const intervals: Array<[number, number]> = [];
   const absolute = (index: number): number => base + index;
 
-  for (const match of text.matchAll(PRIVATE_KEY_BLOCK)) {
-    const start = match.index ?? 0;
+  for (const [start, end] of findPrivateKeyBlocks(text)) {
+    const value = text.slice(start, end);
     push(detected, intervals, {
       kind: 'private-key',
       rule: SECURITY_SECRET_PRIVATE_KEY,
-      value: match[0],
+      value,
       start: absolute(start),
-      end: absolute(start + match[0].length),
-      entropy: shannonEntropy(match[0]),
+      end: absolute(end),
+      entropy: shannonEntropy(value),
       suggestion:
         'Revoke the key immediately and remove the block from this public file and its history.',
     });

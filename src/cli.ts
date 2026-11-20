@@ -218,6 +218,10 @@ USAGE
                                          against each anchor's live stellar.toml
   stellar-toml-lint verify-archive-gpg --url <archive-url> --pubkey <key-file>
                                          Verify the latest ledger checkpoint's detached GPG signature
+  stellar-toml-lint refactor <file> [--deduplicate-assets] [--split]
+                                    [--max-bytes <n>] [--out-dir <dir>] [--write]
+                                          Deduplicate assets / split a large stellar.toml
+                                          and print a diff for review
   stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]
                                          Audit a WASM binary for SIMD opcodes and
                                          unbounded memory growth
@@ -464,6 +468,16 @@ async function runExtraAudits(
     });
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
+  }
+  if (cli.auditDnsTakeover) {
+    const report = await scanSubdomainTakeover(parsed, { rules, fetchImpl, domain });
+    out.push(...takeoverDiagnostics(report, rules));
+    process.stderr.write(renderTakeoverReport(report));
+  }
+  if (cli.auditSsrf) {
+    const report = await scanSsrf(parsed, { rules, fetchImpl, domain });
+    out.push(...ssrfDiagnostics(report, rules));
+    process.stderr.write(renderSsrfReport(report));
   }
   if (cli.auditOpenTelemetry) {
     const verifier = new OpenTelemetryTraceValidator(

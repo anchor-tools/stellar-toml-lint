@@ -77,6 +77,15 @@ describe('secret detector', () => {
     expect(kinds).toContain('private-key');
   });
 
+  it('scans repeated PEM BEGIN markers in linear time', () => {
+    // The old PEM regex backtracked across every BEGIN marker when no END
+    // followed (CodeQL js/polynomial-redos). Unclosed markers are not secrets.
+    const source = '-----BEGIN DSA PRIVATE KEY-----\n'.repeat(1000);
+    const result = scanSecrets(source);
+    expect(result.findings).toEqual([]);
+    expect(result.halt).toBe(false);
+  });
+
   it('finds high-entropy values only in sensitive contexts', () => {
     const withSecret = scanSecrets(`api_token = "${HIGH_ENTROPY}"`).findings;
     expect(withSecret.some((finding) => finding.kind === 'high-entropy')).toBe(true);
