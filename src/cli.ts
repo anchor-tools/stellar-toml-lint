@@ -20,9 +20,9 @@ import {
   formatGithub,
   formatHtml,
   formatJson,
+  formatJunit,
   formatMarkdown,
   formatNdjson,
-  formatJunit,
   formatSarif,
   formatSummary,
   formatText,
@@ -118,6 +118,9 @@ import { loadPolicy, validatePolicy, evaluatePolicy } from './policy/engine.js';
 import { createFixtureFetch } from './mock-fixtures.js';
 import { runLspServer } from './lsp/server.js';
 import { getTomlJsonSchema } from './schema.js';
+import { runCloudKmsSignerCheck, type KmsThresholdLevel } from './gitops/kmsSignerCoordinator.js';
+import { formatKmsSignerReport } from './gitops/kmsReport.js';
+import { KmsError } from './gitops/kmsTypes.js';
 import { generateCompletion, isCompletionShell } from './completion.js';
 import { WasiSandboxRunner } from './wasm/wasiRunner.js';
 import { WasiSandboxError } from './wasm/errors.js';
@@ -221,6 +224,10 @@ Validate a Stellar Info File (stellar.toml) against SEP-1 — offline.
 
 USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
+  stellar-toml-lint test-kms-signer --key-id <arn> --envelope <xdr>
+                                         Sign a transaction envelope with a cloud
+                                         KMS key and verify the signature and
+                                         Horizon signer weight threshold
   stellar-toml-lint audit-clawbacks --asset <code:issuer> [--horizon <url>] [--format json|markdown]
                                          Generate a clawback audit trail from Horizon
   stellar-toml-lint dispatch-alert --webhook <url> --type slack|discord|pagerduty
@@ -407,6 +414,23 @@ OPTIONS
                           associations
       --color / --no-color
       --list-rules        Print every rule and exit
+
+test-kms-signer OPTIONS
+  --key-id <id>       AWS KMS ARN, GCP Cloud KMS resource name, or Azure Key
+                      Vault key URL. Credentials come from the provider's
+                      standard environment variables only
+  --envelope <xdr>    Base64 transaction envelope to sign
+  --network <name>    Network passphrase (default: Stellar public network)
+  --horizon <url>     Horizon base URL for the signer weight audit
+  --account <G...>    Account to audit (default: the envelope source)
+  --signer-key <G...> Override the Stellar signer matched to the KMS key
+  --threshold <level> low, medium (default), or high
+  --no-quorum         Skip the Horizon signer weight audit
+  --no-verify         Skip local signature verification
+  --mock-fixtures <dir>
+                      Serve the Horizon audit from recorded JSON fixtures
+  --json              Emit the report as JSON
+
       --completion <sh>   Print a shell completion script for bash, zsh, or fish
                           (e.g. eval "$(stellar-toml-lint --completion zsh)")
   -v, --version
@@ -1523,6 +1547,16 @@ async function ciScorecardCommand(args: string[]): Promise<number> {
 }
 
 async function main(argv: string[]): Promise<number> {
+  if (argv[0] === 'test-kms-signer') {
+    try {
+      return await runKmsSignerCommand(argv.slice(1));
+    } catch (error) {
+      const text = error instanceof KmsError ? `${error.code}: ${error.message}` : message(error);
+      process.stderr.write(`${text}\n`);
+      return error instanceof KmsError && !isKmsUsageError(error.code) ? 1 : 2;
+    }
+  }
+
   // `verify-promotions --domain <domain>` is the flag form with quotes enabled.
   if (argv[0] === 'verify-promotions') {
     argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
@@ -2018,6 +2052,124 @@ async function expandInputs(inputs: string[]): Promise<string[]> {
   }
 
   return [...new Set(paths)];
+}
+
+/**
+ * `test-kms-signer`: signs an envelope through a cloud HSM and verifies the
+ * result as a Stellar signature plus a Horizon quorum member.
+ *
+ * Exit codes follow the linter's convention: 0 verified, 1 a failed check or
+ * KMS denial, 2 bad usage.
+ */
+async function runKmsSignerCommand(argv: string[]): Promise<number> {
+  let keyId: string | undefined;
+  let envelope: string | undefined;
+  let networkPassphrase: string | undefined;
+  let horizonUrl: string | undefined;
+  let accountId: string | undefined;
+  let signerKey: string | undefined;
+  let threshold: KmsThresholdLevel | undefined;
+  let skipQuorumCheck = false;
+  let verifySignature = true;
+  let json = false;
+  let mockFixtures: string | undefined;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    switch (arg) {
+      case '-h':
+      case '--help':
+        process.stdout.write(USAGE);
+        return 0;
+      case '--key-id':
+      case '--key':
+        keyId = requireValue(argv, ++i, arg);
+        break;
+      case '--envelope':
+        envelope = requireValue(argv, ++i, arg);
+        break;
+      case '--network':
+      case '--network-passphrase':
+        networkPassphrase = requireValue(argv, ++i, arg);
+        break;
+      case '--horizon':
+        horizonUrl = requireValue(argv, ++i, arg);
+        break;
+      case '--account':
+        accountId = requireValue(argv, ++i, arg);
+        break;
+      case '--signer-key':
+        signerKey = requireValue(argv, ++i, arg);
+        break;
+      case '--threshold': {
+        const value = requireValue(argv, ++i, arg);
+        if (value !== 'low' && value !== 'medium' && value !== 'high') {
+          throw new KmsError('invalid-arguments', '--threshold expects low, medium, or high');
+        }
+        threshold = value;
+        break;
+      }
+      case '--no-quorum':
+        skipQuorumCheck = true;
+        break;
+      case '--no-verify':
+        verifySignature = false;
+        break;
+      case '--mock-fixtures':
+        mockFixtures = requireValue(argv, ++i, arg);
+        break;
+      case '--json':
+        json = true;
+        break;
+      default:
+        throw new KmsError('invalid-arguments', `Unknown option "${arg}" for test-kms-signer`);
+    }
+  }
+
+  if (keyId === undefined || envelope === undefined) {
+    throw new KmsError(
+      'invalid-arguments',
+      'test-kms-signer requires --key-id <arn> and --envelope <xdr>',
+    );
+  }
+
+  const fetchImpl = mockFixtures !== undefined ? createFixtureFetch(mockFixtures) : fetch;
+
+  let report;
+  try {
+    report = await runCloudKmsSignerCheck({
+      keyId,
+      envelope,
+      ...(networkPassphrase !== undefined ? { networkPassphrase } : {}),
+      ...(horizonUrl !== undefined ? { horizonUrl } : {}),
+      ...(accountId !== undefined ? { accountId } : {}),
+      ...(signerKey !== undefined ? { signerKey } : {}),
+      ...(threshold !== undefined ? { threshold } : {}),
+      skipQuorumCheck,
+      verifySignature,
+      fetchImpl,
+    });
+  } catch (error) {
+    if (error instanceof KmsError && isKmsUsageError(error.code)) throw error;
+    const detail = error instanceof KmsError ? `${error.code}: ${error.message}` : message(error);
+    process.stderr.write(`Cloud KMS signer check failed: ${detail}\n`);
+    return 1;
+  }
+
+  process.stdout.write(
+    json ? `${JSON.stringify(report, null, 2)}\n` : formatKmsSignerReport(report),
+  );
+  return report.ok ? 0 : 1;
+}
+
+/** Problems that mean the invocation was wrong, not that the key refused. */
+function isKmsUsageError(code: string): boolean {
+  return (
+    code === 'invalid-arguments' ||
+    code === 'invalid-envelope' ||
+    code === 'unsupported-key-id' ||
+    code === 'invalid-public-key'
+  );
 }
 
 function render(
