@@ -102,6 +102,12 @@ import {
   type IncidentChannel,
   type IncidentSeverity,
 } from './gitops/incidentDispatcher.js';
+import { auditDockerfile, renderContainerReport } from './gitops/containerAuditor.js';
+import {
+  renderProvenanceReport,
+  verifySlsaProvenance,
+  type SlsaLevel,
+} from './gitops/slsaVerifier.js';
 import { allRules } from './rules/index.js';
 import { PRESETS, resolvePreset, type PresetName } from './presets.js';
 import { generateBadgeSvg, generateShieldsEndpoint } from './generators/badge.js';
@@ -912,6 +918,177 @@ async function auditWasmSimd(args: string[]): Promise<number> {
     const report = auditWasmBinary(bytes, { file });
     process.stdout.write(json ? `${JSON.stringify(report, null, 2)}\n` : renderSimdReport(report));
     return report.findings.some((finding) => finding.severity === 'error') ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+const VERIFY_PROVENANCE_USAGE = `stellar-toml-lint verify-provenance --artifact <file> --provenance <file> [options]
+
+Verify an in-toto / Sigstore provenance document against an artifact and grade
+its SLSA build level.
+
+OPTIONS
+      --artifact <file>              Artifact the attestation describes (required)
+      --provenance <file>            DSSE envelope, Sigstore bundle, or *.intoto.jsonl (required)
+      --expected-builder <id>        Require this builder identity
+      --expected-repository <repo>   Require this source repository
+      --expected-commit <sha>        Require this source commit
+      --expected-trigger <event>     Require this workflow trigger (push, release, …)
+      --trusted-key <pem|file>       Public key allowed to sign provenance (repeatable)
+      --trusted-certificate <sha256> Allowed signing certificate fingerprint (repeatable)
+      --trusted-root <pem|file>      Root CA the bundle chain must terminate in (repeatable)
+      --require-level <0|1|2|3>      Minimum SLSA level (default 1)
+      --json                         Print the structured report as JSON
+`;
+
+/** `stellar-toml-lint verify-provenance --artifact <file> --provenance <file>` */
+async function verifyProvenance(args: string[]): Promise<number> {
+  let artifactPath: string | undefined;
+  let provenancePath: string | undefined;
+  let json = false;
+  let requiredLevel: SlsaLevel | undefined;
+  let expectedBuilderId: string | undefined;
+  let expectedSourceRepository: string | undefined;
+  let expectedCommitSha: string | undefined;
+  let expectedWorkflowTrigger: string | undefined;
+  const trustedPublicKeys: string[] = [];
+  const trustedCertificateSha256: string[] = [];
+  const trustedRootCertificates: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '-h' || arg === '--help') {
+      process.stdout.write(VERIFY_PROVENANCE_USAGE);
+      return 0;
+    } else if (arg === '--artifact') artifactPath = requireValue(args, ++i, arg);
+    else if (arg === '--provenance') provenancePath = requireValue(args, ++i, arg);
+    else if (arg === '--json') json = true;
+    else if (arg === '--expected-builder') expectedBuilderId = requireValue(args, ++i, arg);
+    else if (arg === '--expected-repository') {
+      expectedSourceRepository = requireValue(args, ++i, arg);
+    } else if (arg === '--expected-commit') expectedCommitSha = requireValue(args, ++i, arg);
+    else if (arg === '--expected-trigger') {
+      expectedWorkflowTrigger = requireValue(args, ++i, arg);
+    } else if (arg === '--trusted-key') {
+      const value = requireValue(args, ++i, arg);
+      trustedPublicKeys.push(
+        value.includes('BEGIN PUBLIC KEY') ? value : await readFile(resolve(value), 'utf8'),
+      );
+    } else if (arg === '--trusted-certificate') {
+      trustedCertificateSha256.push(requireValue(args, ++i, arg));
+    } else if (arg === '--trusted-root') {
+      const value = requireValue(args, ++i, arg);
+      trustedRootCertificates.push(
+        value.includes('BEGIN CERTIFICATE') ? value : await readFile(resolve(value), 'utf8'),
+      );
+    } else if (arg === '--require-level') {
+      const value = Number(requireValue(args, ++i, arg));
+      if (value !== 0 && value !== 1 && value !== 2 && value !== 3) {
+        process.stderr.write('--require-level expects 0, 1, 2, or 3.\n');
+        return 2;
+      }
+      requiredLevel = value;
+    } else {
+      process.stderr.write(`Unknown option ${arg} for verify-provenance\n`);
+      return 2;
+    }
+  }
+
+  if (artifactPath === undefined || provenancePath === undefined) {
+    process.stderr.write(VERIFY_PROVENANCE_USAGE);
+    return 2;
+  }
+
+  try {
+    const artifact = new Uint8Array(await readFile(resolve(artifactPath)));
+    const provenance = await readFile(resolve(provenancePath), 'utf8');
+    const report = verifySlsaProvenance(artifact, provenance, {
+      artifactName: basename(artifactPath),
+      ...(requiredLevel !== undefined ? { requiredLevel } : {}),
+      ...(expectedBuilderId !== undefined ? { expectedBuilderId } : {}),
+      ...(expectedSourceRepository !== undefined ? { expectedSourceRepository } : {}),
+      ...(expectedCommitSha !== undefined ? { expectedCommitSha } : {}),
+      ...(expectedWorkflowTrigger !== undefined ? { expectedWorkflowTrigger } : {}),
+      ...(trustedPublicKeys.length > 0 ? { trustedPublicKeys } : {}),
+      ...(trustedCertificateSha256.length > 0 ? { trustedCertificateSha256 } : {}),
+      ...(trustedRootCertificates.length > 0 ? { trustedRootCertificates } : {}),
+    });
+    process.stdout.write(
+      json ? `${JSON.stringify(report, null, 2)}\n` : renderProvenanceReport(report),
+    );
+    return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+const AUDIT_DOCKERFILE_USAGE = `stellar-toml-lint audit-dockerfile [options]
+
+Audit the runtime stage of a Dockerfile and its .dockerignore against CKV/CIS
+Docker Benchmark hardening rules.
+
+OPTIONS
+      --dockerfile <path>      Dockerfile to audit (default: ./Dockerfile)
+      --dockerignore <path>    .dockerignore to use (default: next to the Dockerfile)
+      --image-size <megabytes> Measured image size, checked against the 100 MB budget
+      --json                   Print the report as JSON
+`;
+
+/** `stellar-toml-lint audit-dockerfile [--dockerfile <path>]` */
+async function auditContainer(args: string[]): Promise<number> {
+  let dockerfilePath = 'Dockerfile';
+  let dockerignorePath: string | undefined;
+  let imageSizeBytes: number | undefined;
+  let json = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '-h' || arg === '--help') {
+      process.stdout.write(AUDIT_DOCKERFILE_USAGE);
+      return 0;
+    } else if (arg === '--dockerfile') dockerfilePath = requireValue(args, ++i, arg);
+    else if (arg === '--dockerignore') dockerignorePath = requireValue(args, ++i, arg);
+    else if (arg === '--image-size') {
+      const megabytes = Number(requireValue(args, ++i, arg));
+      if (!Number.isFinite(megabytes) || megabytes <= 0) {
+        process.stderr.write('--image-size expects a positive number of megabytes.\n');
+        return 2;
+      }
+      imageSizeBytes = Math.round(megabytes * 1024 * 1024);
+    } else if (arg === '--json') json = true;
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-dockerfile\n`);
+      return 2;
+    }
+  }
+
+  const resolvedDockerfile = resolve(dockerfilePath);
+  const readOptional = async (candidate: string): Promise<string | undefined> => {
+    try {
+      return await readFile(candidate, 'utf8');
+    } catch {
+      return undefined;
+    }
+  };
+
+  try {
+    const source = await readFile(resolvedDockerfile, 'utf8');
+    const dockerignore =
+      dockerignorePath !== undefined
+        ? await readFile(resolve(dockerignorePath), 'utf8')
+        : await readOptional(resolve(dirname(resolvedDockerfile), '.dockerignore'));
+    const report = auditDockerfile(source, {
+      dockerfilePath,
+      ...(dockerignore !== undefined ? { dockerignore } : {}),
+      ...(imageSizeBytes !== undefined ? { imageSizeBytes } : {}),
+    });
+    process.stdout.write(
+      json ? `${JSON.stringify(report, null, 2)}\n` : renderContainerReport(report),
+    );
+    return report.ok ? 0 : 1;
   } catch (error) {
     process.stderr.write(`${message(error)}\n`);
     return 2;
