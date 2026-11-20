@@ -55,4 +55,32 @@ export { SPEC_URL } from './spec.js';
 export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
 export { codeActionsFor } from './lsp/code-actions.js';
+export {
+  CloudKmsSignerCoordinator,
+  runCloudKmsSignerCheck,
+  formatKmsSignerReport,
+  createKmsClient,
+  detectKmsProvider,
+  AwsKmsClient,
+  GcpKmsClient,
+  AzureKeyVaultClient,
+  KmsError,
+  KmsAuthorizationError,
+  KmsThrottlingError,
+  KmsUnsupportedAlgorithmError,
+  withKmsRetry,
+} from './gitops/index.js';
+export type {
+  CloudKmsSignerCoordinatorOptions,
+  CloudKmsSignerReport,
+  KmsClient,
+  KmsKeyAlgorithm,
+  KmsKeyDescriptor,
+  KmsProvider,
+  KmsQuorumReport,
+  KmsRetryOptions,
+  KmsSignerCheck,
+  KmsSignResult,
+  KmsThresholdLevel,
+} from './gitops/index.js';
 export type { LspCodeAction, LspRange, LspTextEdit, LspWorkspaceEdit } from './lsp/code-actions.js';
