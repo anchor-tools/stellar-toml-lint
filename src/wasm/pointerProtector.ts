@@ -296,7 +296,9 @@ export class WasmPointerProtector {
   private translate(label: string, error: unknown): unknown {
     if (error instanceof WasmPointerError) return error;
     const detail = error instanceof Error ? error.message : String(error);
-    const trapped = isWasmRuntimeError(error) || /memory access out of bounds|RuntimeError|unreachable/i.test(detail);
+    const trapped =
+      isWasmRuntimeError(error) ||
+      /memory access out of bounds|RuntimeError|unreachable/i.test(detail);
     if (!trapped) return error;
 
     return new WasmPointerError(
