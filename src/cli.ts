@@ -12,6 +12,7 @@ import { createReadStream, watch } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
+import { loadPluginRules } from './engine/ruleLoader.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { VaultSecretEngineVerifier } from './gitops/vaultVerifier.js';
@@ -146,7 +147,8 @@ import {
   renderDirectorySyncReport,
 } from './protocols/directorySyncVerifier.js';
 import { isWasmMemory, wasmRuntime } from './wasm/wasmApi.js';
-import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
+import type { Diagnostic, LintOptions, LintResult, RuleOverrides } from './types.js';
+import type { SemanticRule } from './engine/semanticRuleEngine.js';
 
 const VERSION = '0.1.0';
 const DEFAULT_PATH = 'stellar.toml';
@@ -166,6 +168,8 @@ interface Cli {
   quiet: boolean;
   showHelp: boolean;
   rules: RuleOverrides;
+  rulesDir: string[];
+  plugins: string[];
   preset?: PresetName;
   maxWarnings?: number;
   checkNetwork: boolean;
@@ -298,6 +302,11 @@ OPTIONS
       --warn <rule>       Lower a rule to warning (repeatable)
       --preset <name>     Start from a role's rule bundle: validator, anchor-sep24,
                           or issuer (see PRESETS)
+      --rules-dir <dir>   Load rule plugins from a directory of .js/.mjs/.cjs
+                          modules (repeatable). Each module exports one rule as
+                          its default export, or a list of rules as "rules".
+      --plugin <spec>     Load a rule plugin from a module specifier — a path or
+                          an installed package name (repeatable)
   -i, --interactive       Full-screen dashboard to walk the findings. Needs a TTY;
                           without one the text reporter is used instead
       --lsp               Run as a Language Server on stdio (diagnostics,
@@ -1443,6 +1452,36 @@ async function main(argv: string[]): Promise<number> {
 
   if (cli.sortKeys) return sortKeysCommand(cli, color);
 
+  // Plugins load once, here, before the first file: `lint()` stays synchronous and
+  // keeps the filesystem out of the core, and a broken plugin is a usage error
+  // rather than a finding repeated against every input. `runLint` closes over
+  // these, so `--watch` and `--domain` get the same rules as a plain file run.
+  let pluginRules: SemanticRule[] = [];
+  if (cli.rulesDir.length > 0 || cli.plugins.length > 0) {
+    try {
+      pluginRules = await loadPluginRules({
+        dirs: cli.rulesDir,
+        modules: cli.plugins,
+        reservedIds: allRules.map((rule) => rule.id),
+      });
+    } catch (error) {
+      process.stderr.write(`${message(error)}\n`);
+      return 2;
+    }
+    // `parseArgs` could not know these ids yet; now that it does, a typo in
+    // `--off/--error/--warn` fails the same way it does without plugins.
+    const loadedIds = pluginRules.map((rule) => rule.id);
+    for (const id of Object.keys(cli.rules)) assertKnownRule(id, undefined, loadedIds);
+    if (!cli.quiet && loadedIds.length > 0) {
+      process.stderr.write(`Loaded ${loadedIds.length} plugin rule(s): ${loadedIds.join(', ')}\n`);
+    }
+  }
+  const pluginRuleIds = pluginRules.map((rule) => rule.id);
+  // Absent rather than empty: an option that is not set is the same run as
+  // before plugins existed, and `lint()` only ever touches the engine when it is.
+  const pluginOptions: Pick<LintOptions, 'semanticRules'> =
+    pluginRules.length > 0 ? { semanticRules: pluginRules } : {};
+
   const runLint = async (cli: Cli, color: boolean): Promise<number> => {
     if (cli.lsp) {
       // The framed stdio server: diagnostics, quick fixes, and hover. It used to
@@ -1465,7 +1504,7 @@ async function main(argv: string[]): Promise<number> {
         cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
 
       if (cli.domain && cli.paths.length === 0) {
-        const config = await loadConfig(process.cwd());
+        const config = await loadConfig(process.cwd(), pluginRuleIds);
         strict = strict || config.strict;
         maxWarnings ??= config.maxWarnings;
         const rules = { ...config.rules, ...cli.rules };
@@ -1476,6 +1515,7 @@ async function main(argv: string[]): Promise<number> {
             rules,
             checkNetwork: cli.checkNetwork,
             followLinks: true,
+            ...pluginOptions,
           },
           fetchImpl,
         );
@@ -1552,7 +1592,10 @@ async function main(argv: string[]): Promise<number> {
       } else {
         const paths = await expandInputs(cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH]);
         for (const path of paths) {
-          const config = await loadConfig(path === '-' ? process.cwd() : dirname(resolve(path)));
+          const config = await loadConfig(
+            path === '-' ? process.cwd() : dirname(resolve(path)),
+            pluginRuleIds,
+          );
           const fileStrict = cli.strict || config.strict;
           strict = strict || config.strict;
           maxWarnings ??= config.maxWarnings;
@@ -1564,6 +1607,7 @@ async function main(argv: string[]): Promise<number> {
             rules,
             checkNetwork: cli.checkNetwork,
             ...(cli.domain ? { domain: cli.domain } : {}),
+            ...pluginOptions,
           });
 
           if (cli.auditSecrets) {
@@ -1678,7 +1722,7 @@ async function main(argv: string[]): Promise<number> {
               networkDiagnostics.push(
                 ...(await followTomlPointers(
                   fileResult.parsed,
-                  { strict: fileStrict, rules, domain: cli.domain },
+                  { strict: fileStrict, rules, domain: cli.domain, ...pluginOptions },
                   fetchImpl,
                 )),
               );
@@ -2071,6 +2115,15 @@ function verdict(
   return true;
 }
 
+/**
+ * True when the command line asks for rules the built-in catalog cannot know
+ * about, which is what defers the `--off/--error/--warn` id check until after
+ * the plugins load.
+ */
+function usesPluginSources(argv: string[]): boolean {
+  return argv.includes('--rules-dir') || argv.includes('--plugin');
+}
+
 function parseArgs(argv: string[]): Cli | 'handled' {
   const cli: Cli = {
     paths: [],
@@ -2079,6 +2132,8 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     quiet: false,
     showHelp: false,
     rules: {},
+    rulesDir: [],
+    plugins: [],
     checkNetwork: false,
     followLinks: false,
     verifySep10: false,
@@ -2378,10 +2433,23 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--error':
       case '--warn': {
         const id = requireValue(argv, ++i, arg);
-        assertKnownRule(id);
-        cli.rules[id] = arg === '--off' ? 'off' : (arg.slice(2) as Severity);
+        // A plugin id is only known once its module is loaded, which is async and
+        // happens in `main`. When plugin flags are present the check runs there
+        // instead, against the built-ins *plus* the ids that actually loaded.
+        if (!usesPluginSources(argv)) assertKnownRule(id);
+        // The flag says `--warn`; the severity token is `warning`. Storing the
+        // flag's spelling made every summary count read NaN.
+        cli.rules[id] = arg === '--off' ? 'off' : arg === '--warn' ? 'warning' : 'error';
         break;
       }
+
+      case '--rules-dir':
+        cli.rulesDir.push(requireValue(argv, ++i, arg));
+        break;
+
+      case '--plugin':
+        cli.plugins.push(requireValue(argv, ++i, arg));
+        break;
 
       case '--preset': {
         const value = requireValue(argv, ++i, arg);

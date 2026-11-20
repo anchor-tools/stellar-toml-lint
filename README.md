@@ -179,6 +179,8 @@ and only `--write` changes the file. `--split` instead emits modular partials gr
 | `--error <rule>`              | Raise a rule to error (repeatable)                                                                                                  |
 | `--warn <rule>`               | Lower a rule to warning (repeatable)                                                                                                |
 | `--preset <name>`             | Start from a role's rule bundle: `validator`, `anchor-sep24`, or `issuer`                                                           |
+| `--rules-dir <dir>`           | Load rule plugins from a directory of `.js`/`.mjs`/`.cjs` modules (repeatable)                                                      |
+| `--plugin <spec>`             | Load a rule plugin from a module path or an installed package name (repeatable)                                                     |
 | `-q, --quiet`                 | Show errors only                                                                                                                    |
 | `--show-help-urls`            | Print the spec link for each finding                                                                                                |
 | `--list-rules`                | Print every rule and exit                                                                                                           |
@@ -341,7 +343,103 @@ root, so a repository-level file covers everything beneath it.
 `rules` maps rule ids to `off`, `error`, `warning`, or `info`; `strict` and `maxWarnings` mirror
 `--strict` and `--max-warnings`. CLI flags always override the file, and so does `--preset`. A
 malformed file, an unknown top-level field, or an unknown rule id exits `2` — a config that is
-silently ignored is worse than one that fails, because the team believes the policy is recorded.
+silently ignored is worse than one that fails, because the team believes the policy is recorded. A
+[rule plugin's](#rule-plugins) id counts as a rule id here, so a third-party check is tuned in this
+file like a built-in one; that is why `--rules-dir` and `--plugin` are read before the config is
+validated.
+
+### Rule plugins
+
+Checks your team needs that SEP-1 does not define go in a JavaScript module, named on the command
+line. `--rules-dir <dir>` loads every `.js`, `.mjs`, or `.cjs` module directly inside a directory
+(sorted by name), and `--plugin <spec>` loads one module by path or by installed package name. Both
+are repeatable, and both are the only way a plugin is ever loaded: nothing is discovered from
+`node_modules`, and nothing is autoloaded from a directory beside `stellar.toml`, because a rule
+module is arbitrary code that runs with this process's permissions.
+
+```js
+// rules/attestation-required.mjs
+export default {
+  id: 'acme/attestation-required',
+  category: 'currencies',
+  severity: 'error',
+  description: 'Fiat assets must publish an attestation of reserve.',
+
+  create({ report }) {
+    return {
+      visitCurrency(node) {
+        if (
+          node.values.anchor_asset_type === 'fiat' &&
+          node.values.attestation_of_reserve === undefined
+        ) {
+          report({
+            message: `${node.code} is live without an attestation of reserve`,
+            path: node.path,
+            position: node.position,
+            suggestion: 'Add attestation_of_reserve, as SEP-1 requires of regulated assets.',
+          });
+        }
+      },
+    };
+  },
+};
+```
+
+```console
+$ stellar-toml-lint stellar.toml --rules-dir ./rules
+Loaded 1 plugin rule(s): acme/attestation-required
+
+stellar.toml
+  62:1      error    EXPL is live without an attestation of reserve  acme/attestation-required
+            ↳ Add attestation_of_reserve, as SEP-1 requires of regulated assets.
+
+  1 problem (1 error, 0 warnings, 0 infos)
+```
+
+A module exports one rule as its `default`, a list of rules as `rules`, or both. The `id` is
+`<namespace>/<name>` in lower kebab-case, and the namespace is yours: `--off`, `--warn`, `--error`
+and the configuration file address a plugin exactly as they address a built-in rule, so
+`--off acme/attestation-required` above silences it. `category` is one of the diagnostic categories
+the [Programmatic API](#programmatic-api) lists, which is what lets the SARIF, JUnit and HTML
+reporters group a plugin's findings with the catalog's instead of beside them.
+
+The document is walked once for the whole set of rules, and a rule implements only the node kinds it
+cares about:
+
+| Node      | Hooks                             | Fires for                                                                           |
+| --------- | --------------------------------- | ----------------------------------------------------------------------------------- |
+| document  | `visitDocument` / `leaveDocument` | the file's root, once per run                                                       |
+| table     | `visitTable` / `leaveTable`       | a `[DOCUMENTATION]` section, one `[[VALIDATORS]]` entry, or an inline `{ ... }`     |
+| currency  | `visitCurrency` / `leaveCurrency` | one `[[CURRENCIES]]` entry, with `code`, `issuer`, `contract` and `status` read off |
+| key-value | `visitKeyValue` / `leaveKeyValue` | any key that is not a table, including a list of strings                            |
+
+Every node carries `path` in the dotted notation diagnostics use (`CURRENCIES[1].issuer`), `name`,
+and `position` when the run had a file to locate it in. `create` runs once per lint call and may
+close over state, so a rule can accumulate across a table's keys and summarise in its `leave` hook
+without leaking into the next file. The enter hook fires before the node's children and the leave
+hook after them.
+
+Two kinds of failure, treated differently on purpose:
+
+- A source that cannot be read, or a module exporting something rule-shaped but invalid — a missing
+  `category`, an `id` a built-in rule or another plugin already owns — stops the run with exit `2`
+  and says which source was at fault. A silently ignored rule is a check the team believes it has
+  and does not.
+- A rule that throws _while running_ is contained. The other rules keep going, the run keeps the
+  verdict the remaining findings give, and the failure collapses into one
+  `internal/plugin-error` warning naming the rule and the number of nodes it failed on, so a buggy
+  plugin cannot bury the file or the pipeline.
+
+Overhead is what decides whether a hundred rules is a sane thing to ask a CI job to run. A hundred
+and twenty rules over a file with a hundred assets and a hundred validators — larger than any
+deployed `stellar.toml` we have seen — cost a median 2.2ms per run on a laptop core, against a 10ms
+budget `npm run bench` gates on. The same set over ten times as much file costs 19ms, which the same
+run prints without gating so the shape of the curve is visible. The numbers follow from the design:
+the rules share one traversal, and every node kind keeps its own list of the rules that asked for it,
+so a rule costs one call per node it listens for and nothing for the rest.
+
+One place does not see them: `--lsp` runs the catalog with no run options, so plugin rules do not
+appear in editor diagnostics yet, the same way a `.stellartomlrc.json` does not.
 
 ### Walking the findings in a terminal
 
@@ -827,6 +925,23 @@ const bundle = resolvePreset('issuer').rules;
 const result = lint(source, { rules: { ...bundle, 'general/version': 'off' } });
 ```
 
+The engine behind [rule plugins](#rule-plugins) is exported too, so an embedder can run a team's own
+checks without the command line:
+
+```ts
+import { lint, loadPluginRules, SemanticRuleEngine } from 'stellar-toml-lint';
+
+// The same sources `--rules-dir` and `--plugin` read...
+const rules = await loadPluginRules({ dirs: ['./rules'] });
+
+// ...handed to `lint`, where they run beside the built-in catalog and take the
+// same `rules` overrides.
+const result = lint(source, { semanticRules: rules, rules: { 'acme/x': 'off' } });
+
+// Or drive the traversal directly over a document you already have.
+const findings = new SemanticRuleEngine(rules).run({ doc, source });
+```
+
 Every diagnostic carries a stable `rule` id, a `severity`, a dotted `path` to the offending value, a
 source `position`, a link to the relevant part of the spec, and a concrete `suggestion`.
 
@@ -842,6 +957,8 @@ interface Diagnostic {
     | 'currencies'
     | 'validators'
     | 'network'
+    | 'security'
+    | 'policy'
     | 'sep12';
   message: string;
   path?: string; // 'CURRENCIES[1].issuer'
