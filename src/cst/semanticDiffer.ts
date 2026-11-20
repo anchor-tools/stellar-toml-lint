@@ -614,7 +614,9 @@ function sameValue(before: unknown, after: unknown): boolean {
  */
 function canonicalText(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalText).join(',')}]`;
-  if (value instanceof Date) return value.toISOString();
+  // The parser keeps the authored offset in `toISOString`, so two spellings of one
+  // instant print differently; equality has to compare the instant itself.
+  if (value instanceof Date) return String(value.getTime());
   if (isRecord(value)) {
     const entries = Object.keys(value)
       .sort()
@@ -624,8 +626,17 @@ function canonicalText(value: unknown): string {
   return JSON.stringify(value) ?? String(value);
 }
 
+/**
+ * A table rather than a value.
+ *
+ * The parser returns a `Date` for an offset date-time, which `typeof` calls an
+ * object; counting it as a table would compare two empty key sets and report a
+ * changed instant as no change at all.
+ */
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return (
+    typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date)
+  );
 }
 
 function categoryOf(section: string, field: string): DiffCategory {

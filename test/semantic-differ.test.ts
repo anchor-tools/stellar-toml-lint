@@ -102,6 +102,16 @@ describe('SemanticTomlDiffer', () => {
     expect(diffSemanticToml(source, target).changes).toEqual([]);
   });
 
+  it('renders a changed instant rather than a date object', () => {
+    const report = diffSemanticToml(
+      'ORG_SINCE = 1979-05-27T07:32:00Z\n',
+      'ORG_SINCE = 2026-04-05T06:07:08Z\n',
+    );
+
+    expect(lines(report)).toEqual(['modified ORG_SINCE']);
+    expect(formatValue(changeAt(report, 'ORG_SINCE').before)).toBe('1979-05-27T07:32:00.000Z');
+  });
+
   describe('breaking changes', () => {
     it('flags a rotated signing key', () => {
       const rotated = 'GA3TONZXG43TONZXG43TONZXG43TONZXG43TONZXG43TONZXG43TO5MU';
@@ -166,6 +176,14 @@ describe('SemanticTomlDiffer', () => {
 
       expect(changeAt(report, 'AUTH_SERVER').breaking).toBe(false);
       expect(report.breaking).toBe(0);
+    });
+
+    it('does not call the loss of a field SEP-1 does not define breaking', () => {
+      const source = `CUSTOM_FLAG = "on"\n\n${LIVE}`;
+      const change = changeAt(diffSemanticToml(source, LIVE), 'CUSTOM_FLAG');
+
+      expect(change.kind).toBe('removed');
+      expect(change.breaking).toBe(false);
     });
 
     it('does not flag anything a client has never seen', () => {
@@ -262,6 +280,18 @@ describe('SemanticTomlDiffer', () => {
       expect(change.kind).toBe('modified');
       expect(change.before).toBe('https://example.com');
       expect(change.after).toMatchObject({ href: 'x' });
+    });
+
+    it('reads a scalar that became a list as one modification', () => {
+      const report = diffSemanticToml(
+        'ORG_URL = "https://example.com"\n',
+        'ORG_URL = ["https://example.com", "https://example.org"]\n',
+      );
+      const change = changeAt(report, 'ORG_URL');
+
+      expect(change.kind).toBe('modified');
+      expect(lines(report)).toEqual(['modified ORG_URL']);
+      expect(change.after).toEqual(['https://example.com', 'https://example.org']);
     });
 
     it('counts the fields on each side so an empty file is visibly empty', () => {
