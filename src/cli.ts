@@ -21,15 +21,12 @@ import {
   formatHtml,
   formatJson,
   formatJunit,
-  formatReadiness,
-  formatReadinessJson,
-  formatSarif,
-  formatText,
   formatMarkdown,
   formatNdjson,
+  formatSarif,
   formatSummary,
+  formatText,
 } from './reporters.js';
-import { calculateReadiness } from './readiness.js';
 import { expandGlob, hasMagic } from './glob.js';
 import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
@@ -1844,7 +1841,6 @@ function isKmsUsageError(code: string): boolean {
   );
 }
 
-function render(result: LintResult, name: string, cli: Cli, color: boolean): string {
 function render(
   result: LintResult,
   name: string,

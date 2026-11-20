@@ -15,6 +15,7 @@ import {
   xdr,
   type Transaction,
 } from '@stellar/stellar-base';
+import { trimTrailingSlashes } from '../strings.js';
 import { createKmsClient, type CreateKmsClientOptions } from './kmsClientFactory.js';
 import {
   KmsError,
@@ -326,7 +327,7 @@ export class CloudKmsSignerCoordinator {
 
     try {
       const response = await this.fetchImpl(
-        `${horizonUrl.replace(/\/+$/, '')}/accounts/${input.accountId}`,
+        `${trimTrailingSlashes(horizonUrl)}/accounts/${input.accountId}`,
       );
       if (!response.ok) {
         const reason = `Horizon returned HTTP ${response.status} for account ${input.accountId}`;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { generateKeyPairSync, sign as cryptoSign } from 'node:crypto';
+import { generateKeyPairSync, sign as cryptoSign, type KeyObject } from 'node:crypto';
 import { AwsKmsClient, isAwsKmsKeyId } from '../src/gitops/awsKmsClient.js';
 import { GcpKmsClient, gcpAlgorithm, isGcpKmsKeyId } from '../src/gitops/gcpKmsClient.js';
 import { AzureKeyVaultClient, isAzureKeyVaultKeyId } from '../src/gitops/azureKeyVaultClient.js';
@@ -32,7 +32,7 @@ function headersOf(init?: RequestInit): Record<string, string> {
 }
 
 function ed25519Fixture(): {
-  privateKey: ReturnType<typeof generateKeyPairSync>['privateKey'];
+  privateKey: KeyObject;
   publicKeyDer: Buffer;
 } {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');

@@ -7,6 +7,7 @@
  * `AZURE_ACCESS_TOKEN` or an `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` /
  * `AZURE_CLIENT_SECRET` service principal, both standard environment sources.
  */
+import { trimTrailingSlashes } from '../strings.js';
 import {
   KmsAuthorizationError,
   KmsError,
@@ -95,7 +96,7 @@ export class AzureKeyVaultClient implements KmsClient {
         { provider: 'azure' },
       );
     }
-    this.keyId = options.keyId.replace(/\/+$/, '');
+    this.keyId = trimTrailingSlashes(options.keyId);
     this.baseUrl = this.keyId;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.retry = options.retry ?? {};
