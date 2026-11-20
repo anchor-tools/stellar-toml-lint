@@ -24,6 +24,7 @@ import {
   isRecord,
   severityFor,
   toScaled,
+  trimTrailingSlashes,
 } from './verifierSupport.js';
 
 const ADDRESS_RULE = 'btcreserve/invalid-address';
@@ -225,7 +226,7 @@ export class BtcReserveUtxoAuditor {
       });
     };
     const isPublic = doc.NETWORK_PASSPHRASE === PUBLIC_PASSPHRASE;
-    if (isHttpsUrl(doc.HORIZON_URL)) this.horizon = String(doc.HORIZON_URL).replace(/\/+$/, '');
+    if (isHttpsUrl(doc.HORIZON_URL)) this.horizon = trimTrailingSlashes(String(doc.HORIZON_URL));
     const currencies = Array.isArray(doc.CURRENCIES) ? doc.CURRENCIES : [];
 
     for (const [i, entry] of currencies.entries()) {
@@ -374,7 +375,7 @@ export class BtcReserveUtxoAuditor {
   }
 
   private async esplora(address: string): Promise<Utxo[]> {
-    const base = (this.options.esploraUrl ?? 'https://blockstream.info/api').replace(/\/+$/, '');
+    const base = trimTrailingSlashes(this.options.esploraUrl ?? 'https://blockstream.info/api');
     const get = async (path: string): Promise<Response> => {
       const res = await fetchWithTimeout(
         this.fetchImpl,

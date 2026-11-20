@@ -18,7 +18,12 @@
 
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 import { isHttpsUrl, isString } from '../predicates.js';
-import { errorMessage, fetchWithTimeout, severityFor } from './verifierSupport.js';
+import {
+  errorMessage,
+  fetchWithTimeout,
+  severityFor,
+  trimTrailingSlashes,
+} from './verifierSupport.js';
 
 const REFLECTED_RULE = 'ipspoof/header-reflected';
 const BYPASS_RULE = 'ipspoof/rate-limit-bypass';
@@ -130,7 +135,7 @@ export class IpSpoofingVulnerabilityDetector {
     for (const [field, suffix] of ENDPOINTS) {
       const base = doc[field];
       if (!isString(base) || !isHttpsUrl(base)) continue;
-      const url = `${base.replace(/\/+$/, '')}${suffix}`;
+      const url = `${trimTrailingSlashes(base)}${suffix}`;
       const push = (
         rule: string,
         fallback: 'error' | 'warning' | 'info',

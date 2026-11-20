@@ -139,8 +139,11 @@ export function parseSecurityTxt(text: string): ParsedSecurityTxt {
     let i = 1;
     let hash: string | undefined;
     while (i < lines.length && lines[i]!.trim() !== '') {
-      const h = /^Hash:\s*(.+)$/.exec(lines[i]!.trim());
-      if (h) hash = h[1];
+      const t = lines[i]!.trim();
+      if (t.startsWith('Hash:')) {
+        const value = t.slice(5).trim();
+        if (value !== '') hash = value;
+      }
       i++;
     }
     const signedLines = lines.slice(i + 1, sigStart < 0 ? lines.length : sigStart);
@@ -159,9 +162,11 @@ export function parseSecurityTxt(text: string): ParsedSecurityTxt {
   body.split(/\r?\n/).forEach((raw, idx) => {
     const line = raw.trim();
     if (line === '' || line.startsWith('#')) return;
-    const m = /^([A-Za-z0-9-]+):\s*(.*)$/.exec(line);
-    if (!m || m[2] === '') malformedLines.push(idx + 1);
-    else fields.push({ name: m[1]!.toLowerCase(), value: m[2]!, line: idx + 1 });
+    const colon = line.indexOf(':');
+    const name = colon > 0 ? line.slice(0, colon) : '';
+    const value = colon > 0 ? line.slice(colon + 1).trim() : '';
+    if (!/^[A-Za-z0-9-]+$/.test(name) || value === '') malformedLines.push(idx + 1);
+    else fields.push({ name: name.toLowerCase(), value, line: idx + 1 });
   });
   return { fields, malformedLines, ...(signature ? { signature } : {}) };
 }
