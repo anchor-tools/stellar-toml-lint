@@ -9,6 +9,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `verify-archive-gpg --url <archive> --pubkey <key-file>` (`src/overlay/archiveGpgVerifier.ts`):
+  downloads the latest checkpoint ledger XDR gzip file described by `.well-known/stellar-history.json`
+  and verifies it against a supplied detached OpenPGP signature with OpenPGP.js. The optional
+  `<ledger-file>.sig` sidecar is a best-effort convention, not a Stellar Core format guarantee;
+  `--signature-url` can name a different location. The verifier enforces RSA 2048-bit or Ed25519
+  signing keys, expiry/revocation checks, SHA-2 signature hashes, bounded HTTPS requests, and
+  reports unknown operator identity trust unless an independently sourced fingerprint is pinned.
+
 - `--sort-keys` / `--sort-keys --dry-run` (`src/cst/canonicalSortCodemod.ts`,
   `src/line-diff.ts`): rewrites `[DOCUMENTATION]`, `[[PRINCIPALS]]`, `[[CURRENCIES]]` and
   `[[VALIDATORS]]` into the SEP-1 field order and sorts currency entries by `code` and validators by
