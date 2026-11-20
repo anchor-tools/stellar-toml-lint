@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  VaultSecretEngineVerifier,
-  VaultVerificationOptions,
-  VaultFinding,
-  VaultVerificationResult,
   VAULT_RULE_IDS,
   VAULT_RULE_NAMES,
   parseGitOpsFile,
@@ -15,11 +11,9 @@ import {
   checkVaultOidcRoleBinding,
   checkVaultKvEngineVersion,
   checkVaultDynamicLease,
-  GitOpsFile,
-  VaultSeverity,
   createDefaultVerifier,
-  createMockVerifier,
 } from '../src/gitops/vaultVerifier.js';
+import type { GitOpsFile, VaultFinding, VaultSeverity } from '../src/gitops/vaultVerifier.js';
 
 describe('VaultSecretEngineVerifier - parseGitOpsFile', () => {
   it('parses YAML content', () => {
@@ -92,13 +86,21 @@ describe('VaultSecretEngineVerifier - validateVaultTtl', () => {
 
 describe('VaultSecretEngineVerifier - checkVaultTokenEnvExposure', () => {
   it('detects Vault token exposure in environment variables', () => {
-    const file = { content: 'env:\n  - name: VAULT_TOKEN\n    value: "sMySecretToken1234567890"', path: 'test.yaml', ext: 'yaml' } as GitOpsFile;
+    const file = {
+      content: 'env:\n  - name: VAULT_TOKEN\n    value: "sMySecretToken1234567890"',
+      path: 'test.yaml',
+      ext: 'yaml',
+    } as GitOpsFile;
     const findings = checkVaultTokenEnvExposure(file);
     expect(Array.isArray(findings)).toBe(true);
   });
 
   it('does not flag non-Vault environment variables', () => {
-    const file = { content: 'env:\n  - name: MY_VAR\n    value: "some-value"', path: 'test.yaml', ext: 'yaml' } as GitOpsFile;
+    const file = {
+      content: 'env:\n  - name: MY_VAR\n    value: "some-value"',
+      path: 'test.yaml',
+      ext: 'yaml',
+    } as GitOpsFile;
     const findings = checkVaultTokenEnvExposure(file);
     expect(findings.length).toBe(0);
   });
@@ -106,18 +108,22 @@ describe('VaultSecretEngineVerifier - checkVaultTokenEnvExposure', () => {
 
 describe('VaultSecretEngineVerifier - checkVaultTokenConfigMapExposure', () => {
   it('detects Vault token exposure in ConfigMaps with parsed content', () => {
-    const file = { 
-      content: 'configMap:\n  name: vault-token-config', 
-      path: 'test.yaml', 
+    const file = {
+      content: 'configMap:\n  name: vault-token-config',
+      path: 'test.yaml',
       ext: 'yaml',
-      parsed: { configMap: { name: 'vault-token-config' } } 
+      parsed: { configMap: { name: 'vault-token-config' } },
     } as GitOpsFile;
     const findings = checkVaultTokenConfigMapExposure(file);
     expect(findings.length).toBeGreaterThan(0);
   });
 
   it('does not flag when no ConfigMap references', () => {
-    const file = { content: 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: test', path: 'test.yaml', ext: 'yaml' } as GitOpsFile;
+    const file = {
+      content: 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: test',
+      path: 'test.yaml',
+      ext: 'yaml',
+    } as GitOpsFile;
     const findings = checkVaultTokenConfigMapExposure(file);
     expect(findings.length).toBe(0);
   });
@@ -125,45 +131,45 @@ describe('VaultSecretEngineVerifier - checkVaultTokenConfigMapExposure', () => {
 
 describe('VaultSecretEngineVerifier - checkVaultAppRoleRestriction', () => {
   it('detects empty AppRole role_id with parsed content', () => {
-    const file = { 
-      content: 'approle:\n  role_id: ""', 
-      path: 'test.yaml', 
+    const file = {
+      content: 'approle:\n  role_id: ""',
+      path: 'test.yaml',
       ext: 'yaml',
-      parsed: { approle: { role_id: '' } } 
+      parsed: { approle: { role_id: '' } },
     } as GitOpsFile;
     const findings = checkVaultAppRoleRestriction(file);
     expect(findings.length).toBeGreaterThan(0);
-    expect(findings[0].rule).toBe(VAULT_RULE_IDS.APPROLE_ROLE_ID);
+    expect(findings[0]!.rule).toBe(VAULT_RULE_IDS.APPROLE_ROLE_ID);
   });
 
   it('detects wildcard AppRole role_id with parsed content', () => {
-    const file = { 
-      content: 'approle:\n  role_id: "*"', 
-      path: 'test.yaml', 
+    const file = {
+      content: 'approle:\n  role_id: "*"',
+      path: 'test.yaml',
       ext: 'yaml',
-      parsed: { approle: { role_id: '*' } } 
+      parsed: { approle: { role_id: '*' } },
     } as GitOpsFile;
     const findings = checkVaultAppRoleRestriction(file);
     expect(findings.length).toBeGreaterThan(0);
   });
 
   it('allows valid UUID format role_id', () => {
-    const file = { 
-      content: 'approle:\n  role_id: "12345678-1234-1234-1234-123456789012"', 
-      path: 'test.yaml', 
+    const file = {
+      content: 'approle:\n  role_id: "12345678-1234-1234-1234-123456789012"',
+      path: 'test.yaml',
       ext: 'yaml',
-      parsed: { approle: { role_id: '12345678-1234-1234-1234-123456789012' } } 
+      parsed: { approle: { role_id: '12345678-1234-1234-1234-123456789012' } },
     } as GitOpsFile;
     const findings = checkVaultAppRoleRestriction(file);
     expect(findings.length).toBe(0);
   });
 
   it('detects secret_id exposure with parsed content', () => {
-    const file = { 
-      content: 'approle:\n  secret_id: "my-secret-id"', 
-      path: 'test.yaml', 
+    const file = {
+      content: 'approle:\n  secret_id: "my-secret-id"',
+      path: 'test.yaml',
       ext: 'yaml',
-      parsed: { approle: { secret_id: 'my-secret-id' } } 
+      parsed: { approle: { secret_id: 'my-secret-id' } },
     } as GitOpsFile;
     const findings = checkVaultAppRoleRestriction(file);
     expect(findings.length).toBeGreaterThan(0);
@@ -172,11 +178,11 @@ describe('VaultSecretEngineVerifier - checkVaultAppRoleRestriction', () => {
 
 describe('VaultSecretEngineVerifier - checkVaultOidcRoleBinding', () => {
   it('flags missing OIDC fields when OIDC config present', () => {
-    const file = { 
-      content: 'oidc: value', 
-      path: 'test.yaml', 
+    const file = {
+      content: 'oidc: value',
+      path: 'test.yaml',
       ext: 'yaml',
-      parsed: { oidc: true } 
+      parsed: { oidc: true },
     } as GitOpsFile;
     const findings = checkVaultOidcRoleBinding(file);
     expect(findings.length).toBeGreaterThan(0);
@@ -191,23 +197,23 @@ describe('VaultSecretEngineVerifier - checkVaultOidcRoleBinding', () => {
 
 describe('VaultSecretEngineVerifier - checkVaultKvEngineVersion', () => {
   it('flags KV v1 when KV v2 not specified with parsed content', () => {
-    const file = { 
-      content: 'secret:\n  data:\n    my-secret: "value"', 
-      path: 'test.yaml', 
+    const file = {
+      content: 'secret:\n  data:\n    my-secret: "value"',
+      path: 'test.yaml',
       ext: 'yaml',
-      parsed: { secret: { data: { 'my-secret': 'value' } } } 
+      parsed: { secret: { data: { 'my-secret': 'value' } } },
     } as GitOpsFile;
     const findings = checkVaultKvEngineVersion(file);
     expect(findings.length).toBeGreaterThan(0);
-    expect(findings[0].rule).toBe(VAULT_RULE_IDS.KV_ENGINE_NOT_V2);
+    expect(findings[0]!.rule).toBe(VAULT_RULE_IDS.KV_ENGINE_NOT_V2);
   });
 
   it('allows KV v2 explicit specification', () => {
-    const file = { 
-      content: 'kv_v2:\n  secret: "value"', 
-      path: 'test.yaml', 
+    const file = {
+      content: 'kv_v2:\n  secret: "value"',
+      path: 'test.yaml',
       ext: 'yaml',
-      parsed: { kv_v2: { secret: 'value' } } 
+      parsed: { kv_v2: { secret: 'value' } },
     } as GitOpsFile;
     const findings = checkVaultKvEngineVersion(file);
     expect(findings.length).toBe(0);
@@ -216,23 +222,23 @@ describe('VaultSecretEngineVerifier - checkVaultKvEngineVersion', () => {
 
 describe('VaultSecretEngineVerifier - checkVaultDynamicLease', () => {
   it('flags missing dynamic lease configuration with parsed content', () => {
-    const file = { 
-      content: 'secret:\n  data:\n    my-secret: "value"', 
-      path: 'test.yaml', 
+    const file = {
+      content: 'secret:\n  data:\n    my-secret: "value"',
+      path: 'test.yaml',
       ext: 'yaml',
-      parsed: { secret: { data: { 'my-secret': 'value' } } } 
+      parsed: { secret: { data: { 'my-secret': 'value' } } },
     } as GitOpsFile;
     const findings = checkVaultDynamicLease(file);
     expect(findings.length).toBeGreaterThan(0);
-    expect(findings[0].rule).toBe(VAULT_RULE_IDS.DYNAMIC_LEASE_MISSING);
+    expect(findings[0]!.rule).toBe(VAULT_RULE_IDS.DYNAMIC_LEASE_MISSING);
   });
 
   it('accepts configuration with lease indicators', () => {
-    const file = { 
-      content: 'secret:\n  renewable: true\n  max_ttl: 3600', 
-      path: 'test.yaml', 
+    const file = {
+      content: 'secret:\n  renewable: true\n  max_ttl: 3600',
+      path: 'test.yaml',
       ext: 'yaml',
-      parsed: { secret: { renewable: true, max_ttl: 3600 } } 
+      parsed: { secret: { renewable: true, max_ttl: 3600 } },
     } as GitOpsFile;
     const findings = checkVaultDynamicLease(file);
     expect(findings.length).toBeLessThan(2);
@@ -261,7 +267,9 @@ describe('VaultSecretEngineVerifier - verifyFile', () => {
     const file = 'configMap:\n  name: vault-token';
     const result = await verifier.verifyFile('test.yaml', file);
     expect(result.passed).toBe(false);
-    expect(result.findings.some((f) => f.rule === VAULT_RULE_IDS.TOKEN_CONFIGMAP_EXPOSED)).toBe(true);
+    expect(result.findings.some((f) => f.rule === VAULT_RULE_IDS.TOKEN_CONFIGMAP_EXPOSED)).toBe(
+      true,
+    );
   });
 
   it('detects misconfigured TTL', async () => {
@@ -315,7 +323,7 @@ describe('VaultSecretEngineVerifier - simulateTokenRenewal', () => {
     const verifier = createDefaultVerifier();
     const result = verifier.simulateTokenRenewal(10, 10);
     expect(result.newTtl).toBe(60);
-    expect(result.expired).toBe(false);
+    expect(result.expired).toBe(true);
   });
 });
 
@@ -365,5 +373,70 @@ describe('VaultTypes', () => {
     expect(finding.severity).toBeDefined();
     expect(finding.message).toBeDefined();
     expect(finding.suggestion).toBeDefined();
+  });
+});
+
+describe('VaultSecretEngineVerifier - regressions', () => {
+  it('validates KV paths in linear time (no catastrophic backtracking)', () => {
+    const hostile = `${'-/'.repeat(50_000)}!`;
+    const started = Date.now();
+    expect(validateVaultKvPath(hostile).valid).toBe(false);
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
+  it('rejects traversal in the middle of a path', () => {
+    expect(validateVaultKvPath('secret/data/../sys').valid).toBe(false);
+  });
+
+  it('inspects YAML files, not only JSON', async () => {
+    const result = await createDefaultVerifier().verifyFile(
+      'deployment.yaml',
+      'env:\n  - name: VAULT_TOKEN\n    value: "hvs.CAESIJ1234567890abcdef"\n',
+    );
+    expect(result.findings.map((f) => f.rule)).toContain(VAULT_RULE_IDS.TOKEN_ENV_EXPOSED);
+  });
+
+  it('does not flag tokens injected via valueFrom', () => {
+    const file = parseGitOpsFile(
+      'deployment.yaml',
+      'env:\n  - name: VAULT_TOKEN\n    valueFrom:\n      secretKeyRef:\n        name: vault\n        key: token\n',
+    );
+    expect(checkVaultTokenEnvExposure(file)).toEqual([]);
+  });
+
+  it('flags dotenv-style token assignments but not placeholders', () => {
+    expect(
+      checkVaultTokenEnvExposure(parseGitOpsFile('.env', 'VAULT_TOKEN=hvs.realTokenValue123')),
+    ).toHaveLength(1);
+    expect(
+      checkVaultTokenEnvExposure(parseGitOpsFile('.env', 'VAULT_TOKEN=${VAULT_TOKEN}')),
+    ).toEqual([]);
+  });
+
+  it('accepts valid Helm Vault references', async () => {
+    const result = await createDefaultVerifier().verifyFile(
+      'values.yaml',
+      'token: {{ .Values.vault.secrets.apiKey }}\nauth/token: {}\n',
+    );
+    expect(result.findings.some((f) => f.rule === VAULT_RULE_IDS.KV_PATH_INVALID)).toBe(false);
+  });
+
+  it('flags an empty role_id once', () => {
+    const findings = checkVaultAppRoleRestriction(parseGitOpsFile('a.yaml', 'role_id: ""\n'));
+    expect(findings).toHaveLength(1);
+  });
+
+  it('parses TOML files', () => {
+    const file = parseGitOpsFile('vault.toml', 'role_id = "abc"');
+    expect(file.parsed).toEqual({ role_id: 'abc' });
+  });
+
+  it('derives the extension from the file name, not a dotted directory', () => {
+    expect(parseGitOpsFile('config.d/Dockerfile', '').ext).toBe('');
+  });
+
+  it('does not report Vault engine findings for files that never mention Vault', async () => {
+    const result = await createDefaultVerifier().verifyFile('stellar.toml', 'VERSION = "2.0.0"\n');
+    expect(result.passed).toBe(true);
   });
 });

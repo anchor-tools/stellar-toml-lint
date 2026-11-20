@@ -14,11 +14,7 @@ import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
-import {
-  VaultSecretEngineVerifier,
-  type GitOpsFile,
-  type VaultVerificationOptions,
-} from './gitops/vaultVerifier.js';
+import { VaultSecretEngineVerifier } from './gitops/vaultVerifier.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import {
   formatCheckstyle,
@@ -375,10 +371,10 @@ OPTIONS
                            Query CNAME/NS records for every referenced domain and
                            flag dangling pointers to claimable cloud resources
        --audit-secrets     Halt with exit 1 on leaked Stellar seeds, cloud keys,
-      --audit-vault-secrets
-                        Halt with exit 1 on misconfigured Vault secret engine
-                        paths, exposed tokens, and TTL misconfigurations
                            bearer tokens or PEM blocks; output is always redacted
+       --audit-vault-secrets
+                           Halt with exit 1 on misconfigured Vault secret engine
+                           paths, exposed tokens, and TTL misconfigurations
        --audit-ssrf        Flag advertised URLs resolving to private, loopback,
                            link-local or multicast IPs, including DNS rebinding
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
@@ -1371,6 +1367,14 @@ async function detectDriftCommand(args: string[]): Promise<number> {
   }
 }
 
+/** Run the Vault secret engine verifier; returns 1 to halt, undefined to continue. */
+async function auditVaultSecretsOrHalt(path: string, source: string): Promise<number | undefined> {
+  const result = await new VaultSecretEngineVerifier().verifyFile(path, source);
+  if (result.passed) return undefined;
+  process.stderr.write(`${result.summary}\n`);
+  return 1;
+}
+
 async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'test-kms-signer') {
     try {
@@ -1490,23 +1494,18 @@ async function main(argv: string[]): Promise<number> {
           if (halted !== undefined) return halted;
         }
         if (cli.auditVaultSecrets) {
-          const verifier = new VaultSecretEngineVerifier();
-          const domain = cli.domain!.replace(/^https?:\/\//, '');
-          const source = await (
-            cli.checkNetwork
-              ? await (await fetchImpl(`https://${domain}/.well-known/stellar.toml`)).text()
-              : ''
-          );
-          const file: GitOpsFile = {
-            content: source,
-            path: 'stellar.toml',
-            ext: 'toml',
-          };
-          const result = await verifier.verifyFile(file.path, file.content);
-          if (!result.passed) {
-            process.stderr.write(result.summary + '\n');
-            return 1;
+          const host = cli.domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+          const response = await fetchImpl(`https://${host}/.well-known/stellar.toml`, {
+            redirect: 'follow',
+          });
+          if (!response.ok) {
+            process.stderr.write(
+              `Could not fetch https://${host}/.well-known/stellar.toml: HTTP ${response.status}\n`,
+            );
+            return 2;
           }
+          const halted = await auditVaultSecretsOrHalt('stellar.toml', await response.text());
+          if (halted !== undefined) return halted;
         }
         if (domainResult.parsed && cli.checkNetwork) {
           const networkDiagnostics: Diagnostic[] = [
@@ -1573,17 +1572,8 @@ async function main(argv: string[]): Promise<number> {
           }
 
           if (cli.auditVaultSecrets) {
-            const verifier = new VaultSecretEngineVerifier();
-            const file: GitOpsFile = {
-              content: source,
-              path: path === '-' ? 'stdin' : path,
-              ext: path === '-' ? 'txt' : path.split('.').pop()!.toLowerCase(),
-            };
-            const result = await verifier.verifyFile(file.path, file.content);
-            if (!result.passed) {
-              process.stderr.write(result.summary + '\n');
-              return 1;
-            }
+            const halted = await auditVaultSecretsOrHalt(path === '-' ? 'stdin' : path, source);
+            if (halted !== undefined) return halted;
           }
 
           if (fileResult.parsed) {
