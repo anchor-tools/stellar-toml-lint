@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -194,6 +195,15 @@ describe('SemanticTomlDiffer', () => {
       expect(lines(diffSemanticToml(source, target))).toEqual(['modified CURRENCIES[USD#2].name']);
     });
 
+    it('uses the position for an entry whose code is not usable as a key', () => {
+      const source =
+        '[[CURRENCIES]]\ncode=""\nname="one"\n\n[[CURRENCIES]]\ncode=100\nname="two"\n';
+      const target =
+        '[[CURRENCIES]]\ncode=""\nname="changed"\n\n[[CURRENCIES]]\ncode=100\nname="two"\n';
+
+      expect(lines(diffSemanticToml(source, target))).toEqual(['modified CURRENCIES[#1].name']);
+    });
+
     it('names each entry when a section vanishes entirely', () => {
       const source =
         'VERSION = "1.0"\n\n[[CURRENCIES]]\ncode="USD"\n\n[[CURRENCIES]]\ncode="EUR"\n';
@@ -297,6 +307,24 @@ describe('SemanticTomlDiffer', () => {
         new SemanticTomlDiffer({ fetchImpl }).load('https://gone.example.com/stellar.toml'),
       ).rejects.toThrow('HTTP 404');
     });
+
+    it('reads a side from stdin', async () => {
+      const stdin = process.stdin;
+      Object.defineProperty(process, 'stdin', {
+        value: Readable.from(['VERSION = "2.7.0"\n']),
+        configurable: true,
+        writable: true,
+      });
+      try {
+        expect(await new SemanticTomlDiffer().load('-')).toBe('VERSION = "2.7.0"\n');
+      } finally {
+        Object.defineProperty(process, 'stdin', {
+          value: stdin,
+          configurable: true,
+          writable: true,
+        });
+      }
+    });
   });
 
   describe('the anchor revision fixtures', () => {
@@ -399,6 +427,14 @@ describe('formatValue', () => {
       '{code="USD", name="Dollar", issuer="G1", … 1 more}',
     );
     expect(formatValue({ nested: [1, 2, 3] })).toBe('{nested=[3 values]}');
+    expect(formatValue({ nested: { a: 1, b: 2 } })).toBe('{nested={2 fields}}');
     expect(formatValue(2)).toBe('2');
+    expect(formatValue(true)).toBe('true');
+  });
+
+  it('renders a value TOML cannot produce rather than throwing', () => {
+    // `formatValue` is exported and total, so a value outside TOML's type set still prints.
+    expect(formatValue(null)).toBe('null');
+    expect(formatValue(undefined)).toBe('undefined');
   });
 });
