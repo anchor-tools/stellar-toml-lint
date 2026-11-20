@@ -67,6 +67,24 @@ describe('cli', () => {
     expect(stdout).toContain('--check-contracts');
     expect(stdout).toContain('--soroban-rpc');
     expect(stdout).toContain('checkstyle');
+    expect(stdout).toContain('verify-archive-gpg');
+  });
+
+  it('validates the required archive GPG command arguments', async () => {
+    const missing = await cli(['verify-archive-gpg', '--url', 'https://history.example.test/']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('--pubkey <key-file>');
+
+    const unknown = await cli([
+      'verify-archive-gpg',
+      '--url',
+      'https://history.example.test/',
+      '--pubkey',
+      'test-key.asc',
+      '--not-an-option',
+    ]);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option');
   });
 
   it('prints the version', async () => {

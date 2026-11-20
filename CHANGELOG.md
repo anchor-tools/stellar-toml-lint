@@ -9,21 +9,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `verify-metrics` (`src/telemetry/prometheusValidator.ts`, #526): scrapes a Prometheus /
-  OpenMetrics endpoint (from `--url`, or discovered in `stellar.toml`) with a streaming parser and
-  reports malformed tokens, invalid or missing `TYPE`, missing `HELP`, NaN gauges, negative counters,
-  broken histograms, a missing OpenMetrics `# EOF`, and absent anchor metrics.
-- `probe-sla` (`src/telemetry/slaLatencyProber.ts`, #527): read-only `GET /info` probes of every
-  declared SEP server, timing DNS, TCP connect, TLS handshake and TTFB, with p50/p95/p99, an ASCII
-  latency histogram and SLA violations against a 500 ms TTFB benchmark.
-- `--audit-error-taxonomy` (`src/telemetry/rfc7807Validator.ts`, #528): sends invalid read-only
-  requests to SEP endpoints, classifies responses into a standard error taxonomy, validates RFC 7807
-  Problem Details and the SEP `{"error": "..."}` schema, and reports leaked stack traces, Stellar
-  secret seeds, private keys, database URLs and cloud credentials as critical.
-- `calculate-uptime` (`src/telemetry/uptimeCalculator.ts`, #530): time-weighted 24h/7d/30d
-  availability, incidents, longest downtime streak and MTTR from JSON, NDJSON or CSV health logs,
-  with truncated (never rounded-up) percentages, nines tiers, markdown tables and SVG / shields.io
-  badges.
+- `verify-archive-gpg --url <archive> --pubkey <key-file>` (`src/overlay/archiveGpgVerifier.ts`):
+  downloads the latest checkpoint ledger XDR gzip file described by `.well-known/stellar-history.json`
+  and verifies it against a supplied detached OpenPGP signature with OpenPGP.js. The optional
+  `<ledger-file>.sig` sidecar is a best-effort convention, not a Stellar Core format guarantee;
+  `--signature-url` can name a different location. The verifier enforces RSA 2048-bit or Ed25519
+  signing keys, expiry/revocation checks, SHA-2 signature hashes, bounded HTTPS requests, and
+  reports unknown operator identity trust unless an independently sourced fingerprint is pinned.
 
 - `--sort-keys` / `--sort-keys --dry-run` (`src/cst/canonicalSortCodemod.ts`,
   `src/line-diff.ts`): rewrites `[DOCUMENTATION]`, `[[PRINCIPALS]]`, `[[CURRENCIES]]` and
