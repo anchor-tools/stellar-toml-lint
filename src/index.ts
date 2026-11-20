@@ -329,6 +329,43 @@ export { SPEC_URL } from './spec.js';
 export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
 export { codeActionsFor } from './lsp/code-actions.js';
+export {
+  CloudKmsSignerCoordinator,
+  runCloudKmsSignerCheck,
+  formatKmsSignerReport,
+  createKmsClient,
+  detectKmsProvider,
+  AwsKmsClient,
+  GcpKmsClient,
+  AzureKeyVaultClient,
+  KmsError,
+  KmsAuthorizationError,
+  KmsThrottlingError,
+  KmsUnsupportedAlgorithmError,
+  withKmsRetry,
+  GitOpsDriftDetector,
+  DriftDetectionError,
+  detectDrift,
+  renderDriftText,
+  renderDriftJson,
+} from './gitops/index.js';
+export type {
+  CloudKmsSignerCoordinatorOptions,
+  CloudKmsSignerReport,
+  KmsClient,
+  KmsKeyAlgorithm,
+  KmsKeyDescriptor,
+  KmsProvider,
+  KmsQuorumReport,
+  KmsRetryOptions,
+  KmsSignerCheck,
+  KmsSignResult,
+  KmsThresholdLevel,
+  DriftDetectionOptions,
+  DriftFinding,
+  DriftReport,
+  DriftType,
+} from './gitops/index.js';
 export type { LspCodeAction, LspRange, LspTextEdit, LspWorkspaceEdit } from './lsp/code-actions.js';
 export {
   auditTomlAuthTree,
@@ -671,3 +708,24 @@ export type {
   FramingDecision,
   FramingRole,
 } from './security/clickjackingAuditor.js';
+export { LosslessCstFormatter } from './cst/cstFormatter.js';
+export type { FormatterOptions } from './cst/cstFormatter.js';
+export { ResilientIncrementalParser } from './cst/resilientParser.js';
+export type {
+  ResilientParseResult,
+  ResilientDiagnostic,
+  EditRange,
+} from './cst/resilientParser.js';
+export { RateLimitHeaderVerifier } from './telemetry/rateLimitHeaderVerifier.js';
+export type {
+  RateLimitComplianceResult,
+  RateLimitFinding,
+  VerifyRateHeadersOptions,
+} from './telemetry/rateLimitHeaderVerifier.js';
+export { TlsCertificateWatchdog } from './telemetry/tlsWatchdog.js';
+export type {
+  TlsCertificateAuditResult,
+  TlsWatchdogFinding,
+  TlsRawCertInfo,
+  TlsWatchdogOptions,
+} from './telemetry/tlsWatchdog.js';

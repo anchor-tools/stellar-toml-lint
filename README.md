@@ -709,6 +709,32 @@ This catches the failure mode nobody notices: a CDN or hosting change quietly dr
 `Access-Control-Allow-Origin` header, which makes the file unreadable to every browser-based wallet
 while looking perfectly fine to `curl`.
 
+### GitOps drift detection
+
+If your stellar.toml lives in Git and a pipeline deploys it, `detect-drift` checks that production
+still serves what Git says it should:
+
+```sh
+stellar-toml-lint detect-drift --domain example.com --git-path ./site
+```
+
+The comparison is semantic: comments, whitespace, key order and `[[CURRENCIES]]` order are ignored,
+and currencies are matched by `code`/`issuer`. The command walks the file's Git history to find the
+revision that is actually deployed, then sorts every difference into one of three groups:
+
+- **unreleased**: committed to Git but not deployed yet. The unreleased commits are listed; re-run
+  the deployment.
+- **uncommitted**: changed on production outside Git. Commit the change, or redeploy to revert it.
+- **diverged**: changed on both sides, or no Git history was available to tell which side changed.
+
+`--git-path` takes the file itself or a directory containing `.well-known/stellar.toml` or
+`stellar.toml`. `--ref` compares a branch or tag other than `HEAD`. `--format diff` prints a
+line-level unified diff, and `--format json` prints a structured alert for webhooks. Failures use
+the same JSON envelope with `"status": "error"`.
+
+Exit codes for CI: `0` in sync, `1` drift detected, `2` the check could not run (timeout, HTTP
+error, missing file, invalid TOML). `--timeout <ms>` defaults to 10000.
+
 ### Telemetry and SLA tooling
 
 Four subcommands audit how a live anchor behaves operationally. Every network probe is a
@@ -1147,6 +1173,36 @@ does in a browser, and a report-only policy counts as nothing sent.
 - **info** — worth a look; usually an unrecognised field name.
 
 Tune any rule with `--off`, `--warn`, or `--error`.
+
+## Cloud KMS hardware signers
+
+Anchors that keep master signing keys in a cloud HSM can sign a transaction envelope without ever
+exporting the key:
+
+```bash
+stellar-toml-lint test-kms-signer \
+  --key-id arn:aws:kms:us-east-1:111122223333:key/1234abcd \
+  --envelope "AAAAAgAAAAA..." \
+  --threshold medium
+```
+
+The coordinator asks the provider to sign the envelope's 32-byte transaction hash, packs the result
+into a Stellar `DecoratedSignature` XDR, verifies it locally against the key's public key, and reads
+the account's signer list from Horizon to confirm the key's weight meets the requested threshold
+(`low`, `medium`, or `high`). `--json` emits the same report for a pipeline; `--no-quorum` skips the
+Horizon audit for offline runs, and `--mock-fixtures <dir>` serves it from recorded responses.
+
+| Provider         | Key identifier                                                | Standard credentials                                                                   |
+| ---------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| AWS KMS          | `arn:aws:kms:<region>:<account>:key/<id>` or `alias/<name>`   | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional `AWS_SESSION_TOKEN`             |
+| Google Cloud KMS | `projects/.../cryptoKeys/<key>[/cryptoKeyVersions/<version>]` | `GOOGLE_APPLICATION_CREDENTIALS` or `GOOGLE_OAUTH_ACCESS_TOKEN`                        |
+| Azure Key Vault  | `https://<vault>.vault.azure.net/keys/<name>[/<version>]`     | `AZURE_ACCESS_TOKEN`, or `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET` |
+
+Credentials are read from those standard environment sources at call time and are never written to
+a report, an error, or a descriptor. Ed25519 signatures pass through as 64 raw bytes; secp256k1
+signatures are converted from DER to `r || s`. Throttling (`429`, `ThrottlingException`, `5xx`) is
+retried with exponential backoff, honouring `Retry-After`; authorization failures are reported
+immediately instead of being retried.
 
 ## Architecture Diagram Generator
 

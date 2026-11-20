@@ -353,3 +353,76 @@ export async function calculateUptimeCommand(
     return fail(io, error, UPTIME_USAGE);
   }
 }
+
+const RATE_HEADERS_USAGE = `Usage: stellar-toml-lint verify-rate-headers --url <url> [--burst <n>] [--format text|json]`;
+
+export async function verifyRateHeadersCommand(
+  args: readonly string[],
+  io: CommandIo = processIo,
+): Promise<number> {
+  let url: string | undefined;
+  let burst = 3;
+  let fmt: 'text' | 'json' = 'text';
+
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i]!;
+      if (arg === '--url') url = value(args, ++i, arg);
+      else if (arg === '--burst') burst = positiveInt(value(args, ++i, arg), arg);
+      else if (arg === '--format')
+        fmt = format(value(args, ++i, arg), ['text', 'json']) as 'text' | 'json';
+      else throw new UsageError(`Unknown option ${arg} for verify-rate-headers`);
+    }
+    if (url === undefined) throw new UsageError('verify-rate-headers needs --url');
+  } catch (error) {
+    return fail(io, error, RATE_HEADERS_USAGE);
+  }
+
+  try {
+    const { RateLimitHeaderVerifier } = await import('./rateLimitHeaderVerifier.js');
+    const verifier = new RateLimitHeaderVerifier();
+    const result = await verifier.verifyEndpoint(url, {
+      burstCount: burst,
+      fetchImpl: io.fetchImpl,
+    });
+
+    io.stdout(verifier.renderReport(result, fmt) + '\n');
+    return result.ok ? 0 : 1;
+  } catch (error) {
+    return fail(io, error, RATE_HEADERS_USAGE);
+  }
+}
+
+const TLS_AUDIT_USAGE = `Usage: stellar-toml-lint audit-tls --domain <domain> [--format text|json]`;
+
+export async function auditTlsCommand(
+  args: readonly string[],
+  io: CommandIo = processIo,
+): Promise<number> {
+  let domain: string | undefined;
+  let fmt: 'text' | 'json' = 'text';
+
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i]!;
+      if (arg === '--domain') domain = value(args, ++i, arg);
+      else if (arg === '--format')
+        fmt = format(value(args, ++i, arg), ['text', 'json']) as 'text' | 'json';
+      else throw new UsageError(`Unknown option ${arg} for audit-tls`);
+    }
+    if (domain === undefined) throw new UsageError('audit-tls needs --domain');
+  } catch (error) {
+    return fail(io, error, TLS_AUDIT_USAGE);
+  }
+
+  try {
+    const { TlsCertificateWatchdog } = await import('./tlsWatchdog.js');
+    const watchdog = new TlsCertificateWatchdog();
+    const result = await watchdog.auditDomain(domain);
+
+    io.stdout(watchdog.renderReport(result, fmt) + '\n');
+    return result.valid ? 0 : 1;
+  } catch (error) {
+    return fail(io, error, TLS_AUDIT_USAGE);
+  }
+}

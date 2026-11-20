@@ -25,9 +25,9 @@ import {
   formatGithub,
   formatHtml,
   formatJson,
+  formatJunit,
   formatMarkdown,
   formatNdjson,
-  formatJunit,
   formatSarif,
   formatSummary,
   formatText,
@@ -85,10 +85,13 @@ import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVer
 import { CrossOriginIsolationAuditor, renderIsolationReport } from './wasm/isolationAuditor.js';
 import {
   auditErrorTaxonomyCommand,
+  auditTlsCommand,
   calculateUptimeCommand,
   probeSlaCommand,
   verifyMetricsCommand,
+  verifyRateHeadersCommand,
 } from './telemetry/commands.js';
+import { LosslessCstFormatter } from './cst/cstFormatter.js';
 import {
   BrowserBoundaryVerifier,
   renderBrowserBoundaryReport,
@@ -123,6 +126,18 @@ import { loadPolicy, validatePolicy, evaluatePolicy } from './policy/engine.js';
 import { createFixtureFetch } from './mock-fixtures.js';
 import { runLspServer } from './lsp/server.js';
 import { getTomlJsonSchema } from './schema.js';
+import { runCloudKmsSignerCheck, type KmsThresholdLevel } from './gitops/kmsSignerCoordinator.js';
+import { formatKmsSignerReport } from './gitops/kmsReport.js';
+import { KmsError } from './gitops/kmsTypes.js';
+import {
+  DriftDetectionError,
+  GitOpsDriftDetector,
+  liveUrlForDomain,
+  renderDriftErrorJson,
+  renderDriftJson,
+  renderDriftLineDiff,
+  renderDriftText,
+} from './gitops/driftDetector.js';
 import { generateCompletion, isCompletionShell } from './completion.js';
 import { WasiSandboxRunner } from './wasm/wasiRunner.js';
 import { WasiSandboxError } from './wasm/errors.js';
@@ -210,6 +225,10 @@ Validate a Stellar Info File (stellar.toml) against SEP-1 — offline.
 
 USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
+  stellar-toml-lint test-kms-signer --key-id <arn> --envelope <xdr>
+                                         Sign a transaction envelope with a cloud
+                                         KMS key and verify the signature and
+                                         Horizon signer weight threshold
   stellar-toml-lint audit-clawbacks --asset <code:issuer> [--horizon <url>] [--format json|markdown]
                                          Generate a clawback audit trail from Horizon
   stellar-toml-lint dispatch-alert --webhook <url> --type slack|discord|pagerduty
@@ -252,6 +271,19 @@ USAGE
   stellar-toml-lint calculate-uptime --log-file <path> [--format text|markdown|json]
                                          Availability over 24h/7d/30d, incidents and
                                          downtime streaks from JSON/CSV health logs
+  stellar-toml-lint format --file <file> [--write]
+                                         Format stellar.toml losslessly preserving comments
+  stellar-toml-lint verify-rate-headers --url <url> [--burst <n>] [--format text|json]
+                                         Verify API rate-limit headers (RFC 6585)
+  stellar-toml-lint detect-drift --domain <domain> [--git-path <path>] [--ref <ref>]
+                                         [--format text|json|diff] [--timeout <ms>]
+                                         [--url <live-url>] [--max-history <n>]
+                                         Compare the stellar.toml in Git with the live
+                                         one; report unreleased commits and out-of-band
+                                         production edits (exit 0 in sync, 1 drift,
+                                         2 on fetch/git errors)
+  stellar-toml-lint audit-tls --domain <domain> [--format text|json]
+                                         Audit SSL/TLS renewal and OCSP stapling health
   stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>]
                                          [--format text|json]
                                          Map every public key in the file to its roles
@@ -389,6 +421,23 @@ OPTIONS
                           associations
       --color / --no-color
       --list-rules        Print every rule and exit
+
+test-kms-signer OPTIONS
+  --key-id <id>       AWS KMS ARN, GCP Cloud KMS resource name, or Azure Key
+                      Vault key URL. Credentials come from the provider's
+                      standard environment variables only
+  --envelope <xdr>    Base64 transaction envelope to sign
+  --network <name>    Network passphrase (default: Stellar public network)
+  --horizon <url>     Horizon base URL for the signer weight audit
+  --account <G...>    Account to audit (default: the envelope source)
+  --signer-key <G...> Override the Stellar signer matched to the KMS key
+  --threshold <level> low, medium (default), or high
+  --no-quorum         Skip the Horizon signer weight audit
+  --no-verify         Skip local signature verification
+  --mock-fixtures <dir>
+                      Serve the Horizon audit from recorded JSON fixtures
+  --json              Emit the report as JSON
+
       --completion <sh>   Print a shell completion script for bash, zsh, or fish
                           (e.g. eval "$(stellar-toml-lint --completion zsh)")
   -v, --version
@@ -1208,7 +1257,131 @@ async function refactorCommand(args: string[]): Promise<number> {
   }
 }
 
+async function formatCommand(argv: string[]): Promise<number> {
+  let file: string | undefined;
+  let write = false;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg === '--file' || arg === '-f') {
+      file = argv[++i];
+    } else if (arg === '--write' || arg === '-w') {
+      write = true;
+    } else if (!arg.startsWith('-')) {
+      file = arg;
+    }
+  }
+  if (!file) {
+    process.stderr.write('Usage: stellar-toml-lint format --file <stellar.toml> [--write]\n');
+    return 2;
+  }
+  try {
+    const formatter = new LosslessCstFormatter();
+    const result = await formatter.formatFile(file, write);
+    if (!write) {
+      process.stdout.write(result.formatted);
+    } else if (result.changed) {
+      process.stdout.write(`Formatted ${file}\n`);
+    } else {
+      process.stdout.write(`${file} is already formatted\n`);
+    }
+    return 0;
+  } catch (err) {
+    process.stderr.write(`Formatting error: ${err instanceof Error ? err.message : String(err)}\n`);
+    return 2;
+  }
+}
+
+/**
+ * `stellar-toml-lint detect-drift --domain <domain> [--git-path <path>]`
+ *
+ * Exit codes are the CI contract: 0 in sync, 1 drift, 2 when the check could
+ * not run (timeout, HTTP error, missing file, invalid TOML, bad arguments).
+ */
+async function detectDriftCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let url: string | undefined;
+  let gitPath: string | undefined;
+  let ref: string | undefined;
+  let format = 'text';
+  let timeoutMs: number | undefined;
+  let maxHistory: number | undefined;
+  let color: boolean | undefined;
+  const usage =
+    'Usage: stellar-toml-lint detect-drift --domain <domain> [--git-path <path>] [--ref <ref>] ' +
+    '[--format text|json|diff] [--timeout <ms>] [--url <live-url>] [--max-history <n>]\n';
+  const positive = (flag: string, raw: string): number => {
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value <= 0)
+      throw new Error(`${flag} expects a positive integer.`);
+    return value;
+  };
+
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] as string;
+      if (arg === '--domain') domain = requireValue(args, ++i, arg);
+      else if (arg === '--url') url = requireValue(args, ++i, arg);
+      else if (arg === '--git-path') gitPath = requireValue(args, ++i, arg);
+      else if (arg === '--ref') ref = requireValue(args, ++i, arg);
+      else if (arg === '--format') format = requireValue(args, ++i, arg);
+      else if (arg === '--timeout') timeoutMs = positive(arg, requireValue(args, ++i, arg));
+      else if (arg === '--max-history') maxHistory = positive(arg, requireValue(args, ++i, arg));
+      else if (arg === '--color') color = true;
+      else if (arg === '--no-color') color = false;
+      else throw new Error(`Unknown option ${arg} for detect-drift`);
+    }
+    if (!['text', 'json', 'diff'].includes(format)) {
+      throw new Error('--format expects text, json or diff.');
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n${usage}`);
+    return 2;
+  }
+  if (domain === undefined && url === undefined) {
+    process.stderr.write(usage);
+    return 2;
+  }
+
+  const useColor = color ?? shouldUseColor();
+  let liveUrl: string | undefined = url;
+  try {
+    liveUrl ??= liveUrlForDomain(domain!);
+    const report = await new GitOpsDriftDetector({
+      ...(domain !== undefined ? { domain } : {}),
+      url: liveUrl,
+      ...(gitPath !== undefined ? { gitPath } : {}),
+      ...(ref !== undefined ? { ref } : {}),
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+      ...(maxHistory !== undefined ? { maxHistory } : {}),
+    }).detect();
+    if (format === 'json') process.stdout.write(renderDriftJson(report));
+    else if (format === 'diff')
+      process.stdout.write(renderDriftLineDiff(report, { color: useColor }));
+    else process.stdout.write(renderDriftText(report, { color: useColor }));
+    return report.inSync ? 0 : 1;
+  } catch (error) {
+    if (format === 'json') {
+      process.stdout.write(
+        renderDriftErrorJson(error instanceof Error ? error : new Error(String(error)), liveUrl),
+      );
+    }
+    const prefix = error instanceof DriftDetectionError ? `${error.code}: ` : '';
+    process.stderr.write(`${prefix}${message(error)}\n`);
+    return 2;
+  }
+}
+
 async function main(argv: string[]): Promise<number> {
+  if (argv[0] === 'test-kms-signer') {
+    try {
+      return await runKmsSignerCommand(argv.slice(1));
+    } catch (error) {
+      const text = error instanceof KmsError ? `${error.code}: ${error.message}` : message(error);
+      process.stderr.write(`${text}\n`);
+      return error instanceof KmsError && !isKmsUsageError(error.code) ? 1 : 2;
+    }
+  }
+
   // `verify-promotions --domain <domain>` is the flag form with quotes enabled.
   if (argv[0] === 'verify-promotions') {
     argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
@@ -1230,6 +1403,10 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
+  if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
+  if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
+  if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
+  if (argv[0] === 'format') return formatCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -1729,6 +1906,124 @@ async function expandInputs(inputs: string[]): Promise<string[]> {
   }
 
   return [...new Set(paths)];
+}
+
+/**
+ * `test-kms-signer`: signs an envelope through a cloud HSM and verifies the
+ * result as a Stellar signature plus a Horizon quorum member.
+ *
+ * Exit codes follow the linter's convention: 0 verified, 1 a failed check or
+ * KMS denial, 2 bad usage.
+ */
+async function runKmsSignerCommand(argv: string[]): Promise<number> {
+  let keyId: string | undefined;
+  let envelope: string | undefined;
+  let networkPassphrase: string | undefined;
+  let horizonUrl: string | undefined;
+  let accountId: string | undefined;
+  let signerKey: string | undefined;
+  let threshold: KmsThresholdLevel | undefined;
+  let skipQuorumCheck = false;
+  let verifySignature = true;
+  let json = false;
+  let mockFixtures: string | undefined;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    switch (arg) {
+      case '-h':
+      case '--help':
+        process.stdout.write(USAGE);
+        return 0;
+      case '--key-id':
+      case '--key':
+        keyId = requireValue(argv, ++i, arg);
+        break;
+      case '--envelope':
+        envelope = requireValue(argv, ++i, arg);
+        break;
+      case '--network':
+      case '--network-passphrase':
+        networkPassphrase = requireValue(argv, ++i, arg);
+        break;
+      case '--horizon':
+        horizonUrl = requireValue(argv, ++i, arg);
+        break;
+      case '--account':
+        accountId = requireValue(argv, ++i, arg);
+        break;
+      case '--signer-key':
+        signerKey = requireValue(argv, ++i, arg);
+        break;
+      case '--threshold': {
+        const value = requireValue(argv, ++i, arg);
+        if (value !== 'low' && value !== 'medium' && value !== 'high') {
+          throw new KmsError('invalid-arguments', '--threshold expects low, medium, or high');
+        }
+        threshold = value;
+        break;
+      }
+      case '--no-quorum':
+        skipQuorumCheck = true;
+        break;
+      case '--no-verify':
+        verifySignature = false;
+        break;
+      case '--mock-fixtures':
+        mockFixtures = requireValue(argv, ++i, arg);
+        break;
+      case '--json':
+        json = true;
+        break;
+      default:
+        throw new KmsError('invalid-arguments', `Unknown option "${arg}" for test-kms-signer`);
+    }
+  }
+
+  if (keyId === undefined || envelope === undefined) {
+    throw new KmsError(
+      'invalid-arguments',
+      'test-kms-signer requires --key-id <arn> and --envelope <xdr>',
+    );
+  }
+
+  const fetchImpl = mockFixtures !== undefined ? createFixtureFetch(mockFixtures) : fetch;
+
+  let report;
+  try {
+    report = await runCloudKmsSignerCheck({
+      keyId,
+      envelope,
+      ...(networkPassphrase !== undefined ? { networkPassphrase } : {}),
+      ...(horizonUrl !== undefined ? { horizonUrl } : {}),
+      ...(accountId !== undefined ? { accountId } : {}),
+      ...(signerKey !== undefined ? { signerKey } : {}),
+      ...(threshold !== undefined ? { threshold } : {}),
+      skipQuorumCheck,
+      verifySignature,
+      fetchImpl,
+    });
+  } catch (error) {
+    if (error instanceof KmsError && isKmsUsageError(error.code)) throw error;
+    const detail = error instanceof KmsError ? `${error.code}: ${error.message}` : message(error);
+    process.stderr.write(`Cloud KMS signer check failed: ${detail}\n`);
+    return 1;
+  }
+
+  process.stdout.write(
+    json ? `${JSON.stringify(report, null, 2)}\n` : formatKmsSignerReport(report),
+  );
+  return report.ok ? 0 : 1;
+}
+
+/** Problems that mean the invocation was wrong, not that the key refused. */
+function isKmsUsageError(code: string): boolean {
+  return (
+    code === 'invalid-arguments' ||
+    code === 'invalid-envelope' ||
+    code === 'unsupported-key-id' ||
+    code === 'invalid-public-key'
+  );
 }
 
 function render(
