@@ -742,3 +742,24 @@ export type {
   FramingDecision,
   FramingRole,
 } from './security/clickjackingAuditor.js';
+export { LosslessCstFormatter } from './cst/cstFormatter.js';
+export type { FormatterOptions } from './cst/cstFormatter.js';
+export { ResilientIncrementalParser } from './cst/resilientParser.js';
+export type {
+  ResilientParseResult,
+  ResilientDiagnostic,
+  EditRange,
+} from './cst/resilientParser.js';
+export { RateLimitHeaderVerifier } from './telemetry/rateLimitHeaderVerifier.js';
+export type {
+  RateLimitComplianceResult,
+  RateLimitFinding,
+  VerifyRateHeadersOptions,
+} from './telemetry/rateLimitHeaderVerifier.js';
+export { TlsCertificateWatchdog } from './telemetry/tlsWatchdog.js';
+export type {
+  TlsCertificateAuditResult,
+  TlsWatchdogFinding,
+  TlsRawCertInfo,
+  TlsWatchdogOptions,
+} from './telemetry/tlsWatchdog.js';
