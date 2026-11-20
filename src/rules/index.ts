@@ -33,6 +33,10 @@ import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
 import { telemetryRules } from '../telemetry/rules.js';
+import { corsSecurityRules } from '../security/corsAuditor.js';
+import { mimeSecurityRules } from '../security/mimeScanner.js';
+import { keySeparationRules } from '../security/keySeparationAuditor.js';
+import { clickjackingRules } from '../security/clickjackingAuditor.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -72,6 +76,10 @@ export const allRules: Rule[] = [
   ...federationSrvRules,
   ...esgRules,
   ...telemetryRules,
+  ...corsSecurityRules,
+  ...mimeSecurityRules,
+  ...keySeparationRules,
+  ...clickjackingRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -110,4 +118,8 @@ export {
   federationSrvRules,
   esgRules,
   telemetryRules,
+  corsSecurityRules,
+  mimeSecurityRules,
+  keySeparationRules,
+  clickjackingRules,
 };

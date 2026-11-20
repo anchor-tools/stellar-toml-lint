@@ -518,3 +518,76 @@ export type {
   EsgReport,
   EsgResult,
 } from './protocols/esgComplianceVerifier.js';
+export {
+  CorsSecurityAuditor,
+  REQUESTING_ORIGIN as CORS_REQUESTING_ORIGIN,
+  UNLISTED_ORIGIN as CORS_UNLISTED_ORIGIN,
+  auditCors,
+  corsSecurityRuleIds,
+  corsSecurityRules,
+  corsTargets,
+  renderCorsReport,
+} from './security/corsAuditor.js';
+export type {
+  CorsAuditOptions,
+  CorsAuditReport,
+  CorsEndpointRole,
+  CorsFinding,
+  CorsObservation,
+} from './security/corsAuditor.js';
+export {
+  MAX_SCAN_BYTES,
+  MimeSecurityScanner,
+  assetTargets,
+  auditAssetSecurity,
+  findSvgScriptVectors,
+  isActiveContentType,
+  mimeSecurityRuleIds,
+  mimeSecurityRules,
+  renderMimeReport,
+} from './security/mimeScanner.js';
+export type {
+  AssetKind,
+  MimeFinding,
+  MimeScanOptions,
+  MimeScanReport,
+  AssetObservation,
+  SvgVector,
+} from './security/mimeScanner.js';
+export {
+  KeySeparationAuditor,
+  OPERATIONAL_OPERATIONS,
+  auditKeySeparation,
+  collectKeyAssignments,
+  keySeparationRuleIds,
+  keySeparationRules,
+  renderKeyRoleDiagram,
+  renderKeySeparationReport,
+} from './security/keySeparationAuditor.js';
+export type {
+  AccountProfile,
+  KeyAssignment,
+  KeyRole,
+  KeyRoleOccurrence,
+  KeySeparationFinding,
+  KeySeparationOptions,
+  KeySeparationReport,
+} from './security/keySeparationAuditor.js';
+export {
+  ClickjackingAuditor,
+  auditClickjacking,
+  clickjackingRuleIds,
+  clickjackingRules,
+  frameAncestorsOf,
+  framingDecision,
+  framingTargets,
+  renderClickjackingReport,
+} from './security/clickjackingAuditor.js';
+export type {
+  ClickjackingFinding,
+  ClickjackingOptions,
+  ClickjackingReport,
+  FrameObservation,
+  FramingDecision,
+  FramingRole,
+} from './security/clickjackingAuditor.js';

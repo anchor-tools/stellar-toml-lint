@@ -58,6 +58,10 @@ import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { verifyFederationSrv } from './protocols/federationSrvVerifier.js';
 import { auditEsgDisclosures, renderEsgReport } from './protocols/esgComplianceVerifier.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
+import { auditCors, renderCorsReport } from './security/corsAuditor.js';
+import { auditAssetSecurity, renderMimeReport } from './security/mimeScanner.js';
+import { auditClickjacking, renderClickjackingReport } from './security/clickjackingAuditor.js';
+import { auditKeySeparation, renderKeySeparationReport } from './security/keySeparationAuditor.js';
 import { checkHistoryPublish } from './history/publish-validator.js';
 import { checkDnsIntegrity } from './security/dns-integrity.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
@@ -149,6 +153,9 @@ interface Cli {
   auditKycFsm: boolean;
   auditFederationSecurity: boolean;
   auditSep30Recovery: boolean;
+  auditCors: boolean;
+  auditAssetSecurity: boolean;
+  auditClickjacking: boolean;
   verifyPromotions: boolean;
   verifyFederationSrv: boolean;
   auditEsgDisclosures: boolean;
@@ -224,6 +231,11 @@ USAGE
   stellar-toml-lint calculate-uptime --log-file <path> [--format text|markdown|json]
                                          Availability over 24h/7d/30d, incidents and
                                          downtime streaks from JSON/CSV health logs
+  stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>]
+                                         [--format text|json]
+                                         Map every public key in the file to its roles
+                                         and report reused signing, issuer, account and
+                                         validator keys
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -294,6 +306,16 @@ OPTIONS
       --audit-federation-security
                           Probe FEDERATION_SERVER with non-destructive injection
                           payloads and check for leaked internals (use with --domain)
+      --audit-cors        Send browser-shaped pre-flight and actual requests to every
+                          declared endpoint and report wildcard-with-credentials CORS
+                          policies and unvalidated Origin echoing
+      --audit-asset-security
+                          Check the Content-Type and X-Content-Type-Options of every
+                          linked logo, image and document, and scan SVG payloads for
+                          scripts and entity declarations
+      --audit-clickjacking
+                          Probe interactive endpoints for Content-Security-Policy
+                          frame-ancestors and X-Frame-Options framing defenses
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
@@ -423,6 +445,24 @@ async function runExtraAudits(
   if (cli.auditSep30Recovery) {
     const result = await auditSep30Recovery(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
     out.push(...result.diagnostics);
+  }
+  if (cli.auditCors) {
+    const result = await auditCors(parsed, fetchImpl, {
+      rules,
+      ...(domain === undefined ? {} : { domain }),
+    });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderCorsReport(result.report));
+  }
+  if (cli.auditAssetSecurity) {
+    const result = await auditAssetSecurity(parsed, fetchImpl, { rules });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderMimeReport(result.report));
+  }
+  if (cli.auditClickjacking) {
+    const result = await auditClickjacking(parsed, fetchImpl, { rules });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderClickjackingReport(result.report));
   }
   if (cli.verifyPromotions) {
     const result = await verifyPromotions(parsed, fetchImpl, {
@@ -901,6 +941,52 @@ async function verifyFederationSyncCommand(args: string[]): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>] [--format text|json]` */
+async function auditKeySeparationCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let horizon: string | undefined;
+  let format = 'text';
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--horizon') horizon = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-key-separation\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const host = domain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const url = `https://${host}/.well-known/stellar.toml`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      process.stderr.write(`Could not fetch ${url}: HTTP ${response.status}\n`);
+      return 2;
+    }
+    const doc = parseToml(await response.text()) as Record<string, unknown>;
+    const result = await auditKeySeparation(doc, fetch, {
+      ...(horizon === undefined ? {} : { horizonUrl: horizon }),
+    });
+    process.stdout.write(
+      format === 'json'
+        ? `${JSON.stringify({ ...result.report, diagnostics: result.diagnostics }, null, 2)}\n`
+        : renderKeySeparationReport(result.report),
+    );
+    return result.report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 /** `stellar-toml-lint verify-browser-bundle [--dir dist/browser]` */
 async function verifyBrowserBundleCommand(args: string[]): Promise<number> {
   let dir = 'dist/browser';
@@ -1011,6 +1097,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'calculate-uptime') return calculateUptimeCommand(argv.slice(1));
   if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
+  if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -1532,6 +1619,9 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditKycFsm: false,
     auditFederationSecurity: false,
     auditSep30Recovery: false,
+    auditCors: false,
+    auditAssetSecurity: false,
+    auditClickjacking: false,
     verifyPromotions: false,
     verifyFederationSrv: false,
     auditEsgDisclosures: false,
@@ -1656,6 +1746,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-sep30-recovery':
         cli.auditSep30Recovery = true;
+        break;
+
+      case '--audit-cors':
+        cli.auditCors = true;
+        break;
+
+      case '--audit-asset-security':
+        cli.auditAssetSecurity = true;
+        break;
+
+      case '--audit-clickjacking':
+        cli.auditClickjacking = true;
         break;
 
       case '--verify-promotions':
