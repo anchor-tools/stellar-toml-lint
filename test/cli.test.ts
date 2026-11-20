@@ -65,8 +65,27 @@ describe('cli', () => {
     expect(stdout).toContain('USAGE');
     expect(stdout).toContain('EXIT CODES');
     expect(stdout).toContain('--check-contracts');
+    expect(stdout).toContain('--audit-opentelemetry');
     expect(stdout).toContain('--soroban-rpc');
     expect(stdout).toContain('checkstyle');
+    expect(stdout).toContain('verify-archive-gpg');
+  });
+
+  it('validates the required archive GPG command arguments', async () => {
+    const missing = await cli(['verify-archive-gpg', '--url', 'https://history.example.test/']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('--pubkey <key-file>');
+
+    const unknown = await cli([
+      'verify-archive-gpg',
+      '--url',
+      'https://history.example.test/',
+      '--pubkey',
+      'test-key.asc',
+      '--not-an-option',
+    ]);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option');
   });
 
   it('prints the version', async () => {
@@ -83,7 +102,41 @@ describe('cli', () => {
     expect(stdout).toContain('currencies/regulated-missing-auth-revocable-flag');
     expect(stdout).toContain('soroban/contract-ttl-expiring-soon');
     expect(stdout).toContain('soroban/contract-expired');
+    expect(stdout).toContain('telemetry/invalid-correlation');
     expect(stdout).toMatch(/^\d+ rules/);
+  });
+
+  it('lists the client domain attribution and quote binding rules', async () => {
+    const { code, stdout } = await cli(['--list-rules']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('sep10/missing-client-domain-claim');
+    expect(stdout).toContain('sep10/invalid-client-domain-operation');
+    expect(stdout).toContain('quotes/mismatched-quote-fee');
+    expect(stdout).toContain('quotes/quote-binding-unsupported');
+  });
+
+  it('documents --audit-quotes and accepts it without a network run', async () => {
+    const { stdout } = await cli(['--help']);
+    expect(stdout).toContain('--audit-quotes');
+
+    const { code } = await cli([fixture('valid.toml'), '--audit-quotes']);
+    expect(code).toBe(0);
+  });
+
+  it('runs the OpenTelemetry trace audit with hermetic fixtures', async () => {
+    const { code, stderr } = await cli([
+      fixture('valid.toml'),
+      '--audit-opentelemetry',
+      '--mock-fixtures',
+      fixture('network'),
+    ]);
+    expect(code).toBe(0);
+    expect(stderr).toContain('OpenTelemetry trace context audit');
+    expect(stderr).toContain('COMPLIANT SEP-6 TRANSFER_SERVER');
+    expect(stderr).toContain('COMPLIANT SEP-24 TRANSFER_SERVER_SEP0024');
+    expect(stderr).toContain('COMPLIANT SEP-31 DIRECT_PAYMENT_SERVER');
+    expect(stderr).toContain('COMPLIANT SEP-38 ANCHOR_QUOTE_SERVER');
+    expect(stderr).toContain('cannot prove downstream propagation');
   });
 
   it('accepts severity overrides on the network-bound rules', async () => {
@@ -169,25 +222,6 @@ describe('cli', () => {
     expect(new Set(severities)).toEqual(new Set(['error']));
   });
 
-  it('scores listing readiness for a valid file', async () => {
-    const { code, stdout } = await cli([fixture('valid.toml'), '--readiness']);
-    expect(code).toBe(0);
-    expect(stdout).toContain('Listing Readiness Checklist');
-    expect(stdout).toMatch(/Grade [A-F]/);
-  });
-
-  it('emits parseable readiness JSON', async () => {
-    const { stdout } = await cli([fixture('valid.toml'), '--readiness', '-f', 'json']);
-    const report = JSON.parse(stdout);
-    expect(report.score).toBeGreaterThan(0);
-    expect(['A+', 'A', 'B', 'C', 'D', 'F']).toContain(report.grade);
-    expect(report.pillars).toHaveLength(3);
-  });
-
-  it('rejects --readiness with a format it cannot render', async () => {
-    const { code, stderr } = await cli([fixture('valid.toml'), '--readiness', '-f', 'sarif']);
-    expect(code).toBe(2);
-    expect(stderr).toContain('--readiness supports');
   it('serves network checks from --mock-fixtures', async () => {
     const { code, stdout } = await cli([
       fixture('network/offline-anchor.toml'),
@@ -290,5 +324,102 @@ describe('glob patterns and multi-file summaries', () => {
     expect(stderr).toContain('No files matched');
     expect(stderr).toContain('no-such-*.toml');
     expect(stderr).toContain('quote the pattern');
+  });
+});
+
+describe('cli --completion', () => {
+  it('prints a bash completion script and exits 0', async () => {
+    const { code, stdout } = await cli(['--completion', 'bash']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('complete -F _stellar_toml_lint');
+    expect(stdout).toContain('--check-contracts');
+  });
+
+  it('prints a zsh completion script and exits 0', async () => {
+    const { code, stdout } = await cli(['--completion', 'zsh']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('#compdef stellar-toml-lint');
+  });
+
+  it('exits 2 for an unsupported shell', async () => {
+    const { code, stderr } = await cli(['--completion', 'unknown']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('Unknown shell');
+  });
+
+  it('exits 2 when --completion has no value', async () => {
+    const { code, stderr } = await cli(['--completion']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('expects a value');
+  });
+});
+
+describe('cli security audits', () => {
+  it('documents the three audit flags and the key separation subcommand', async () => {
+    const { code, stdout } = await cli(['--help']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('--audit-cors');
+    expect(stdout).toContain('--audit-asset-security');
+    expect(stdout).toContain('--audit-clickjacking');
+    expect(stdout).toContain('audit-key-separation --domain <domain>');
+  });
+
+  it('lists every header, MIME, key separation and framing rule', async () => {
+    const { code, stdout } = await cli(['--list-rules']);
+    expect(code).toBe(0);
+    for (const rule of [
+      'cors/public-endpoint-missing-wildcard',
+      'cors/wildcard-origin-with-credentials',
+      'cors/unlisted-origin-echoed',
+      'mime/active-content-type',
+      'mime/missing-nosniff',
+      'svg/embedded-script',
+      'keys/signing-issuer-reuse',
+      'keys/validator-key-reuse',
+      'clickjacking/wildcard-frame-ancestors',
+      'clickjacking/missing-frame-protection',
+    ]) {
+      expect(stdout).toContain(rule);
+    }
+  });
+
+  it('accepts severity overrides for the new rule ids', async () => {
+    const { code, stderr } = await cli([
+      fixture('valid.toml'),
+      '--off',
+      'keys/signing-issuer-reuse',
+      '--warn',
+      'mime/missing-nosniff',
+      '--error',
+      'clickjacking/wildcard-frame-ancestors',
+    ]);
+    expect(stderr).not.toContain('Unknown rule');
+    expect(code).toBe(0);
+  });
+
+  it('requires a domain for the key separation subcommand', async () => {
+    const missing = await cli(['audit-key-separation']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('audit-key-separation --domain <domain>');
+
+    const unknown = await cli(['audit-key-separation', '--nope']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option --nope');
+  });
+});
+
+describe('cli -f markdown', () => {
+  it('emits a step-summary table for a broken file and still exits 1', async () => {
+    const { code, stdout } = await cli([fixture('broken.toml'), '-f', 'markdown']);
+    expect(code).toBe(1);
+    expect(stdout).toContain('### ❌ Failed');
+    expect(stdout).toContain('| Location | Severity | Rule | Message |');
+    expect(stdout).toContain('<details>');
+  });
+
+  it('emits a green pass header for a clean file', async () => {
+    const { code, stdout } = await cli([fixture('valid.toml'), '-f', 'markdown']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('No SEP-1 issues found');
   });
 });

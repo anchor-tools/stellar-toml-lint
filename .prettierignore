@@ -1,0 +1,16 @@
+# Generated companion-app output.
+#
+# Prettier only reads the *root* `.gitignore` (and this file), not the nested
+# `.gitignore` inside each app, so without these entries it would try to format
+# bundles the build just wrote and the data it just generated.
+apps/*/dist/
+apps/extension/dist-chrome/
+apps/extension/dist-firefox/
+apps/pwa/public/data/
+apps/pwa/lighthouse-report/
+apps/extension/playwright-report/
+apps/extension/test-results/
+
+# Tree-sitter CLI output; regenerate with `tree-sitter generate`.
+grammars/*/src/grammar.json
+grammars/*/src/node-types.json

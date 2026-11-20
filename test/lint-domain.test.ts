@@ -194,6 +194,55 @@ describe('lintDomain', () => {
     const result = await lintDomain('example.com', {}, impl);
     expect(ruleIds(result)).toContain('general/version');
   });
+
+  describe('followTomlPointers', () => {
+    it('fetches and lints valid toml pointers', async () => {
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://example.com/asset.toml"'].join('\n');
+      const assetToml = ['[[CURRENCIES]]', 'code="FOO"', 'issuer="invalid-account"'].join('\n');
+
+      const impl = (async (url: string | URL) => {
+        if (String(url).endsWith('stellar.toml')) {
+          return new Response(mainToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        } else {
+          return new Response(assetToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        }
+      }) as unknown as typeof fetch;
+
+      const result = await lintDomain('example.com', { followLinks: true }, impl);
+
+      expect(ruleIds(result)).toContain('currencies/issuer-or-contract');
+      const err = result.diagnostics.find((d) => d.rule === 'currencies/issuer-or-contract');
+      expect(err?.message).toContain('[https://example.com/asset.toml]');
+    });
+
+    it('gracefully handles missing toml pointers as warnings', async () => {
+      const mainToml = ['[[CURRENCIES]]', 'toml="https://example.com/broken.toml"'].join('\n');
+
+      const impl = (async (url: string | URL) => {
+        if (String(url).endsWith('stellar.toml')) {
+          return new Response(mainToml, {
+            status: 200,
+            headers: { 'content-type': 'text/plain', 'access-control-allow-origin': '*' },
+          });
+        } else {
+          return new Response('Not found', { status: 404 });
+        }
+      }) as unknown as typeof fetch;
+
+      const result = await lintDomain('example.com', { followLinks: true }, impl);
+
+      expect(ruleIds(result)).toContain('network/toml-pointer-fetch');
+      const warn = result.diagnostics.find((d) => d.rule === 'network/toml-pointer-fetch');
+      expect(warn?.severity).toBe('warning');
+      expect(warn?.message).toContain('HTTP 404');
+    });
+  });
 });
 
 describe('lintDomain ORG_URL probe', () => {

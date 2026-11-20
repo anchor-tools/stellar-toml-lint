@@ -1,0 +1,71 @@
+==================
+Value forms
+==================
+
+# Comments are concrete nodes so highlight and fold queries can bind to them.
+ACCOUNTS = [
+  "GAC2CQ7JBSRCCNZRCSJNZK5SMH4R4N5XQVQZQZQZQZQZQZQZQZQZQZ",
+  "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+]
+MAX = 100
+RATE = 1.5e-3
+OFFSET = 2026-10-19T12:34:56Z
+LOCAL = 2026-10-19
+MULTILINE = """
+hello
+world
+"""
+DOCUMENTATION.ORG_NAME = "Dotted key"
+INLINE = { code = "USD", status = "live" }
+
+---
+
+(document
+  (newline)
+  (comment)
+  (newline)
+  (pair
+    (bare_key)
+    (array
+      (newline)
+      (string)
+      (newline)
+      (string)
+      (newline)))
+  (newline)
+  (pair
+    (bare_key)
+    (integer))
+  (newline)
+  (pair
+    (bare_key)
+    (float))
+  (newline)
+  (pair
+    (bare_key)
+    (offset_date_time))
+  (newline)
+  (pair
+    (bare_key)
+    (local_date))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (dotted_key
+      (bare_key)
+      (bare_key))
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (inline_table
+      (pair
+        (bare_key)
+        (string))
+      (pair
+        (bare_key)
+        (string))))
+  (newline))

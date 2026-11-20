@@ -9,12 +9,164 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `--readiness` (alias `--score`) grades a file the way a wallet listing review would: a 0–100
-  total and a letter grade across three weighted pillars — Protocol & Syntax Compliance (40),
-  Organization Identity & Trust (30), and Asset & Anchor Transparency (30) — plus an actionable
-  checklist marking each requirement as met or missing. `--readiness --format json` emits the same
-  report as JSON, and `calculateReadiness`/`formatReadiness`/`formatReadinessJson` are exported for
-  embedders. The run stays offline and the exit code still follows the diagnostics (#28).
+- `--audit-cors` (`src/security/corsAuditor.ts`): probes every endpoint the file declares with an
+  `OPTIONS` pre-flight, an actual request from a wallet origin, and an actual request from an origin no
+  whitelist should contain, reading nothing but response headers and never sending credentials. Public
+  `/.well-known/stellar.toml` and SEP-38 `/info` reads must allow every origin
+  (`cors/public-endpoint-missing-wildcard`); an authenticated or interactive endpoint that pairs
+  `Access-Control-Allow-Origin: *` with `Access-Control-Allow-Credentials: true`
+  (`cors/wildcard-origin-with-credentials`) or echoes the unlisted origin back
+  (`cors/unlisted-origin-echoed`) is reported as an error, a refused pre-flight as a warning
+  (`cors/preflight-not-allowed`), and an unreachable host as `cors/endpoint-unreachable`. The resolved
+  policy table prints to stderr.
+
+- `--audit-asset-security` (`src/security/mimeScanner.ts`): fetches `ORG_LOGO`, `CURRENCIES[].image`,
+  the address and phone attestations, reserve attestations and linked `toml` files and classifies each
+  from its headers — missing `X-Content-Type-Options: nosniff` (`mime/missing-nosniff`), an executable
+  `Content-Type` (`mime/active-content-type`), a type that contradicts the URL's extension
+  (`mime/content-type-mismatch`) — then scans text-bearing bodies as raw markup for `<script>`, `on*=`
+  handlers, `javascript:` hrefs, `foreignObject`, embedded documents and `DOCTYPE`/`ENTITY`
+  declarations (`svg/embedded-script`, `svg/entity-declaration`). No XML entity is expanded, so an XXE
+  or billion-laughs payload is reported instead of dereferenced; binary payloads are never buffered and
+  a scanned body is bounded, with the byte limit named in the finding.
+
+- `audit-key-separation --domain <domain> [--horizon <url>] [--format text|json]`
+  (`src/security/keySeparationAuditor.ts`): builds the key/role association graph from `SIGNING_KEY`,
+  `URI_REQUEST_SIGNING_KEY`, `ACCOUNTS`, `CURRENCIES[].issuer`, `collateral_addresses` and
+  `VALIDATORS[].PUBLIC_KEY` and reports every account carrying more than one role —
+  `keys/signing-issuer-reuse`, `keys/issuer-operational-account`, `keys/validator-key-reuse` (errors)
+  and `keys/collateral-issuer-reuse` (warning) — then asks Horizon for signers, thresholds and the last
+  ten operations, emitting `keys/single-signer-root-account` and `keys/issuer-operational-activity`.
+  Issuer administration operations are not counted as operational traffic, and accounts Horizon cannot
+  serve produce no finding. The report prints the role graph as a tree.
+
+- `--audit-clickjacking` (`src/security/clickjackingAuditor.ts`): requests every URL a wallet embeds —
+  SEP-24 interactive endpoints, `KYC_SERVER`, `DIRECT_PAYMENT_SERVER`, `WEB_AUTH_ENDPOINT`,
+  `CURRENCIES[].approval_server` and `ORG_URL` — as an `iframe` navigation and reads both framing
+  headers. `frame-ancestors *` is an error (`clickjacking/wildcard-frame-ancestors`), an absent policy
+  and the browser-ignored `X-Frame-Options: ALLOW-FROM` are warnings
+  (`clickjacking/missing-frame-protection`, `clickjacking/deprecated-allow-from`). CSP decides over
+  `X-Frame-Options`, as it does in a browser, and a report-only policy counts as nothing sent.
+
+- `verify-archive-gpg --url <archive> --pubkey <key-file>` (`src/overlay/archiveGpgVerifier.ts`):
+  downloads the latest checkpoint ledger XDR gzip file described by `.well-known/stellar-history.json`
+  and verifies it against a supplied detached OpenPGP signature with OpenPGP.js. The optional
+  `<ledger-file>.sig` sidecar is a best-effort convention, not a Stellar Core format guarantee;
+  `--signature-url` can name a different location. The verifier enforces RSA 2048-bit or Ed25519
+  signing keys, expiry/revocation checks, SHA-2 signature hashes, bounded HTTPS requests, and
+  reports unknown operator identity trust unless an independently sourced fingerprint is pinned.
+
+- `--sort-keys` / `--sort-keys --dry-run` (`src/cst/canonicalSortCodemod.ts`,
+  `src/line-diff.ts`): rewrites `[DOCUMENTATION]`, `[[PRINCIPALS]]`, `[[CURRENCIES]]` and
+  `[[VALIDATORS]]` into the SEP-1 field order and sorts currency entries by `code` and validators by
+  `PUBLIC_KEY`, so adding one asset stops rediffing the whole file. Entries move as lossless CST
+  nodes, so nothing is reformatted and a comment travels with the key it annotates; a blank line
+  makes a comment floating and it stays at its position. Unknown keys stay last in the order written,
+  the pass is idempotent, and a file that does not parse is reported and left untouched (exit 1).
+  `--dry-run` prints a unified diff instead of writing and exits 1 when a file is not already
+  canonical, which is the CI gate; `--sort-keys -` sorts stdin to stdout.
+
+- `--audit-esg-disclosures` (`src/protocols/esgComplianceVerifier.ts`): checks
+  `[DOCUMENTATION.ORG_ESG]` for a carbon accounting methodology, renewable energy certificates, PUE
+  and an attestation (`esg/missing-field`, `esg/invalid-field`, `esg/attestation-expired`), verifies
+  the Ed25519 attestation signature under `--check-network` (`esg/attestation-unreachable`,
+  `esg/attestation-signature-invalid`) and prints a Platinum/Gold/Silver/Bronze rating to stderr.
+
+- `--verify-federation-srv` (`src/protocols/federationSrvVerifier.ts`): resolves
+  `_stellar-federation._tcp.<domain>` (RFC 2782) and checks targets, ports, priority/weight
+  (`federationsrv/invalid-target`, `federationsrv/invalid-port`,
+  `federationsrv/invalid-priority-weight`, `federationsrv/non-default-port`), conflicts with
+  `FEDERATION_SERVER` (`federationsrv/conflicts-with-toml`) and, under `--check-network`, probes each
+  target over HTTPS with a timeout (`federationsrv/unreachable-target`,
+  `federationsrv/not-a-federation-server`).
+
+- `--verify-promotions` / `stellar-toml-lint verify-promotions --domain <domain>`
+  (`src/protocols/promotionalPricingVerifier.ts`): parses "0% fee", "1.5% fee" and "until
+  YYYY-MM-DD" claims from `[DOCUMENTATION]` and `CURRENCIES` text, flags expired claims
+  (`promotions/expired-claim`) and, under `--check-network`, compares them with SEP-38 `/price` fees
+  at test volumes using exact integer math (`promotions/fee-mismatch`,
+  `promotions/unverifiable-claim`). `/quote` needs a SEP-10 session, so indicative `/price` is used.
+
+- `--audit-sep30-recovery` (`src/protocols/sep30Verifier.ts`): validates `RECOVERY_SERVER` and
+  `RECOVERY_SIGNING_KEYS` (`sep30/invalid-recovery-server`, `sep30/invalid-signing-key`,
+  `sep30/insufficient-recovery-quorum`) and, under `--check-network`, probes `POST`/`GET`/`PUT`
+  `/accounts/{address}` with no credentials against a throwaway address
+  (`sep30/endpoint-unavailable`, `sep30/unauthenticated-recovery`, `sep30/unsupported-auth-method`).
+  Signer weights are not readable without an authenticated session, so quorum is judged from the
+  number of distinct declared signing keys.
+
+- `stellar-toml-lint audit-clawbacks --asset <code:issuer>` (`src/protocols/clawbackAuditGenerator.ts`):
+  scans the issuer's Horizon history for `clawback` and `clawback_claimable_balance` operations,
+  verifies each carries an audit memo reference, and generates JSON and Markdown audit trail reports
+  with exact stroop precision.
+
+- `--audit-kyc-fsm --domain <domain>` (`src/protocols/kycTierAuditor.ts`): reads the customer
+  types advertised by SEP-31 `/info`, observes the SEP-12 `/customer` status for each, and audits the
+  status state machine against the four SEP-12 statuses: `sep12/unknown-customer-status`,
+  `sep12/status-missing-next-action`, `sep12/circular-status-transition`,
+  `sep12/nondeterministic-status-transition` and `sep12/unreachable-status`. Transition diagrams are
+  printed to stderr.
+
+- `--audit-consumer-protection` (`src/protocols/consumerProtectionVerifier.ts`): checks that
+  `[DOCUMENTATION.ORG_LEGAL]` (or `[DOCUMENTATION]`) declares `ORG_COMPLAINTS_EMAIL`,
+  `ORG_DISPUTE_RESOLUTION_URL`, `ORG_JURISDICTION` and `ORG_LICENSES`
+  (`consumerprotection/missing-field`, `consumerprotection/invalid-field`), probes the dispute URL
+  for a 200 OK with readable content under `--check-network`
+  (`consumerprotection/dispute-url-unreachable`), and prints a transparency scorecard.
+
+- `--audit-unicode-security` (`src/cst/unicodeValidator.ts`): scans every key and string value
+  for bidirectional override characters (`unicode/bidi-override`, error), zero-width and invisible
+  formatting characters (`unicode/invisible-character`), Cyrillic/Greek homoglyphs in domains and
+  asset codes (`unicode/homoglyph-spoofing`, error), and malformed language tags
+  (`unicode/invalid-language-tag`), following Unicode TR #36.
+
+- SEP-42 cross-contract authorization call-tree simulator under `--check-network`
+  (`src/soroban/auth-tree-simulator.ts`): the SAC `mint` and `clawback` calls are dry-run with
+  `simulateTransaction` in recording mode, and the returned `SorobanAuthorizationEntry` tree is
+  traced, emitting `soroban/unauthorized-cross-contract-call` (error) when the tree authorizes an
+  identity other than the account the file publishes as `SIGNING_KEY` or a designated issuer, or
+  delegates into a contract the operation never called, and `soroban/unbounded-auth-grant`
+  (warning) when a grant names no address, lets a contract authorize itself, or re-delegates the
+  authorization further down the tree. Nothing is submitted and no fees are spent.
+
+- Follow and lint `toml` currency pointers. A `[[CURRENCIES]]` entry that points at a separate
+  document via `toml` now has that document fetched and linted as part of the same run, so an
+  anchor cannot pass with a broken linked asset. Enabled by `--follow-links` and implied by
+  `--domain`. Findings from a linked document are prefixed with its URL, a pointer that cannot be
+  fetched is a `network/toml-pointer-fetch` warning rather than a hard failure, and fetches are
+  capped at 20 so a long currency list cannot fan out unboundedly.
+
+- `--preset validator|anchor-sep24|issuer` applies a curated rule bundle for an organisation's role
+  in the ecosystem, so a validator operator, a SEP-24 anchor, and a standalone asset issuer stop
+  carrying the same `--off` chain through every workflow. `validator` keeps the validator and
+  general file checks and silences the currency and anchor service rules (raising a duplicate
+  validator `HOST` or `ALIAS` to `error`); `anchor-sep24` holds the SEP-24, SEP-10, and currency
+  requirements at `error` and silences the validator rules; `issuer` holds currency, collateral,
+  and documentation completeness at `error` and silences the anchor service rules. A preset is a
+  baseline, so an explicit `--off`/`--warn`/`--error` still wins whatever order the flags appear in,
+  and an unknown name lists the available presets and exits `2`. Bundles are assembled from the rule
+  registry, so a rule registered later joins the group its category puts it in (#20).
+- `general/deprecated-field` warns about legacy `AUTH_SERVER` and `DEPOSIT_SERVER` fields,
+  unencrypted `FEDERATION_SERVER` values, and documentation keys placed outside `[DOCUMENTATION]`,
+  with replacement syntax for SEP-10, SEP-12, SEP-6, and SEP-24 (#126).
+- `--format markdown` emits a GitHub-flavored Markdown report built for a workflow's
+  `$GITHUB_STEP_SUMMARY`: a pass/fail header with the error, warning, and info counts, a table with a
+  row per finding, and collapsible `<details>` blocks carrying suggestions and spec links. `|`, `<`,
+  and `>` are escaped so a hostile file cannot break the table or inject markup (#61).
+- `--completion bash|zsh|fish` prints a native shell completion script covering every flag, the
+  output formats, and the rule ids accepted by `--off`/`--warn`/`--error`. The rule ids come from
+  the same registry the linter runs, so they never drift from the actual checks; an unsupported
+  shell prints to stderr and exits `2` (#60).
+- `network/sep6-missing-asset` (warning), alongside `network/sep6-info-error` and
+  `network/sep6-info-malformed`, under `--domain` or `--check-network`: when `TRANSFER_SERVER` is
+  declared, `GET <TRANSFER_SERVER>/info` is fetched with redirects followed and every non-native
+  `[[CURRENCIES]]` asset must appear in the `deposit` or `withdraw` maps, keyed by bare code or
+  `CODE:issuer` (#38).
+- `soroban/invalid-auth-contract-interface` (error) under `--check-contracts`: for
+  `WEB_AUTH_CONTRACT_ID`, the deployed WASM's `contractspecv0` custom section is parsed and the
+  contract is required to export the SEP-45 `web_auth_verify` function. An unreadable interface
+  stays silent rather than guessing (#37).
+
 - `textDocument/hover` over LSP (#36): hovering a key or a table header in `stellar.toml` shows a
   Markdown tooltip with the qualified name (`[[CURRENCIES]].display_decimals`), the field's type
   (`integer (0-7)`), the SEP-1 description, the permitted values where the spec enumerates them
@@ -57,6 +209,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `validators/stellar-history-json-unreachable` (error) under `--check-network` fetches each
   validator's archive root and requires it to serve `.well-known/stellar-history.json` with
   `"version": 1` (#144).
+- Overlay and archive integrity audits: `--crawl-peers` decodes bounded `GET_PEERS` discovery
+  responses, `--verify-dnssec` compares DNSSEC-validating DoH resolvers, and `--check-network`
+  validates the three most recent history checkpoints for complete category archives and chained
+  previous-ledger pointers (#90, #91, #92, #96).
+- `overlay/invalid-crypto-framing` and `overlay/mac-authentication-failure` audit big-endian frame
+  lengths, HKDF-derived session keys, sequence replay, and authenticated tags (#91).
 
 - Opt-in `--check-network` flag to query Horizon and report non-existent `SIGNING_KEY` or `ACCOUNTS` entries as warnings (#7).
 - `network/horizon-unreachable` and `network/horizon-protocol-outdated` under `--check-network`:

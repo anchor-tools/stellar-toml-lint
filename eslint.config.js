@@ -38,4 +38,49 @@ export default tseslint.config(
       'no-console': 'off',
     },
   },
+  {
+    // Tree-sitter grammars are written in the tree-sitter DSL. The CLI injects
+    // `grammar`, `seq`, `repeat`, and friends when it loads grammar.js, so they
+    // are globals rather than imports. Rule callbacks conventionally take `$`
+    // or `_` when they do not use the DSL object.
+    files: ['grammars/**/grammar.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        grammar: 'readonly',
+        seq: 'readonly',
+        repeat: 'readonly',
+        choice: 'readonly',
+        optional: 'readonly',
+        token: 'readonly',
+        prec: 'readonly',
+        alias: 'readonly',
+        field: 'readonly',
+        module: 'writable',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^[$_]', varsIgnorePattern: '^[$_]' },
+      ],
+      // TOML forbids control characters, so the grammar's string rules spell
+      // out the exact ranges they exclude.
+      'no-control-regex': 'off',
+    },
+  },
+  {
+    // Tree-sitter's generated Node bindings are CommonJS by design.
+    files: ['grammars/**/bindings/node/**/*.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        module: 'writable',
+        require: 'readonly',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
 );

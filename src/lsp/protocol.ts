@@ -20,8 +20,23 @@ export interface LspInitializeResult {
     textDocumentSync?: { openClose: boolean; change: number };
     codeActionProvider?: boolean | { codeActionKinds?: string[] };
     hoverProvider?: boolean;
+    documentSymbolProvider?: boolean;
   };
   serverInfo?: { name: string; version: string };
+}
+
+/**
+ * Server settings an editor may pass in `initialize`. Contract lookups open
+ * network connections, so they stay off unless `checkContracts` is `true`,
+ * mirroring the CLI's `--check-contracts` / `--soroban-rpc`.
+ */
+export interface InitializationOptions {
+  checkContracts?: boolean;
+  sorobanRpc?: string;
+}
+
+export interface InitializeParams {
+  initializationOptions?: InitializationOptions | null;
 }
 
 export interface TextDocumentItem {
@@ -60,6 +75,10 @@ export interface CodeActionParams {
 export interface HoverParams {
   textDocument: { uri: string };
   position: { line: number; character: number };
+}
+
+export interface DocumentSymbolParams {
+  textDocument: { uri: string };
 }
 
 /** JSON-RPC error codes used by this server. */

@@ -61,6 +61,20 @@ describe('createFixtureFetch', () => {
     expect(await response.json()).toEqual({ error: 'SEP-10 authentication required' });
   });
 
+  it('serves a default CORS pre-flight response for an OPTIONS request', async () => {
+    const fetchImpl = createFixtureFetch(FIXTURES);
+    const response = await fetchImpl('https://quote.example.com/quote', {
+      method: 'OPTIONS',
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-allow-methods')).toBe('GET, POST, OPTIONS');
+    expect(response.headers.get('access-control-allow-headers')).toBe(
+      'content-type, authorization',
+    );
+  });
+
   it('serves a string body verbatim for a text/plain response', async () => {
     const fetchImpl = createFixtureFetch(FIXTURES);
     const response = await fetchImpl('https://mock-anchor.example.com/.well-known/stellar.toml');

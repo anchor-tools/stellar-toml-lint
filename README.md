@@ -61,7 +61,23 @@ npx stellar-toml-lint                      # or just run it
 brew install anchor-tools/tap/stellar-toml-lint
 ```
 
-Requires Node.js 20 or newer. Two runtime dependencies: `smol-toml` and `@stellar/stellar-base`.
+Homebrew installs a self-contained binary; Node.js is not required at runtime.
+
+### Standalone binaries
+
+Download the asset for your platform from the [GitHub Releases](https://github.com/anchor-tools/stellar-toml-lint/releases) page, verify it against `SHA256SUMS.txt`, and place it on your `PATH`:
+
+```bash
+curl -fLO https://github.com/anchor-tools/stellar-toml-lint/releases/latest/download/stellar-toml-lint-linux-x64
+curl -fLO https://github.com/anchor-tools/stellar-toml-lint/releases/latest/download/SHA256SUMS.txt
+sha256sum --check --ignore-missing SHA256SUMS.txt
+chmod +x stellar-toml-lint-linux-x64
+sudo install -m 0755 stellar-toml-lint-linux-x64 /usr/local/bin/stellar-toml-lint
+```
+
+Assets are published for Linux x64 (glibc and musl), Linux ARM64, macOS Intel, macOS Apple Silicon, and Windows x64. These binaries have no Node.js runtime dependency. The npm package remains available for Node.js 20+ users. Runtime dependencies for the npm package are `smol-toml`, `@stellar/stellar-base`, and `openpgp`; the pure-JS `@noble/curves` and `@noble/hashes` are installed transitively by `@stellar/stellar-base`.
+
+Releases are generated from Conventional Commits on `main`: `fix:` creates a patch release, `feat:` creates a minor release, and `BREAKING CHANGE:` creates a major release. The release workflow updates the npm and VS Code versions, changelog, GitHub release, and npm provenance.
 Commit a `.stellartomlrc.json` next to your `stellar.toml` to record the project's rule policy once
 instead of repeating `--off`/`--warn` flags in every workflow (see [Usage](#usage)).
 
@@ -109,88 +125,112 @@ The exit code is `1` when any file fails and `0` when they all pass. The summary
 `text` reporter only, so `-f json`, `-f sarif`, and `-f junit` output stays exactly as parseable as
 it was before.
 
+### Clawback audit trail
+
+`stellar-toml-lint audit-clawbacks --asset <code:issuer> [--horizon <url>] [--format json|markdown]`
+reads the issuer's `clawback` and `clawback_claimable_balance` operations from Horizon, checks that
+each transaction memo carries an audit reference (a URL, a 64-hex hash, a hash memo, or a
+`LEGAL:`/`ORDER:`/`CASE:`/`AUDIT:` reference), and prints a Markdown (default) or JSON report with
+exact 7-decimal amounts. It exits 1 when any clawback lacks a reference. Claimable-balance
+clawbacks carry no amount on the operation, so their amount is reported as `n/a`.
+
+`stellar-toml-lint refactor <file> [--deduplicate-assets] [--split] [--max-bytes <n>] [--out-dir <dir>]
+[--write] [--json]` merges `[[CURRENCIES]]` entries that share a code and issuer, keeping comments and
+non-conflicting metadata from every declaration. Conflicting fields keep the first value and are
+both recorded in the summary and preserved as `# refactor: conflict` comments. A post-refactor CST
+validation checks that no currency or non-conflicting value was lost; the diff is printed for review
+and only `--write` changes the file. `--split` instead emits modular partials grouped by table
+(`base`, `currencies`, `validators`, …), optionally written to `--out-dir`.
+
 ### Options
 
-| Flag                 | Effect                                                                       |
-| -------------------- | ---------------------------------------------------------------------------- |
-| `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks        |
-| `-f, --format <fmt>` | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `checkstyle` |
-| `--strict`           | Treat warnings as errors                                                     |
-| `--max-warnings <n>` | Fail if warnings exceed `n`                                                  |
-| `--check-network`    | Verify accounts, `HORIZON_URL`, and `ANCHOR_QUOTE_SERVER` online             |
-| `--off <rule>`       | Disable a rule (repeatable)                                                  |
-| `--error <rule>`     | Raise a rule to error (repeatable)                                           |
-| `--warn <rule>`      | Lower a rule to warning (repeatable)                                         |
-| `-q, --quiet`        | Show errors only                                                             |
-| `--show-help-urls`   | Print the spec link for each finding                                         |
-| `--list-rules`       | Print every rule and exit                                                    |
-| `--no-suggestions`   | Hide diagnostic suggestions in the output                                    |
-| `--check-network`    | Validate `ORG_OFFICIAL_EMAIL` domain MX records for email deliverability     |
+| Flag                          | Effect                                                                                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `-d, --domain <d>`            | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks                                                               |
+| `-f, --format <fmt>`          | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`                                    |
+| `--strict`                    | Treat warnings as errors                                                                                                            |
+| `--max-warnings <n>`          | Fail if warnings exceed `n`                                                                                                         |
+| `--check-network`             | Verify accounts, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online             |
+| `--verify-sep10`              | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                                   |
+| `--audit-quotes`              | Book an ANCHOR_QUOTE_SERVER SEP-38 quote and execute it on TRANSFER_SERVER (requires `--check-network`)                             |
+| `--audit-unicode-security`    | Detect bidi overrides, invisible characters, Cyrillic/Greek homoglyphs, and bad language tags in string values                      |
+| `--audit-consumer-protection` | Verify `ORG_COMPLAINTS_EMAIL`, `ORG_DISPUTE_RESOLUTION_URL`, `ORG_JURISDICTION`, `ORG_LICENSES` and print a scorecard               |
+| `--audit-sep30-recovery`      | Verify `RECOVERY_SERVER` and recovery signing keys; with `--check-network` probe `/accounts/{address}` for unauthenticated recovery |
+| `--verify-promotions`         | Compare promotional fee claims with SEP-38 `/price` fees (also `verify-promotions --domain <domain>`)                               |
+| `--verify-federation-srv`     | Check `_stellar-federation._tcp.<domain>` SRV records against `FEDERATION_SERVER` (use with `--domain`)                             |
+| `--audit-esg-disclosures`     | Verify `DOCUMENTATION.ORG_ESG` disclosures and attestation signature, and print a sustainability rating                             |
+| `--audit-opentelemetry`       | Probe SEP-6, SEP-24, SEP-31 and SEP-38 `/info` endpoints with W3C Trace Context headers and inspect response correlation evidence   |
+| `--audit-kyc-fsm`             | Audit SEP-12 customer status state machines for stuck or circular onboarding (use with `--domain`)                                  |
+| `--audit-cors`                | Probe every declared endpoint for wildcard-plus-credentials and unvalidated `Origin` CORS policies (OWASP)                          |
+| `--audit-asset-security`      | Scan linked logos, images and attestations for Content-Type confusion, missing `nosniff` and SVG script vectors                     |
+| `--audit-clickjacking`        | Read `Content-Security-Policy: frame-ancestors` and `X-Frame-Options` on every interactive endpoint                                 |
+| `--crawl-peers`               | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                             |
+| `--verify-dnssec`             | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                              |
+| `--audit-dns-takeover`        | Query CNAME/NS for every referenced domain and flag dangling pointers to claimable cloud resources                                  |
+| `--audit-secrets`             | Halt with exit 1 on leaked Stellar seeds, cloud keys, tokens or PEM blocks; all output is redacted                                  |
+| `--audit-ssrf`                | Flag advertised URLs resolving to private, loopback, link-local or multicast IPs, including DNS rebinding                           |
+| `--follow-links`              | Fetch and lint the `toml` pointers in `CURRENCIES` (implied by `--domain`)                                                          |
+| `--check-contracts`           | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                               |
+| `--soroban-rpc <url>`         | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                                   |
+| `--mock-fixtures <dir>`       | Serve network checks from recorded JSON fixtures under `<dir>`, never the network                                                   |
+| `--webhook-slack <url>`       | POST a Slack Block Kit card with the run summary                                                                                    |
+| `--webhook-discord <url>`     | POST a Discord embed with the run summary                                                                                           |
+| `--off <rule>`                | Disable a rule (repeatable)                                                                                                         |
+| `--error <rule>`              | Raise a rule to error (repeatable)                                                                                                  |
+| `--warn <rule>`               | Lower a rule to warning (repeatable)                                                                                                |
+| `--preset <name>`             | Start from a role's rule bundle: `validator`, `anchor-sep24`, or `issuer`                                                           |
+| `-q, --quiet`                 | Show errors only                                                                                                                    |
+| `--show-help-urls`            | Print the spec link for each finding                                                                                                |
+| `--list-rules`                | Print every rule and exit                                                                                                           |
+| `--completion <shell>`        | Print a `bash`, `zsh`, or `fish` completion script and exit                                                                         |
+| `--no-suggestions`            | Hide diagnostic suggestions in the output                                                                                           |
+| `--color`                     | Force colour on, overriding `NO_COLOR`                                                                                              |
+| `--no-color`                  | Force colour off                                                                                                                    |
+| `-w, --watch`                 | Watch files and re-run on changes                                                                                                   |
+| `-i, --interactive`           | Full-screen dashboard to walk the findings (falls back to text)                                                                     |
+| `--lsp`                       | Run as a Language Server on stdio (diagnostics, quick-fixes, hover)                                                                 |
+| `--sort-keys`                 | Rewrite files into canonical SEP-1 key order; a comment moves with the key it annotates                                             |
+| `--dry-run`                   | With `--sort-keys`, print the diff instead of writing and exit 1 if a file is not already canonical                                 |
+| `--graph <fmt>`               | Generate architecture diagram: `mermaid` or `dot`                                                                                   |
+| `--graph-contracts`           | Include Soroban contracts in diagram                                                                                                |
+| `--graph-validators`          | Include validators in diagram                                                                                                       |
+| `--graph-color`               | Color nodes by protocol type                                                                                                        |
+| `--policy <file>`             | Evaluate enterprise policy file (JSON or YAML)                                                                                      |
+| `--export-ap-config`          | Export Anchor Platform YAML config to stdout                                                                                        |
+| `--generate-openapi <file>`   | Generate an OpenAPI 3.1 spec (json or yaml extension)                                                                               |
+| `--badge-svg <file>`          | Generate an SVG compliance badge                                                                                                    |
+| `--badge-json <file>`         | Generate a Shields.io JSON endpoint                                                                                                 |
+| `--json-schema`               | Print a JSON Schema (Draft 2020-12) for stellar.toml to stdout                                                                      |
 
-| Flag                      | Effect                                                                            |
-| ------------------------- | --------------------------------------------------------------------------------- |
-| `-d, --domain <d>`        | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks             |
-| `-f, --format <fmt>`      | `text` (default), `json`, `sarif`, `github`, `junit`                              |
-| `--readiness` (`--score`) | Score wallet listing readiness (0–100) with a letter grade and a checklist        |
-| `-f, --format <fmt>`      | `text` (default), `json`, `sarif`, `github`, `junit`, `html`                      |
-| `-f, --format <fmt>`      | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`                    |
-| `-f, --format <fmt>`      | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `checkstyle`      |
-| `--strict`                | Treat warnings as errors                                                          |
-| `--max-warnings <n>`      | Fail if warnings exceed `n`                                                       |
-| `--check-network`         | Verify accounts, `HORIZON_URL`, SEP-8 flags, and `ANCHOR_QUOTE_SERVER` online     |
-| `--verify-sep10`          | Verify SEP-10 nonce uniqueness and replay resistance (requires --check-network)   |
-| `--check-contracts`       | Verify Soroban contract and WASM TTL liveliness online                            |
-| `--soroban-rpc <url>`     | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`) |
-| `--mock-fixtures <dir>`   | Serve network checks from recorded JSON fixtures under `<dir>`, never the network |
-| `--webhook-slack <url>`   | POST a Slack Block Kit card with the run summary                                  |
-| `--webhook-discord <url>` | POST a Discord embed with the run summary                                         |
-| `--off <rule>`            | Disable a rule (repeatable)                                                       |
-| `--error <rule>`          | Raise a rule to error (repeatable)                                                |
-| `--warn <rule>`           | Lower a rule to warning (repeatable)                                              |
-| `-q, --quiet`             | Show errors only                                                                  |
-| `--show-help-urls`        | Print the spec link for each finding                                              |
-| `--list-rules`            | Print every rule and exit                                                         |
-| `--no-suggestions`        | Hide diagnostic suggestions in the output                                         |
-| `--color`                 | Force colour on, overriding `NO_COLOR`                                            |
-| `--no-color`              | Force colour off                                                                  |
-| `-i, --interactive`       | Full-screen dashboard to walk the findings (falls back to text)                   |
-| `--lsp`                   | Run as a Language Server on stdio (diagnostics + quick-fix code actions)          |
-| Flag                        | Effect                                                                               |
-| --------------------------- | ------------------------------------------------------------------------------------ |
-| `-d, --domain <d>`          | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks                |
-| `-f, --format <fmt>`        | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle` |
-| `--strict`                  | Treat warnings as errors                                                             |
-| `--max-warnings <n>`        | Fail if warnings exceed `n`                                                          |
-| `--check-network`           | Verify accounts, `HORIZON_URL`, SEP-8 flags, and `ANCHOR_QUOTE_SERVER` online        |
-| `--verify-sep10`            | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)    |
-| `--check-contracts`         | Verify Soroban contract and WASM TTL liveliness online                               |
-| `--soroban-rpc <url>`       | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)    |
-| `--mock-fixtures <dir>`     | Serve network checks from recorded JSON fixtures under `<dir>`, never the network    |
-| `--webhook-slack <url>`     | POST a Slack Block Kit card with the run summary                                     |
-| `--webhook-discord <url>`   | POST a Discord embed with the run summary                                            |
-| `--off <rule>`              | Disable a rule (repeatable)                                                          |
-| `--error <rule>`            | Raise a rule to error (repeatable)                                                   |
-| `--warn <rule>`             | Lower a rule to warning (repeatable)                                                 |
-| `-q, --quiet`               | Show errors only                                                                     |
-| `--show-help-urls`          | Print the spec link for each finding                                                 |
-| `--list-rules`              | Print every rule and exit                                                            |
-| `--no-suggestions`          | Hide diagnostic suggestions in the output                                            |
-| `--color`                   | Force colour on, overriding `NO_COLOR`                                               |
-| `--no-color`                | Force colour off                                                                     |
-| `-i, --interactive`         | Full-screen dashboard to walk the findings (falls back to text)                      |
-| `--lsp`                     | Run as a Language Server on stdio (diagnostics, quick-fixes, hover)                  |
-| `--graph <fmt>`             | Generate architecture diagram: `mermaid` or `dot`                                    |
-| `--graph-contracts`         | Include Soroban contracts in diagram                                                 |
-| `--graph-validators`        | Include validators in diagram                                                        |
-| `--graph-color`             | Color nodes by protocol type                                                         |
-| `--policy <file>`           | Evaluate enterprise policy file (JSON or YAML)                                       |
-| `--export-ap-config`        | Export Anchor Platform YAML config to stdout                                         |
-| `--generate-openapi <file>` | Generate an OpenAPI 3.1 spec (json or yaml extension)                                |
-| `--badge-svg <file>`        | Generate an SVG compliance badge                                                     |
-| `--badge-json <file>`       | Generate a Shields.io JSON endpoint                                                  |
-| `--json-schema`             | Print a JSON Schema (Draft 2020-12) for stellar.toml to stdout                       |
+Every flag above takes precedence over the [configuration file](#configuration-file), and
+`--preset` — being a flag — takes precedence over it too.
 
-Every flag above takes precedence over the [configuration file](#configuration-file).
+### OpenTelemetry trace context audit
+
+Run `stellar-toml-lint --audit-opentelemetry stellar.toml` to probe each declared
+`TRANSFER_SERVER` (SEP-6), `TRANSFER_SERVER_SEP0024` (SEP-24),
+`DIRECT_PAYMENT_SERVER` (SEP-31), and `ANCHOR_QUOTE_SERVER` (SEP-38). The audit
+sends a read-only `GET` to the service's `/info` endpoint with a fresh W3C
+Trace Context version `00` `traceparent`. It does not send `tracestate`, since
+the linter has no vendor-specific state to propagate.
+
+The report inspects a valid `traceresponse` header or a `Server-Timing` `trace`
+metric containing trace context. Either may expose a different trace ID because
+a service can legitimately restart a trace. No response echo is required by
+W3C Trace Context: when there is no observable correlation metadata, the result
+is **unobservable**, not a propagation failure. Malformed or conflicting
+metadata is reported as **non-compliant**; unsafe URLs, redirects, timeouts and
+network failures are **unreachable**. A valid observed response context is
+reported as **compliant** for the observable HTTP exchange.
+
+This is an external trace context and response observability audit, not a full
+OpenTelemetry instrumentation test. It cannot prove that context reached
+invisible downstream services, that spans were exported, or that the trace ID
+belongs to the initiating request when the server starts a new trace. Probe
+requests require HTTPS, reject private or local destinations, pin public DNS
+answers, do not follow redirects, and discard response bodies after headers.
+Only the read-only `/info` endpoint is requested; transactions, quotes and
+financial operations are never called.
 
 Exit codes: **0** no errors, **1** problems found, **2** bad usage, an unmatched glob, or I/O
 failure.
@@ -198,6 +238,110 @@ failure.
 Colour output follows the [NO_COLOR standard](https://no-color.org): setting `NO_COLOR` to any
 non-empty value disables it, an empty value counts as unset, and stdout not being a terminal
 disables it too. An explicit `--color` is the only thing that overrides `NO_COLOR`.
+
+### Canonical key order
+
+Anchors edit `stellar.toml` by hand, so the fields land in whatever order the last edit happened to
+touch. The next person who adds one currency to a five-currency file produces a diff that moves
+half the file, and the reviewer has to read all of it to find the one line that matters.
+
+`--sort-keys` reorders the tables SEP-1 defines a reading order for — `[DOCUMENTATION]`,
+`[[PRINCIPALS]]`, `[[CURRENCIES]]`, `[[VALIDATORS]]` — into that order, and sorts `[[CURRENCIES]]`
+by `code` and `[[VALIDATORS]]` by `PUBLIC_KEY` so the entries themselves are findable:
+
+```bash
+stellar-toml-lint --sort-keys                    # apply
+stellar-toml-lint --sort-keys --dry-run          # preview; exit 1 if anything is out of order
+stellar-toml-lint --sort-keys --dry-run > keys.diff
+cat broken.toml | stellar-toml-lint --sort-keys - # stdin to stdout
+```
+
+What it guarantees:
+
+- **It only moves lines.** Nothing is reformatted, re-quoted, or re-rendered, so `issuer = "GABC" #
+our account` keeps its trailing comment, its quoting, and its multi-line `"""` value byte for byte.
+- **A comment travels with the key under it.** A blank line separates a comment from the key below,
+  which makes it floating layout rather than an annotation, and floating whitespace stays where the
+  author put it.
+- **Fields the spec does not name stay last, in the order written.** The codemod has no opinion
+  about `sep38`, so it will not invent one and will not reorder your custom keys against each other.
+- **It is idempotent.** A second pass reports no change, which is what makes `--dry-run` usable as a
+  CI gate and `--sort-keys` safe in a pre-commit hook.
+- **A file that does not parse is left alone** and reported on stderr with exit 1. Fix the syntax
+  first; a reorder is not the place to guess at intent.
+
+Two limits worth knowing: the keys above the first table header are left where they are, since
+there is no canonical order for the global preamble that everyone agrees on, and an array whose
+entries are interrupted by another table is not reordered, because moving it would change which
+table its keys belong to.
+
+### Rule presets
+
+Nobody is all of the ecosystem at once. A validator operator publishes `[[VALIDATORS]]` and little
+else; a standalone issuer publishes `[[CURRENCIES]]` and `[DOCUMENTATION]` and runs no servers; a
+SEP-24 anchor publishes service endpoints and the currencies they transfer. The default rule set
+assumes the union of all three, so each role silences the rest — normally with a long `--off` chain
+copied into every workflow, Makefile, and pre-commit hook, each copy drifting a little further from
+the last.
+
+`--preset` is that chain, written once and reviewed as a unit:
+
+- **`validator`** — for node operators. `[[VALIDATORS]]` and the general file checks stay on; the
+  currency issuance and anchor service rules are off. Two validators sharing a `HOST` or an `ALIAS`
+  fails the build, because that is a quorum bug rather than a style note.
+- **`anchor-sep24`** — for hosted anchors. SEP-24, SEP-10, and currency requirements at `error`: a
+  `TRANSFER_SERVER` with no `[[CURRENCIES]]`, a half-declared SEP-45 pair, an anchored asset that
+  does not say what backs it. Validator rules are off, since an anchor runs no validator nodes.
+- **`issuer`** — for asset issuers. Currency, collateral, and documentation completeness at `error`.
+  Anchor service rules are off, since a standalone issuer serves nothing.
+
+```bash
+# In CI, instead of --off currencies/... --off sep12/... --off sep38/... (x20)
+stellar-toml-lint --preset validator public/.well-known/stellar.toml
+```
+
+A preset is a **baseline, not a policy**: an explicit `--off`, `--warn`, or `--error` on the same
+command line still wins, whatever order the flags appear in, so the one-off deviation never needs a
+new preset.
+
+```bash
+# The bundle says a duplicate validator host is an error; this run disagrees.
+stellar-toml-lint --preset validator --warn validators/duplicate-host stellar.toml
+```
+
+An unknown name lists the available presets and exits `2`:
+
+```console
+$ stellar-toml-lint --preset valdator stellar.toml
+Unknown preset "valdator". Available presets:
+  validator     Validator operator: validator and general file checks, no anchor or currency rules
+  anchor-sep24  SEP-24 anchor: SEP-24, SEP-10, and currency requirements at error
+  issuer        Asset issuer: currency, collateral, and documentation completeness at error
+Did you mean: validator?
+```
+
+### Configuration file
+
+A `.stellartomlrc.json` next to your `stellar.toml` records the project's rule policy once, instead of
+repeating `--off`/`--warn` flags in every workflow. It is discovered by walking up from the linted
+file's directory (from the current directory for stdin and `--domain`), stopping at the filesystem
+root, so a repository-level file covers everything beneath it.
+
+```json
+{
+  "rules": {
+    "general/unknown-field": "off",
+    "currencies/regulated-missing-auth-revocable-flag": "error"
+  },
+  "strict": true,
+  "maxWarnings": 10
+}
+```
+
+`rules` maps rule ids to `off`, `error`, `warning`, or `info`; `strict` and `maxWarnings` mirror
+`--strict` and `--max-warnings`. CLI flags always override the file, and so does `--preset`. A
+malformed file, an unknown top-level field, or an unknown rule id exits `2` — a config that is
+silently ignored is worse than one that fails, because the team believes the policy is recorded.
 
 ### Walking the findings in a terminal
 
@@ -220,49 +364,25 @@ draws its own view: drop the format flag.
 into, and the dashboard already routes the keystroke through a callback so that lands as a one-line
 change rather than a rewrite.
 
-### Scoring wallet listing readiness
+### Shell completion
 
-```console
-$ stellar-toml-lint public/.well-known/stellar.toml --readiness
+`--completion <shell>` prints a script that teaches bash, zsh, or fish how to complete the linter's
+flags, its output formats, and the rule ids accepted by `--off`/`--warn`/`--error`. The rule ids are
+read from the same registry the linter runs, so they never drift.
 
-public/.well-known/stellar.toml — listing readiness
+```bash
+# bash: append once, then restart the shell
+echo 'eval "$(stellar-toml-lint --completion bash)"' >> ~/.bashrc
 
-  Grade A+   95/100
-  ███████████████████░
+# zsh
+echo 'eval "$(stellar-toml-lint --completion zsh)"' >> ~/.zshrc
 
-  Listing Readiness Checklist
-
-  Protocol & Syntax Compliance 40/40
-    [✓] File parses as valid TOML
-    [✓] No SEP-1 protocol or syntax errors (40/40)
-
-  Organization Identity & Trust 25/30
-    [✓] ORG_NAME names the organization (5/5)
-    [✗] Physical address attestation is published (0/3)
-        No ORG_PHYSICAL_ADDRESS_ATTESTATION is set.
-        ↳ Publish a signed document on your own domain proving your address.
-  ...
+# fish
+stellar-toml-lint --completion fish > ~/.config/fish/completions/stellar-toml-lint.fish
 ```
 
-SEP-1 notes that wallets and exchanges decide whether to list an asset "based on the completeness
-of their Account Information and Documentation sections". A file can therefore have zero errors and
-still be turned down, so `--readiness` grades it the way a listing review would: a 0–100 total and a
-letter grade (**A+** 95–100, **A** 90–94, **B** 80–89, **C** 70–79, **D** 60–69, **F** below 60),
-across three weighted pillars.
+An unsupported shell name is a usage error: it prints to stderr and exits `2`.
 
-| Pillar                        | Points | What it weighs                                                                                                                                                                   |
-| ----------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Protocol & Syntax Compliance  | 40     | 0 errors scores 40; each error costs 15; a file that will not parse scores 0                                                                                                     |
-| Organization Identity & Trust | 30     | `ORG_NAME`, `ORG_URL`, a PNG `ORG_LOGO`, `ORG_OFFICIAL_EMAIL` on the `ORG_URL` domain and not a throwaway provider, and the physical/phone attestations                          |
-| Asset & Anchor Transparency   | 30     | one issuance policy per currency, `anchor_asset_type`, `redemption_instructions`, `attestation_of_reserve`, and active `WEB_AUTH_ENDPOINT` / `TRANSFER_SERVER_SEP0024` endpoints |
-
-Every check is listed in an actionable checklist: `[✓]` marks what passed, and `[✗]` names the
-missing field together with the fix. `--score` is an alias, and `--readiness --format json` emits
-the same report as JSON for a dashboard or score badge.
-
-Readiness is purely local — it scores the parsed document and the diagnostics already computed, so
-it adds no network traffic. The exit code still follows the diagnostics, so `--readiness` never
-changes whether a build fails.
 ### Editor integration (LSP)
 
 ```console
@@ -280,6 +400,21 @@ qualified name (`[[CURRENCIES]].display_decimals`), its type (`integer (0-7)`), 
 own description, the permitted values where SEP-1 enumerates them (`live`, `dead`, `test`,
 `private`), and a link to the section of SEP-1 that defines the field. Hovering whitespace, a
 comment, or a key SEP-1 does not define shows nothing at all.
+
+Hovering a line that names a Soroban contract (`[[CURRENCIES]].contract`, `WEB_AUTH_CONTRACT_ID`,
+or a `contract_id` key) can also show the contract's custom errors: every `#[contracterror]` enum
+in the deployed WASM's `contractspecv0` section, as a Markdown table of integer codes, case names,
+and doc comments, so `Error(Contract, #7)` is readable without opening the Rust source. This
+needs the Soroban RPC, so like `--check-contracts` it is off unless the editor opts in through
+`initializationOptions`:
+
+```json
+{ "checkContracts": true, "sorobanRpc": "https://soroban-testnet.stellar.org" }
+```
+
+`sorobanRpc` is optional; without it the endpoint is derived from the file's
+`NETWORK_PASSPHRASE`. Each contract is fetched once per session and cached. An unreachable RPC,
+an archived contract, or a module without a spec leaves the SEP-1 hover unchanged.
 
 ### Alerting a Slack or Discord channel
 
@@ -302,7 +437,7 @@ into a failing build.
 
 ## In the browser
 
-The linter itself is free of Node built-ins, so it also runs in a page or a worker, under a separate entry point:
+The linter itself is free of Node built-ins, so it also runs in a page or a worker under dedicated browser packages and bundles:
 
 ```ts
 import { createVirtualFileSystem, lintBrowserFile } from 'stellar-toml-lint/browser';
@@ -311,15 +446,49 @@ const files = createVirtualFileSystem({ 'stellar.toml': textareaValue });
 const result = await lintBrowserFile('stellar.toml', { files });
 ```
 
-- `lintBrowser(content, options)` — lint a string.
-- `lintBrowserFile(path, { files })` and `lintBrowserRun(paths, { files })` — lint out of a virtual file system, which is what replaces `node:fs`.
-- `lintBrowserDomain(domain, { fetchImpl })` — fetch `/.well-known/stellar.toml` with the page's own `fetch`. CORS applies here exactly as it does to a wallet, so a host without `Access-Control-Allow-Origin: *` produces the same `network/cors` finding.
+### Browser API & Bundles
 
-A worker wrapper is published as `stellar-toml-lint/worker`. Send `{ type: 'lint', content, options }` and get back `{ type: 'result', result }`, or `{ type: 'error', message }` when the request itself was malformed — the handler answers errors rather than throwing, because a worker that throws loses the request silently. `{ type: 'ping' }` lets a page check the worker is alive before a long run.
+- `lintBrowser(content, options)` — lint a string asynchronously.
+- `lintBrowserFile(path, { files })` and `lintBrowserRun(paths, { files })` — lint out of an in-memory virtual file system (`createVirtualFileSystem`), replacing `node:fs`.
+- `lintBrowserDomain(domain, { fetchImpl })` — fetch `/.well-known/stellar.toml` with the page's standard `globalThis.fetch`. CORS applies exactly as it does to a wallet, so a host without `Access-Control-Allow-Origin: *` produces the same `network/cors` finding.
+
+Pre-bundled minified outputs are compiled to `dist/browser/`:
+
+- `dist/browser/stellar-toml-lint.esm.min.js` (`index.js`): ESM bundle for bundlers, Vite, and ES module imports.
+- `dist/browser/stellar-toml-lint.umd.min.js` (`index.umd.js`): UMD/IIFE bundle for direct browser script tags, exposing `window.stellarTomlLint`.
+- `dist/browser/stellar-toml-lint.worker.min.js` (`worker.js`): Dedicated Web Worker script.
+
+```html
+<!-- Direct script tag usage -->
+<script src="dist/browser/stellar-toml-lint.umd.min.js"></script>
+<script>
+  stellarTomlLint.lintBrowser('VERSION="2.0.0"\n').then((result) => {
+    console.log('Valid:', result.ok, result.counts);
+  });
+</script>
+```
+
+### Web Worker
+
+A worker wrapper is published as `stellar-toml-lint/worker` (and `dist/browser/worker.js`). Send `{ type: 'lint', content, options }` and get back `{ type: 'result', result }`, or `{ type: 'error', message }` when the request itself was malformed — the handler answers errors rather than throwing, because a worker that throws loses the request silently. `{ type: 'ping' }` lets a page check the worker is alive before a long run.
+
+```ts
+const worker = new Worker(new URL('stellar-toml-lint/worker', import.meta.url));
+worker.onmessage = (e) => console.log('Lint result:', e.data.result);
+worker.postMessage({ type: 'lint', content: tomlString });
+```
+
+### Capabilities & Typings
 
 One capability does not survive the move: a page cannot observe a TLS session, so the `security/*` audit is skipped in the browser and reported as not observed rather than guessed. `browserCapabilities` says the same thing at runtime, for callers that branch on it.
 
-Both entry points ship their own typings (`dist/browser.d.ts`, `dist/worker.d.ts`), and a test walks the static import graph from them so a `node:` import cannot creep back onto that path.
+Both entry points ship their own TypeScript declarations (`dist/browser.d.ts`, `dist/worker.d.ts`), and build tests verify static import boundaries and execution in browser sandbox environments.
+
+To build the browser bundles:
+
+```bash
+npm run build:browser
+```
 
 ## In CI
 
@@ -457,6 +626,22 @@ Each linted file becomes one `<file>` element and each diagnostic an `<error>` c
 suppress findings the way it would a Checkstyle check. Severity maps straight across (`error`,
 `warning`, `info`). Lint one file per report, as with the other machine-readable formats.
 
+### GitHub step summaries
+
+GitHub Actions renders GitHub-flavored Markdown written to `$GITHUB_STEP_SUMMARY` as a status panel
+on the run's overview page. `--format markdown` emits exactly that, because the inline annotations
+`--format github` produces are capped at ten per run and scattered across commits:
+
+```yaml
+- run: npx stellar-toml-lint public/.well-known/stellar.toml --format markdown >> "$GITHUB_STEP_SUMMARY"
+```
+
+The report opens with a pass/fail header and the error, warning, and info counts, then a table with
+a row per finding — `Location`, `Severity`, `Rule`, `Message` — and folds the suggestions and spec
+links into a collapsible `<details>` block so the summary stays scannable. Table cells and the
+header escape `|`, `<`, and `>`, so a hostile `stellar.toml` cannot break the table or inject markup
+into the summary.
+
 ### Pre-commit
 
 ```yaml
@@ -524,6 +709,44 @@ This catches the failure mode nobody notices: a CDN or hosting change quietly dr
 `Access-Control-Allow-Origin` header, which makes the file unreadable to every browser-based wallet
 while looking perfectly fine to `curl`.
 
+### Telemetry and SLA tooling
+
+Four subcommands audit how a live anchor behaves operationally. Every network probe is a
+read-only `GET`; none of them creates, updates or deletes anything. Exit codes match the
+rest of the CLI: `0` clean, `1` findings, `2` bad usage or I/O failure.
+
+```sh
+# Prometheus text 0.0.4 / OpenMetrics 1.0.0 compliance of a /metrics endpoint
+stellar-toml-lint verify-metrics --url https://anchor.example/metrics
+stellar-toml-lint verify-metrics --domain anchor.example   # finds METRICS_URL etc. in stellar.toml
+
+# p50 / p95 / p99 TTFB, TCP connect and TLS handshake for each SEP server's /info
+stellar-toml-lint probe-sla --domain anchor.example --samples 20 --threshold-ms 500
+
+# Invalid read-only requests to each SEP endpoint: are errors RFC 7807 or {"error": "..."}?
+# Flags HTML error pages, plain-text errors, and leaked stack traces, secrets or DB URLs.
+stellar-toml-lint --audit-error-taxonomy --domain anchor.example
+
+# Availability over 24h / 7d / 30d, incidents and the longest downtime streak
+stellar-toml-lint calculate-uptime --log-file health.csv --format markdown \
+  --badge-svg uptime.svg --badge-json uptime.json --min-availability 99.9
+```
+
+- **`verify-metrics`** streams the scrape through an incremental parser, so very large expositions
+  validate in bounded memory. It checks metric and label names, `TYPE` (per standard), missing
+  `HELP`/`TYPE`, NaN gauges, negative counters, histogram `le`/`+Inf`/`_sum`/`_count`, `# EOF` for
+  OpenMetrics, and the anchor metrics `stellar_anchor_balance`, `stellar_tx_processed_total` and
+  `stellar_sep_request_duration_seconds` (override with `--require <name>` or `--no-required-metrics`).
+- **`probe-sla`** probes `TRANSFER_SERVER`, `TRANSFER_SERVER_SEP0024`, `DIRECT_PAYMENT_SERVER` and
+  `ANCHOR_QUOTE_SERVER` on a fresh connection each time and prints an ASCII TTFB histogram. A p50 or
+  p95 above the threshold is an error; a slow p99 tail is a warning.
+- **`--audit-error-taxonomy`** sorts every response into `client-input`, `authentication`,
+  `authorization`, `not-found`, `conflict`, `rate-limited`, `server`, `unexpected-success` or `other`.
+- **`calculate-uptime`** reads JSON arrays, `{ "records": [...] }`, NDJSON or CSV with flexible
+  column names (`timestamp`/`time`/`ts`, `status`/`up`/`ok`/HTTP code, optional `service`).
+  Availability is time-weighted and truncated, never rounded up, so 99.989% is never reported as
+  99.99%.
+
 ## Programmatic API
 
 ```ts
@@ -536,10 +759,8 @@ const result = lint(await readFile('stellar.toml', 'utf8'), {
   rules: { 'general/unknown-field': 'off' },
 });
 
-// The reporters mirror `--format`: formatText (shown here), formatJson,
-// formatJunit, formatSarif, formatGithub, and formatHtml.
 // The reporters mirror `--format`: formatText (shown here), formatJson, formatNdjson,
-// formatJunit, formatCheckstyle, formatSarif, and formatGithub.
+// formatJunit, formatCheckstyle, formatSarif, formatGithub, and formatMarkdown.
 if (!result.ok) {
   console.error(formatText(result, { color: true }));
   process.exit(1);
@@ -560,24 +781,24 @@ const result = await lintDomain('example.com', {}, myFetch, async (host, port) =
 });
 ```
 
-The listing readiness score is available programmatically too:
-
-```ts
-import { calculateReadiness, formatReadiness, formatReadinessJson } from 'stellar-toml-lint';
-
-const report = calculateReadiness(result);
-report.score; // 0–100
-report.grade; // 'A+' | 'A' | 'B' | 'C' | 'D' | 'F'
-report.checklist; // every item, with points, detail, and suggestion
-
-console.log(formatReadiness(report, { color: true }));
-console.log(formatReadinessJson(report, 'stellar.toml'));
 Tests and hermetic CI inject recorded responses with the same mechanism that backs `--mock-fixtures`:
 
 ```ts
 import { createFixtureFetch } from 'stellar-toml-lint';
 
 const result = await lintDomain('example.com', {}, createFixtureFetch('./ci/fixtures'));
+```
+
+The [rule presets](#rule-presets) are exported too, so an embedder can hand a role's bundle to
+`lint` the same way the CLI does:
+
+```ts
+import { lint, PRESETS, resolvePreset } from 'stellar-toml-lint';
+
+// What `--preset issuer` applies...
+const bundle = resolvePreset('issuer').rules;
+// ...laid under the caller's own overrides, so an explicit severity still wins.
+const result = lint(source, { rules: { ...bundle, 'general/version': 'off' } });
 ```
 
 Every diagnostic carries a stable `rule` id, a `severity`, a dotted `path` to the offending value, a
@@ -608,6 +829,15 @@ interface Diagnostic {
 
 Run `stellar-toml-lint --list-rules` for the authoritative list. In summary:
 
+**File and general fields** — 100KB size limit, TOML syntax with line and column, UTF-8 BOM
+detection, `https://` on every endpoint field, and trailing-slash detection on service endpoints;
+checksum-valid `SIGNING_KEY`, `URI_REQUEST_SIGNING_KEY`, `WEB_AUTH_CONTRACT_ID`, and `ACCOUNTS`;
+uppercase-only Stellar public keys; unknown fields; and empty string values in documentation fields.
+Deprecated configuration emits actionable `general/deprecated-field` warnings for `AUTH_SERVER`,
+legacy `DEPOSIT_SERVER`, unencrypted `FEDERATION_SERVER`, and documentation keys placed at the
+top level instead of under `[DOCUMENTATION]`. Under `--check-network`, validates that the domain
+portion of `ORG_OFFICIAL_EMAIL` has MX records for email deliverability.
+
 **File** — 100KB size limit, TOML syntax with line and column, UTF-8 BOM detection.
 `https://` on every endpoint field; trailing-slash detection; checksum-valid `SIGNING_KEY`,
 `URI_REQUEST_SIGNING_KEY`, `WEB_AUTH_CONTRACT_ID`, and `ACCOUNTS`; deprecated fields; unknown fields;
@@ -634,10 +864,14 @@ URLs; `ORG_URL` matching the serving domain; attestation documents hosted on you
 and `ORG_GITHUB` as a valid GitHub username or `https://github.com/<username>` profile URL.
 
 **`[[PRINCIPALS]]`** — name and email present and well-formed; hex photo hashes of plausible length.
+**`[[CURRENCIES]]`** — code length and charset, with separate errors for codes over 12 characters
+and non-alphanumeric codes; exactly one of `issuer` or `contract`, both checksum
+validated; the native XLM asset handled as the special case it is; exactly one issuance policy;
 
 **`[[CURRENCIES]]`** — code length and charset; exactly one of `issuer` or `contract`, both checksum
 validated; the native XLM asset handled as the special case it is (including a `display_decimals`
 setting on it, which the protocol makes meaningless, reported as `info`); exactly one issuance policy;
+
 `status` and `anchor_asset_type` enums; `display_decimals` in 0–7; asset-anchored currencies
 requiring a valid `anchor_asset_type` and warning when `anchor_asset` is absent; anchored fiat
 requiring a declared transfer server; SEP-8 regulated assets carrying an approval server, with
@@ -681,6 +915,127 @@ wallet that cannot negotiate exchange rates fails the run instead of at transfer
 object emits `sep38/malformed-quote-response`, while the 400/401/404 a bare unauthenticated GET
 legitimately earns stays silent.
 
+**History publish validation** (with `--check-network`) — each validator `HISTORY` archive is
+checked for the three most recent checkpoints. The audit verifies that `ledger-*.xdr.gz`,
+`transactions-*.xdr.gz`, and `results-*.xdr.gz` are present and non-empty, and compares
+previous-ledger pointers when checkpoint metadata provides them. A missing category emits
+`history/missing-category-archive` (error); an inconsistent hash or pointer emits
+`history/broken-checkpoint-chain` (error). The check uses the injected network transport, so
+`--mock-fixtures` remains hermetic.
+
+**Detached archive signature verification** — `verify-archive-gpg` reads the standard
+`.well-known/stellar-history.json` History Archive State document, takes its `currentLedger`, and
+downloads that checkpoint's ledger-header XDR gzip file using Stellar Core's documented
+`ledger/aa/bb/cc/ledger-XXXXXXXX.xdr.gz` naming scheme. It verifies the exact downloaded bytes with
+OpenPGP.js and a caller-supplied public key:
+
+```sh
+stellar-toml-lint verify-archive-gpg \
+  --url https://history.example.org/prd/core-live/core_live_001/ \
+  --pubkey ./operator-public-key.asc
+
+# Pin an independently obtained fingerprint if you know which operator key is expected.
+stellar-toml-lint verify-archive-gpg \
+  --url https://history.example.org/prd/core-live/core_live_001/ \
+  --pubkey ./operator-public-key.asc \
+  --trusted-fingerprint 0123456789abcdef0123456789abcdef01234567 \
+  --format json
+```
+
+Stellar Core's archive format does **not** define GPG signatures, a `.sig` sidecar, or a GPG public
+key field in `stellar.toml`. The verifier therefore checks the optional sidecar at
+`<ledger-file>.sig` as a best-effort convention, or uses an explicit `--signature-url`; it does not
+claim that ordinary Stellar archives publish signatures. A missing signature fails verification.
+The public key must be provided locally with `--pubkey`; the verifier does not download keys from
+the archive host or a keyserver. OpenPGP verification accepts RSA signing keys of at least 2048 bits
+and Ed25519 signing keys, checks key and signature expiry and revocation, and permits SHA-256,
+SHA-384, or SHA-512 signature hashes. Other key or signature algorithms are rejected.
+
+`Cryptographic verification: VALID` means that OpenPGP.js verified the detached signature over the
+downloaded bytes using the supplied key. It does not prove that the key belongs to the validator
+operator. The result reports `Operator identity trust: UNKNOWN` unless `--trusted-fingerprint`
+matches the signing key's primary fingerprint; the fingerprint must come from an independent
+trusted source. A cryptographically valid result without a pin exits successfully but is not
+reported as identity-trusted. `--format json` emits the structured result. Requests require HTTPS,
+reject redirects and non-public DNS destinations, and have bounded time and response sizes.
+
+This standalone check is not included in the general linter or a health scorecard: SEP-1 has no
+operator GPG-key field, and the project has no cross-check scorecard for arbitrary archive trust.
+
+**Overlay peer discovery** (with `--check-network --crawl-peers`) — each `VALIDATORS[i].HOST`
+is contacted over TCP and sent a Stellar overlay `GET_PEERS` XDR message. Returned `PEERS`
+records are decoded, deduplicated, and crawled recursively with bounded depth and timeouts. A
+node with no peers emits `overlay/isolated-node-zero-peers` (error); a node with one to five
+peers emits `overlay/low-peer-count` (warning). The raw TCP transport is skipped in
+`--mock-fixtures` mode, which remains a no-network mode.
+
+**Overlay cryptography** (used by the peer and session audits) — the auditor validates RFC 5869
+HKDF derivation, big-endian 4-byte message length framing, monotonic sequence numbers, and
+HMAC authentication tags. A malformed frame or replayed sequence emits
+`overlay/invalid-crypto-framing` (error); a failed MAC emits
+`overlay/mac-authentication-failure` (error).
+
+**DNS integrity** (with `--check-network --verify-dnssec`) — A and AAAA answers are queried from
+Cloudflare (`1.1.1.1`), Google (`8.8.8.8`), and Quad9 (`9.9.9.9`) through their DNS-over-HTTPS
+endpoints. Resolver sets are normalized and compared; disagreement emits
+`security/dns-resolver-divergence` (error), while an explicit unauthenticated response emits
+`security/dnssec-not-enabled` (warning).
+
+**DNS takeover and SSRF** (`--audit-dns-takeover`, `--audit-ssrf`) — the takeover audit collects the
+apex domain and every hostname referenced by the file, then queries CNAME and NS records through a
+DNS-over-HTTPS resolver. A CNAME whose target matches a known cloud signature (S3, GitHub Pages,
+Fastly, Cloudflare, Azure, Heroku, Netlify or Vercel) and does not resolve is reported as
+`security/dns-takeover-cname` at **critical** severity; dangling Route 53 delegations are reported as
+`security/dns-takeover-ns`. The SSRF audit resolves every advertised URL twice (passively, through
+the same resolver) and reports RFC 1918, loopback, link-local, multicast and IPv4-mapped IPv6 targets
+as `security/ssrf-private-ip`, with public→private answer changes reported as
+`security/ssrf-dns-rebinding`. Both audits carry per-query timeouts, so a slow resolver degrades to a
+warning instead of hanging CI. Neither audit connects to the target resource.
+
+**Secret leak detection** (`--audit-secrets`) — scans the raw source, its comments and the parsed
+values for checksum-valid Stellar seeds (`S…`), AWS keys, GitHub tokens, PEM blocks, bearer tokens and
+high-entropy values in credential-looking fields. A finding halts the run immediately with exit 1;
+only masked values (`SABC...XYZ`) ever reach stdout, stderr or reports, and public `G…`/`C…` keys are
+never flagged.
+
+The same flag sends browser-shaped `OPTIONS` requests to each declared `WEB_AUTH_ENDPOINT`,
+`TRANSFER_SERVER`, `KYC_SERVER`, and `ANCHOR_QUOTE_SERVER`. The response must allow the requesting
+origin (or `*`) and include `GET`, `POST`, and `OPTIONS` in `Access-Control-Allow-Methods`. A failed
+request or invalid origin/method response emits `network/cors-preflight-failed` (error). A response
+without `Access-Control-Allow-Headers` emits `network/missing-allow-headers` (warning). Endpoints
+that are not declared are skipped.
+
+**SEP-6 transfer servers** (with `--domain` or `--check-network`) — when `TRANSFER_SERVER` is
+declared, GETs `<TRANSFER_SERVER>/info` with redirects followed and asserts it answers 200 with
+`application/json` carrying the `deposit` and `withdraw` maps. Every non-native `[[CURRENCIES]]`
+entry that appears in neither map — keyed by bare asset code or `CODE:issuer` — emits
+`network/sep6-missing-asset` (warning), because the file would otherwise advertise a deposit the
+anchor cannot service. An unreachable endpoint, a non-200, or a body that is not JSON degrades to
+`network/sep6-info-error` or `network/sep6-info-malformed` (warnings) rather than failing the run.
+
+**SEP-10 client domain attribution** (with `--check-network --verify-sep10`) — SEP-10 v3 lets a wallet
+prove its home domain: the challenge request carries `client_domain`, the anchor resolves
+`https://<client_domain>/.well-known/stellar.toml`, and the challenge must carry a `manageData`
+operation named `client_domain` sourced by the signing key that document publishes. The audit walks the
+whole attributed handshake with a mock wallet account and client domain keypair, co-signs the challenge
+with both, and decodes the JWT the anchor returns. A challenge that omits the operation, or a token that
+omits or misstates the `client_domain` claim, is an anchor that ignored the attribution the wallet
+proved and emits `sep10/missing-client-domain-claim` (error). An envelope that does not decode under the
+advertised network passphrase, or whose `client_domain` value is not `auth` or is sourced by a foreign
+key, emits `sep10/invalid-client-domain-operation` (error). A file without `WEB_AUTH_ENDPOINT` or
+`SIGNING_KEY`, and an endpoint that cannot be reached, stay silent — reachability is already reported by
+the other network rules.
+
+**Cross-SEP quote binding** (with `--check-network --audit-quotes`) — an anchor that declares both
+`ANCHOR_QUOTE_SERVER` and `TRANSFER_SERVER` is expected to bind them. The audit POSTs `/quote` for the
+first classic currency the file declares, passes the returned `quote_id` to `GET /deposit`, and asserts
+the firm quote survives the trip. A `total_fee` that differs from the sum of the declared SEP-38 `fees`,
+a price that is not the quoted one, or an execution window that closes before the quoted `expire_after`
+emits `quotes/mismatched-quote-fee` (error), because the wallet committed to terms the anchor no longer
+honours. A `/deposit` that refuses the `quote_id` advertises programmatic conversion it cannot execute
+and emits `quotes/quote-binding-unsupported` (warning). Either endpoint missing, unusable, or
+unreachable keeps this audit silent.
+
 For every `[[CURRENCIES]]` entry marked `regulated=true` with a classic `issuer`, the issuer's
 account flags are read from Horizon: a missing `AUTH_REQUIRED_FLAG` emits
 `currencies/regulated-missing-auth-required-flag` (error) and a missing `AUTH_REVOCABLE_FLAG` emits
@@ -698,12 +1053,92 @@ unreachable or malformed RPC degrades to `soroban/contract-ttl-unavailable` (war
 endpoint is derived from `NETWORK_PASSPHRASE` (Public, Testnet, or Futurenet) and can be overridden
 with `--soroban-rpc`.
 
+For `WEB_AUTH_CONTRACT_ID`, the deployed WASM's `contractspecv0` custom section is read and its
+exported functions checked. A contract whose spec declares functions but not `web_auth_verify`
+emits `soroban/invalid-auth-contract-interface` (error): the file would pass SEP-45 discovery but
+no wallet could ever complete authentication. A contract whose interface cannot be read — an
+unreachable RPC, an archived entry, or a module with no spec section — stays silent rather than
+failing on a guess.
+
+Contract specs are also audited for contract upgrade functions (`upgrade`, `set_wasm`, `update_wasm`).
+An upgrade function exported without admin protection or authorization checks emits
+`soroban/unprotected-upgrade-function` (error), and an upgrade admin account secured by only a single signer
+emits `soroban/single-signer-upgrade-admin` (warning).
+
+Each deployed WASM also gets a static resource estimate, read from the module's sections without
+executing it. A Memory section that reserves more than 10 pages (640 KiB) at instantiation emits
+`soroban/excessive-static-memory-pages` (warning); the message also reports the static heap the
+Data section's initialisers occupy. The cyclomatic complexity of each exported SEP-41 function
+(`transfer`, `balance`, `approve`, …) is counted from its branch instructions (`if`, `br_if`, and
+each extra `br_table` target), and one above 50 emits `soroban/high-cyclomatic-complexity`
+(warning). The limit sits well above source-level thresholds because compiled WASM inlines helpers
+into each entry point. A module that cannot be fetched or parsed is skipped, not guessed at.
+
+In addition, under `--check-network`, Soroban Stellar Asset Contracts (SAC) total supply (`total_supply()`) is
+verified against the classic asset's issued supply from Horizon `/assets`. If the supplies diverge within a
+consistent ledger-close window, `soroban/supply-invariant-violation` (error) is emitted.
+
+Also under `--check-network`, the authorization call-tree simulator dry-runs the SAC `mint` and `clawback` calls with
+`simulateTransaction` in recording mode and traces the `SorobanAuthorizationEntry` tree the RPC
+returns: a tree that authorizes an identity other than the account the file publishes as
+`SIGNING_KEY` or a designated issuer, or delegates into an unapproved contract, emits
+`soroban/unauthorized-cross-contract-call` (error), and a grant that names no address boundary or
+lets the contract authorize itself emits `soroban/unbounded-auth-grant` (warning).
+
 **SEP-12 customer schemas** (with `--check-network`) — queries `KYC_SERVER/customer` and checks the
 customer type schemas the anchor declares (`sep31-sender`, `sep31-receiver`, `sep6-deposit`, …).
 Required field keys that are not standard [SEP-9][sep9] names (`first_name`, `last_name`,
 `email_address`, `id_country_code`, …) emit `sep12/unknown-kyc-field-name` (warning), and a customer
 type whose name is not a lowercase identifier emits `sep12/invalid-customer-type-syntax` (error).
 Nothing here fires for a local file without the flag: offline linting never opens a connection.
+
+### Response header and key hygiene audits
+
+**CORS policy** (with `--audit-cors`, `src/security/corsAuditor.ts`) — every endpoint the file
+declares is probed three times the way a browser would send it: an `OPTIONS` pre-flight, an actual
+request from a wallet origin, and an actual request from an origin no whitelist should ever contain.
+`/.well-known/stellar.toml` and the SEP-38 `/info` reads are public by specification, so a served
+`Access-Control-Allow-Origin` other than `*` emits `cors/public-endpoint-missing-wildcard` (error).
+On an authenticated or interactive endpoint the opposite is the defect: `*` together with
+`Access-Control-Allow-Credentials: true` emits `cors/wildcard-origin-with-credentials` (error), and an
+endpoint that echoes back the unlisted origin has no whitelist at all, so any site can read a
+logged-in user's SEP-10 or SEP-12 responses (`cors/unlisted-origin-echoed`, error). A refused
+pre-flight is `cors/preflight-not-allowed` (warning). No request is ever sent with credentials.
+
+**Linked assets** (with `--audit-asset-security`, `src/security/mimeScanner.ts`) — `ORG_LOGO`,
+`CURRENCIES[].image`, and the attestation URLs are fetched and read from their headers first. A
+payload served without `X-Content-Type-Options: nosniff` emits `mime/missing-nosniff` (warning), one
+served as a type the client may execute emits `mime/active-content-type` (error), and one whose
+`Content-Type` contradicts the extension in the URL emits `mime/content-type-mismatch` (warning).
+Text-bearing bodies are then scanned as raw markup for `<script>`, an `on*=` handler, a
+`javascript:` href, `foreignObject`, an embedded document, or a `DOCTYPE`/`ENTITY` declaration —
+`svg/embedded-script` (error) and `svg/entity-declaration` (warning). The scan is a token match, not
+an XML parse: no entity is expanded, so an XXE or billion-laughs payload is reported rather than
+dereferenced. Binary payloads are classified from headers alone and never buffered, and a text body
+is read up to a bound (`svg/embedded-script` says how many bytes were scanned).
+
+**Key separation** (`stellar-toml-lint audit-key-separation --domain <domain>`,
+`src/security/keySeparationAuditor.ts`) — builds the role graph from the file: which account signs
+SEP-10 sessions, which one issues each asset, which are operational `ACCOUNTS`, which vote as
+validators, and which hold collateral. One account in two roles is a NIST SP 800-57 separation
+failure, so `SIGNING_KEY` reuse as an issuer emits `keys/signing-issuer-reuse` (error), an issuer in
+`ACCOUNTS` emits `keys/issuer-operational-account` (error), and a validator identity reused for an
+anchor role emits `keys/validator-key-reuse` (error). Horizon then answers the two questions the file
+cannot: a root key held by one signer at one threshold emits `keys/single-signer-root-account`
+(warning), and an issuer with recent payment or offer operations of its own emits
+`keys/issuer-operational-activity` (warning). Issuer administration (`allow_trust`, `set_options`) is
+not counted as operational traffic. Accounts Horizon cannot serve stay silent. The report prints the
+role graph as a tree, and `--format json` adds the diagnostics.
+
+**Frame embedding** (with `--audit-clickjacking`, `src/security/clickjackingAuditor.ts`) — the URLs a
+wallet opens in an iframe (SEP-24 interactive endpoints, `KYC_SERVER`, `DIRECT_PAYMENT_SERVER`,
+`WEB_AUTH_ENDPOINT`, `CURRENCIES[].approval_server`, and `ORG_URL`) are requested as an embedded
+navigation with `Sec-Fetch-Dest: iframe`, and both framing headers are read. `frame-ancestors *`
+frames the page for every site on the internet and emits `clickjacking/wildcard-frame-ancestors`
+(error); an endpoint that states no policy at all emits `clickjacking/missing-frame-protection`
+(warning); `X-Frame-Options: ALLOW-FROM`, which no current browser implements, emits
+`clickjacking/deprecated-allow-from` (warning). CSP wins when both headers are present, exactly as it
+does in a browser, and a report-only policy counts as nothing sent.
 
 ### Severity
 

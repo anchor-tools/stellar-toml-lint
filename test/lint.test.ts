@@ -91,7 +91,7 @@ describe('broken fixture', () => {
     'principals/required-fields',
     'principals/photo-hashes',
     'principals/social-handles',
-    'currencies/code',
+    'currencies/asset-code-too-long',
     'currencies/issuer-or-contract',
     'currencies/issuance-exclusive',
     'currencies/enums',

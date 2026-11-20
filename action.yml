@@ -24,6 +24,18 @@ inputs:
   max-warnings:
     description: 'Fail if the warning count exceeds this number.'
     required: false
+  check-network:
+    description: 'Run opt-in network checks against the configured file.'
+    required: false
+    default: 'false'
+  crawl-peers:
+    description: 'Discover and audit validator overlay peers.'
+    required: false
+    default: 'false'
+  verify-dnssec:
+    description: 'Compare DNSSEC-validating DNS resolvers for the anchor domain.'
+    required: false
+    default: 'false'
   format:
     description: 'Output format: github, text, json, ndjson, sarif, junit, or checkstyle.'
     required: false
@@ -48,6 +60,9 @@ runs:
         INPUT_DOMAIN: ${{ inputs.domain }}
         INPUT_STRICT: ${{ inputs.strict }}
         INPUT_MAX_WARNINGS: ${{ inputs.max-warnings }}
+        INPUT_CHECK_NETWORK: ${{ inputs.check-network }}
+        INPUT_CRAWL_PEERS: ${{ inputs.crawl-peers }}
+        INPUT_VERIFY_DNSSEC: ${{ inputs.verify-dnssec }}
         INPUT_FORMAT: ${{ inputs.format }}
         INPUT_SARIF_FILE: ${{ inputs.sarif-file }}
       run: |
@@ -65,6 +80,9 @@ runs:
 
         [[ "$INPUT_STRICT" == "true" ]] && args+=(--strict)
         [[ -n "$INPUT_MAX_WARNINGS" ]] && args+=(--max-warnings "$INPUT_MAX_WARNINGS")
+        [[ "$INPUT_CHECK_NETWORK" == "true" ]] && args+=(--check-network)
+        [[ "$INPUT_CRAWL_PEERS" == "true" ]] && args+=(--crawl-peers)
+        [[ "$INPUT_VERIFY_DNSSEC" == "true" ]] && args+=(--verify-dnssec)
 
         if [[ -n "$INPUT_SARIF_FILE" ]]; then
           npx --yes stellar-toml-lint@latest "${args[@]}" --format sarif > "$INPUT_SARIF_FILE" || true

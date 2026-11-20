@@ -1,0 +1,45 @@
+{
+  "name": "tree-sitter-stellar-toml",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for Stellar SEP-1 stellar.toml files",
+  "keywords": [
+    "tree-sitter",
+    "stellar",
+    "toml",
+    "sep-1",
+    "parser"
+  ],
+  "license": "Apache-2.0",
+  "author": "anchor-tools <anchortools23@gmail.com> (https://github.com/anchor-tools)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anchor-tools/stellar-toml-lint.git",
+    "directory": "grammars/tree-sitter-stellar-toml"
+  },
+  "main": "bindings/node",
+  "types": "bindings/node/index.d.ts",
+  "files": [
+    "grammar.js",
+    "bindings/node",
+    "queries",
+    "src"
+  ],
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test",
+    "parse": "tree-sitter parse"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.27.1"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.stellar-toml",
+      "file-types": [
+        "toml"
+      ],
+      "highlights": "queries/highlights.scm",
+      "folds": "queries/folds.scm"
+    }
+  ]
+}
