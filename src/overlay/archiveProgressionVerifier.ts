@@ -105,7 +105,7 @@ export class ArchiveProgressionVerifier {
       try {
         doc = parseToml(input) as Record<string, unknown>;
       } catch (err) {
-        throw new Error(`Failed to parse TOML: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(`Failed to parse TOML: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
       }
     } else if (typeof input === 'object' && input !== null) {
       doc = input as Record<string, unknown>;
@@ -191,7 +191,7 @@ export class ArchiveProgressionVerifier {
         if (typeof seq === 'number') return seq;
       }
     } catch (err) {
-      throw new Error(`Failed to query Horizon live ledger: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`Failed to query Horizon live ledger: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
     } finally {
       clearTimeout(timer);
     }

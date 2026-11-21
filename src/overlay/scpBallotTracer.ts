@@ -154,6 +154,7 @@ export class ScpBallotTracer {
         } catch (err) {
           throw new Error(
             `Failed to decode binary SCP XDR payload: ${err instanceof Error ? err.message : String(err)}`,
+            { cause: err },
           );
         }
       }

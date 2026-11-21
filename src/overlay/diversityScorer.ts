@@ -188,7 +188,7 @@ export class GeographicDiversityScorer {
       const res = await lookup(hostname);
       return res.address;
     } catch (err) {
-      throw new Error(`DNS lookup failed for ${hostname}: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`DNS lookup failed for ${hostname}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
     }
   }
 
@@ -261,7 +261,7 @@ export class GeographicDiversityScorer {
       try {
         doc = parseToml(input) as Record<string, unknown>;
       } catch (err) {
-        throw new Error(`Failed to parse TOML: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(`Failed to parse TOML: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
       }
     } else if (typeof input === 'object' && input !== null) {
       doc = input as Record<string, unknown>;

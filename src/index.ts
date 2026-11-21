@@ -796,3 +796,61 @@ export type {
   GeographicDiversityScorerOptions,
 } from './overlay/diversityScorer.js';
 
+// DID & Verifiable Credentials (Issue #507)
+export {
+  DidResolutionVerifier,
+  decodeBase58,
+  encodeBase58,
+} from './crypto/didVerifier.js';
+export type {
+  DidDocument,
+  VerificationMethod,
+  DidService,
+  VerifiableCredential,
+  CredentialProof,
+  VerificationMethodSummary,
+  DidResolutionResult,
+  VcVerificationResult,
+  TomlDidAuditResult,
+  DidVerifierOptions,
+} from './crypto/didVerifier.js';
+
+// BLS12-381 Multi-Signature & Pairing (Issue #508)
+export {
+  BlsSignatureVerifier,
+  BLS12_381_R,
+  BLS12_381_P,
+} from './crypto/blsVerifier.js';
+export type {
+  BlsGroup,
+  SerializationFormat,
+  BlsKeyParseResult,
+  BlsSignatureVerifyResult,
+  BlsAuditFinding,
+  BlsAuditReport,
+  BlsVerifyOptions,
+} from './crypto/blsVerifier.js';
+
+// Post-Quantum Readiness (Issue #509)
+export {
+  PostQuantumReadinessAuditor,
+  ML_DSA_SPECS,
+} from './crypto/postQuantumAuditor.js';
+export type {
+  MlDsaParameterSet,
+  MlDsaSpec,
+  PostQuantumDeclaration,
+  PostQuantumAuditFinding,
+  PostQuantumReadinessReport,
+} from './crypto/postQuantumAuditor.js';
+
+// Hash Agility & Collision Resistance (Issue #510)
+export {
+  HashAgilityAuditor,
+} from './crypto/hashAgilityAuditor.js';
+export type {
+  HashAlgorithm,
+  HashFieldInspection,
+  HashAgilityReport,
+} from './crypto/hashAgilityAuditor.js';
+

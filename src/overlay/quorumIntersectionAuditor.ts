@@ -215,7 +215,7 @@ export class QuorumSetIntersectionAuditor {
       try {
         doc = parseToml(input) as Record<string, unknown>;
       } catch (err) {
-        throw new Error(`Failed to parse TOML: ${err instanceof Error ? err.message : String(err)}`);
+        throw new Error(`Failed to parse TOML: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
       }
     } else if (Array.isArray(input)) {
       validatorArray = input;
