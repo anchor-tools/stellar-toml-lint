@@ -1061,7 +1061,9 @@ async function auditQuorumCommand(args: string[]): Promise<number> {
     if (format === 'json') {
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } else {
-      process.stdout.write(`Quorum Intersection: ${result.hasQuorumIntersection ? 'PASS' : 'FAIL'}\n`);
+      process.stdout.write(
+        `Quorum Intersection: ${result.hasQuorumIntersection ? 'PASS' : 'FAIL'}\n`,
+      );
       process.stdout.write(`Minimal Quorums: ${result.minimalQuorums.length}\n`);
       process.stdout.write(`Split-Brain Risk: ${result.hasSplitBrainRisk ? 'DETECTED' : 'NONE'}\n`);
       process.stdout.write(`Fragmentation: ${result.isFragmented ? 'FRAGMENTED' : 'HEALTHY'}\n`);
@@ -1164,7 +1166,9 @@ async function scoreDiversityCommand(args: string[]): Promise<number> {
     if (format === 'json') {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     } else {
-      process.stdout.write(`Validators Resolved: ${report.resolvedValidators}/${report.totalValidators}\n`);
+      process.stdout.write(
+        `Validators Resolved: ${report.resolvedValidators}/${report.totalValidators}\n`,
+      );
       process.stdout.write(
         `ASN Diversity: Simpson=${report.asnDiversity.simpsonIndex}, Shannon=${report.asnDiversity.shannonEntropy}\n`,
       );
@@ -1210,7 +1214,9 @@ async function traceScpCommand(args: string[]): Promise<number> {
   }
 
   if (file === undefined) {
-    process.stderr.write('Usage: stellar-toml-lint trace-scp --file <xdr-file> [--timeout <ms>] [--format text|json]\n');
+    process.stderr.write(
+      'Usage: stellar-toml-lint trace-scp --file <xdr-file> [--timeout <ms>] [--format text|json]\n',
+    );
     return 2;
   }
 

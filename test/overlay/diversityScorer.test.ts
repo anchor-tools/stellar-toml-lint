@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  GeographicDiversityScorer,
-  parseHostPort,
-} from '../../src/overlay/diversityScorer.js';
+import { GeographicDiversityScorer, parseHostPort } from '../../src/overlay/diversityScorer.js';
 
 describe('GeographicDiversityScorer', () => {
   describe('parseHostPort', () => {
@@ -75,9 +72,19 @@ HOST = "node4.example.com:11625"
       const mockDns = async (h: string) => `192.0.2.${h.slice(4, 5)}`;
       const mockGeo = (ip: string) => {
         if (ip.endsWith('.4')) {
-          return { asn: 'AS24940', asOrg: 'Hetzner', cloudProvider: 'Hetzner', datacenter: 'hetzner-fsn1' };
+          return {
+            asn: 'AS24940',
+            asOrg: 'Hetzner',
+            cloudProvider: 'Hetzner',
+            datacenter: 'hetzner-fsn1',
+          };
         }
-        return { asn: 'AS16509', asOrg: 'Amazon.com', cloudProvider: 'AWS', datacenter: 'aws-us-east-1' };
+        return {
+          asn: 'AS16509',
+          asOrg: 'Amazon.com',
+          cloudProvider: 'AWS',
+          datacenter: 'aws-us-east-1',
+        };
       };
 
       const scorer = new GeographicDiversityScorer({
@@ -93,8 +100,12 @@ HOST = "node4.example.com:11625"
       expect(report.dominantAsn?.percentage).toBe(75);
       expect(report.hasDatacenterConcentrationRisk).toBe(true);
       expect(report.dominantDatacenter?.datacenter).toBe('aws-us-east-1');
-      expect(report.warnings.some((w) => w.includes('Validator centralization risk: 75%'))).toBe(true);
-      expect(report.warnings.some((w) => w.includes('Datacenter concentration risk: 75%'))).toBe(true);
+      expect(report.warnings.some((w) => w.includes('Validator centralization risk: 75%'))).toBe(
+        true,
+      );
+      expect(report.warnings.some((w) => w.includes('Datacenter concentration risk: 75%'))).toBe(
+        true,
+      );
     });
 
     it('passes without concentration warnings on a geographically diverse validator set', async () => {
@@ -117,9 +128,17 @@ HOST = "gcp.example.com:11625"
 `;
       const mockDns = async (h: string) => `198.51.100.${h.length}`;
       const mockGeo = (_ip: string, host?: string) => {
-        if (host?.includes('aws')) return { asn: 'AS16509', cloudProvider: 'AWS', country: 'US', datacenter: 'aws-us-east-1' };
-        if (host?.includes('hetzner')) return { asn: 'AS24940', cloudProvider: 'Hetzner', country: 'DE', datacenter: 'fsn1' };
-        if (host?.includes('ovh')) return { asn: 'AS16276', cloudProvider: 'OVH', country: 'FR', datacenter: 'gra' };
+        if (host?.includes('aws'))
+          return {
+            asn: 'AS16509',
+            cloudProvider: 'AWS',
+            country: 'US',
+            datacenter: 'aws-us-east-1',
+          };
+        if (host?.includes('hetzner'))
+          return { asn: 'AS24940', cloudProvider: 'Hetzner', country: 'DE', datacenter: 'fsn1' };
+        if (host?.includes('ovh'))
+          return { asn: 'AS16276', cloudProvider: 'OVH', country: 'FR', datacenter: 'gra' };
         return { asn: 'AS15169', cloudProvider: 'GCP', country: 'BR', datacenter: 'gcp-sa-east1' };
       };
 

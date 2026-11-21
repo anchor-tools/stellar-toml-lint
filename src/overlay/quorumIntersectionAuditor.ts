@@ -114,7 +114,9 @@ export class QuorumSetIntersectionAuditor {
     aliasMap?: Map<string, string>,
   ): string[][] {
     const rawValidators: string[] =
-      qSet.validators ?? qSet.VALIDATORS ?? (Array.isArray(qSet['validators']) ? qSet['validators'] : []);
+      qSet.validators ??
+      qSet.VALIDATORS ??
+      (Array.isArray(qSet['validators']) ? qSet['validators'] : []);
     const directValidators: string[] = rawValidators.map((v) => {
       const norm = normalizeNodeId(String(v));
       return aliasMap?.get(norm) ?? norm;
@@ -123,7 +125,9 @@ export class QuorumSetIntersectionAuditor {
     const rawInners: QuorumSetDefinition[] =
       qSet.innerQuorumSets ??
       qSet.INNER_QUORUM_SETS ??
-      (Array.isArray(qSet['inner_quorum_sets']) ? (qSet['inner_quorum_sets'] as QuorumSetDefinition[]) : []);
+      (Array.isArray(qSet['inner_quorum_sets'])
+        ? (qSet['inner_quorum_sets'] as QuorumSetDefinition[])
+        : []);
 
     const totalElements = directValidators.length + rawInners.length;
     if (totalElements === 0) return [];
@@ -151,9 +155,7 @@ export class QuorumSetIntersectionAuditor {
 
     // Each element in elements array is either a direct validator ({ type: 'validator', id: string })
     // or an inner quorum set ({ type: 'inner', slices: string[][] })
-    type Element =
-      | { type: 'validator'; id: string }
-      | { type: 'inner'; slices: string[][] };
+    type Element = { type: 'validator'; id: string } | { type: 'inner'; slices: string[][] };
 
     const elements: Element[] = [
       ...directValidators.map((id) => ({ type: 'validator' as const, id })),
@@ -215,7 +217,10 @@ export class QuorumSetIntersectionAuditor {
       try {
         doc = parseToml(input) as Record<string, unknown>;
       } catch (err) {
-        throw new Error(`Failed to parse TOML: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+        throw new Error(
+          `Failed to parse TOML: ${err instanceof Error ? err.message : String(err)}`,
+          { cause: err },
+        );
       }
     } else if (Array.isArray(input)) {
       validatorArray = input;
@@ -250,13 +255,19 @@ export class QuorumSetIntersectionAuditor {
 
     for (let i = 0; i < validatorArray.length; i++) {
       const val = validatorArray[i]!;
-      const nodeId = val.publicKey ?? val.PUBLIC_KEY ?? val.alias ?? val.ALIAS ?? `validator-${i + 1}`;
+      const nodeId =
+        val.publicKey ?? val.PUBLIC_KEY ?? val.alias ?? val.ALIAS ?? `validator-${i + 1}`;
 
       // Check if validator has an explicit quorum set or slice definition
       const explicitQSet =
         val.quorumSet ??
         val.QUORUM_SET ??
-        (val.validators || val.VALIDATORS || val.threshold || val.THRESHOLD || val.thresholdPercent || val.THRESHOLD_PERCENT
+        (val.validators ||
+        val.VALIDATORS ||
+        val.threshold ||
+        val.THRESHOLD ||
+        val.thresholdPercent ||
+        val.THRESHOLD_PERCENT
           ? (val as QuorumSetDefinition)
           : undefined);
 
@@ -483,7 +494,9 @@ export class QuorumSetIntersectionAuditor {
         );
       }
       if (fragmentation.isolatedNodes.length > 0) {
-        warnings.push(`Isolated validator nodes with no quorum connections: ${fragmentation.isolatedNodes.join(', ')}`);
+        warnings.push(
+          `Isolated validator nodes with no quorum connections: ${fragmentation.isolatedNodes.join(', ')}`,
+        );
       }
     }
 

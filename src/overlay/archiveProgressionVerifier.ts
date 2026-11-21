@@ -105,7 +105,10 @@ export class ArchiveProgressionVerifier {
       try {
         doc = parseToml(input) as Record<string, unknown>;
       } catch (err) {
-        throw new Error(`Failed to parse TOML: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+        throw new Error(
+          `Failed to parse TOML: ${err instanceof Error ? err.message : String(err)}`,
+          { cause: err },
+        );
       }
     } else if (typeof input === 'object' && input !== null) {
       doc = input as Record<string, unknown>;
@@ -114,7 +117,8 @@ export class ArchiveProgressionVerifier {
     const urls = new Set<string>();
 
     // Inspect [[VALIDATORS]]
-    const validators = (doc['VALIDATORS'] ?? doc['validators']) as Array<Record<string, unknown>> | undefined;
+    const validators = (doc['VALIDATORS'] ?? doc['validators']) as
+      Array<Record<string, unknown>> | undefined;
     if (Array.isArray(validators)) {
       for (const val of validators) {
         const history = val['HISTORY'] ?? val['history'];
@@ -191,7 +195,10 @@ export class ArchiveProgressionVerifier {
         if (typeof seq === 'number') return seq;
       }
     } catch (err) {
-      throw new Error(`Failed to query Horizon live ledger: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+      throw new Error(
+        `Failed to query Horizon live ledger: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err },
+      );
     } finally {
       clearTimeout(timer);
     }
@@ -225,7 +232,8 @@ export class ArchiveProgressionVerifier {
       }
 
       const manifest = (await response.json()) as StellarHistoryJson;
-      const currentLedger = typeof manifest.currentLedger === 'number' ? manifest.currentLedger : undefined;
+      const currentLedger =
+        typeof manifest.currentLedger === 'number' ? manifest.currentLedger : undefined;
 
       if (currentLedger === undefined) {
         return {
@@ -320,7 +328,9 @@ export class ArchiveProgressionVerifier {
       try {
         liveLedger = await this.fetchLiveLedger(targetHorizon);
       } catch (err) {
-        warnings.push(`Could not fetch live ledger from Horizon (${targetHorizon}): ${err instanceof Error ? err.message : String(err)}`);
+        warnings.push(
+          `Could not fetch live ledger from Horizon (${targetHorizon}): ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 

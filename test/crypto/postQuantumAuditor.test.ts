@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { ed25519 } from '@noble/curves/ed25519';
-import {
-  PostQuantumReadinessAuditor,
-} from '../../src/crypto/postQuantumAuditor.js';
+import { PostQuantumReadinessAuditor } from '../../src/crypto/postQuantumAuditor.js';
 
 describe('PostQuantumReadinessAuditor', () => {
   it('recognizes standard ML-DSA parameter sets', () => {
     expect(PostQuantumReadinessAuditor.resolveParameterSet('ML-DSA-44')?.publicKeyBytes).toBe(1312);
-    expect(PostQuantumReadinessAuditor.resolveParameterSet('dilithium3')?.publicKeyBytes).toBe(1952);
+    expect(PostQuantumReadinessAuditor.resolveParameterSet('dilithium3')?.publicKeyBytes).toBe(
+      1952,
+    );
     expect(PostQuantumReadinessAuditor.resolveParameterSet('ML-DSA-87')?.publicKeyBytes).toBe(2592);
   });
 

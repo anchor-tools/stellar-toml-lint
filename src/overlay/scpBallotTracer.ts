@@ -114,12 +114,7 @@ export class ScpBallotTracer {
    */
   public parseStatement(
     payload:
-      | xdr.ScpEnvelope
-      | xdr.ScpStatement
-      | Uint8Array
-      | Buffer
-      | string
-      | Record<string, unknown>,
+      xdr.ScpEnvelope | xdr.ScpStatement | Uint8Array | Buffer | string | Record<string, unknown>,
   ): ScpStatementData {
     let stmt: xdr.ScpStatement | undefined;
 
@@ -301,12 +296,7 @@ export class ScpBallotTracer {
    */
   public record(
     payload:
-      | xdr.ScpEnvelope
-      | xdr.ScpStatement
-      | Uint8Array
-      | Buffer
-      | string
-      | Record<string, unknown>,
+      xdr.ScpEnvelope | xdr.ScpStatement | Uint8Array | Buffer | string | Record<string, unknown>,
     timestampMs?: number,
   ): ScpTraceEvent {
     const statement = this.parseStatement(payload);
@@ -416,7 +406,9 @@ export class ScpBallotTracer {
       const trace = this.traceSlot(slotKey, evaluationTimeMs);
       if (trace) traces.push(trace);
     }
-    return traces.sort((a, b) => (a.slotIndex < b.slotIndex ? -1 : a.slotIndex > b.slotIndex ? 1 : 0));
+    return traces.sort((a, b) =>
+      a.slotIndex < b.slotIndex ? -1 : a.slotIndex > b.slotIndex ? 1 : 0,
+    );
   }
 
   /**
@@ -448,7 +440,9 @@ export class ScpBallotTracer {
       }
     }
 
-    return stalls.sort((a, b) => (a.slotIndex < b.slotIndex ? -1 : a.slotIndex > b.slotIndex ? 1 : 0));
+    return stalls.sort((a, b) =>
+      a.slotIndex < b.slotIndex ? -1 : a.slotIndex > b.slotIndex ? 1 : 0,
+    );
   }
 
   public reset(): void {

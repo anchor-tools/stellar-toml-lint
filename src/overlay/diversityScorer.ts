@@ -95,7 +95,11 @@ function inferDefaultGeoMetadata(ip: string, hostname: string): Partial<Validato
       asn: 'AS16509',
       asOrg: 'Amazon.com, Inc.',
       cloudProvider: 'AWS',
-      datacenter: h.includes('us-east-1') ? 'aws-us-east-1' : h.includes('eu-central-1') ? 'aws-eu-central-1' : 'aws-cloud',
+      datacenter: h.includes('us-east-1')
+        ? 'aws-us-east-1'
+        : h.includes('eu-central-1')
+          ? 'aws-eu-central-1'
+          : 'aws-cloud',
       country: 'United States',
       countryCode: 'US',
     };
@@ -188,7 +192,10 @@ export class GeographicDiversityScorer {
       const res = await lookup(hostname);
       return res.address;
     } catch (err) {
-      throw new Error(`DNS lookup failed for ${hostname}: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+      throw new Error(
+        `DNS lookup failed for ${hostname}: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err },
+      );
     }
   }
 
@@ -236,9 +243,7 @@ export class GeographicDiversityScorer {
     const simpsonIndex = Math.round((1 - sumP2) * 10000) / 10000;
     const shannonEntropy = Math.round(shannon * 10000) / 10000;
     const normalizedEntropy =
-      uniqueCategories > 1
-        ? Math.round((shannon / Math.log(uniqueCategories)) * 10000) / 10000
-        : 0;
+      uniqueCategories > 1 ? Math.round((shannon / Math.log(uniqueCategories)) * 10000) / 10000 : 0;
 
     return {
       simpsonIndex,
@@ -261,15 +266,17 @@ export class GeographicDiversityScorer {
       try {
         doc = parseToml(input) as Record<string, unknown>;
       } catch (err) {
-        throw new Error(`Failed to parse TOML: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+        throw new Error(
+          `Failed to parse TOML: ${err instanceof Error ? err.message : String(err)}`,
+          { cause: err },
+        );
       }
     } else if (typeof input === 'object' && input !== null) {
       doc = input as Record<string, unknown>;
     }
 
     const rawValidators = (doc['VALIDATORS'] ?? doc['validators']) as
-      | Array<Record<string, unknown>>
-      | undefined;
+      Array<Record<string, unknown>> | undefined;
 
     const validatorList = Array.isArray(rawValidators) ? rawValidators : [];
     const totalValidators = validatorList.length;
@@ -343,7 +350,9 @@ export class GeographicDiversityScorer {
     const resolvedValidators = resolved.length;
 
     const asns = resolved.map((loc) => loc.asn).filter((a): a is string => Boolean(a));
-    const countries = resolved.map((loc) => loc.country ?? loc.countryCode).filter((c): c is string => Boolean(c));
+    const countries = resolved
+      .map((loc) => loc.country ?? loc.countryCode)
+      .filter((c): c is string => Boolean(c));
     const datacenters = resolved
       .map((loc) => loc.datacenter ?? loc.cloudProvider)
       .filter((d): d is string => Boolean(d));
@@ -371,13 +380,16 @@ export class GeographicDiversityScorer {
     }
 
     // Check Cloud Datacenter concentration (>= 50%)
-    let dominantDatacenter: { datacenter: string; provider?: string; percentage: number } | undefined;
+    let dominantDatacenter:
+      { datacenter: string; provider?: string; percentage: number } | undefined;
     let hasDatacenterConcentrationRisk = false;
 
     for (const [dc, pct] of Object.entries(datacenterDiversity.percentages)) {
       if (pct >= 50) {
         hasDatacenterConcentrationRisk = true;
-        const provider = resolved.find((r) => (r.datacenter ?? r.cloudProvider) === dc)?.cloudProvider;
+        const provider = resolved.find(
+          (r) => (r.datacenter ?? r.cloudProvider) === dc,
+        )?.cloudProvider;
         dominantDatacenter = { datacenter: dc, provider, percentage: pct };
         warnings.push(
           `Datacenter concentration risk: ${pct}% of validator nodes share cloud datacenter/provider ${dc}${provider ? ` (${provider})` : ''}.`,

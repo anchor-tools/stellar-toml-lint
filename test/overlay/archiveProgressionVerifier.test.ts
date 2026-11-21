@@ -80,10 +80,7 @@ HISTORY_ARCHIVES = [
 ]
 `;
       const urls = verifier.parseHistoryUrls(toml);
-      expect(urls).toEqual([
-        'https://archive1.stellar.org',
-        'https://archive2.stellar.org',
-      ]);
+      expect(urls).toEqual(['https://archive1.stellar.org', 'https://archive2.stellar.org']);
     });
   });
 
@@ -149,10 +146,9 @@ HISTORY_ARCHIVES = [
         maxLagCheckpoints: 2,
       });
 
-      const report = await verifier.verify(
-        ['https://lagging-archive.stellar.org'],
-        { liveLedger: 319 },
-      );
+      const report = await verifier.verify(['https://lagging-archive.stellar.org'], {
+        liveLedger: 319,
+      });
 
       expect(report.ok).toBe(false);
       expect(report.hasLaggingArchives).toBe(true);

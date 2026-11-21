@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Keypair, xdr } from '@stellar/stellar-base';
-import {
-  ScpBallotTracer,
-  DEFAULT_STALL_TIMEOUT_MS,
-} from '../../src/overlay/scpBallotTracer.js';
+import { ScpBallotTracer, DEFAULT_STALL_TIMEOUT_MS } from '../../src/overlay/scpBallotTracer.js';
 
 describe('ScpBallotTracer', () => {
   const kp1 = Keypair.random();
