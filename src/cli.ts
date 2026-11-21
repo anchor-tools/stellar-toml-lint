@@ -81,6 +81,10 @@ import { scanSsrf, renderSsrfReport, ssrfDiagnostics } from './security/ssrfScan
 import { StructuralRefactoringEngine, renderRefactorSummary } from './cst/structuralRefactoring.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
+import { RangeProofVerifier } from './zk/rangeProofVerifier.js';
+import { Secp256k1BridgeVerifier } from './crypto/secp256k1Verifier.js';
+import { KzgCommitmentVerifier } from './crypto/kzgVerifier.js';
+import { OverlayHandshakeTester } from './overlay/handshakeTester.js';
 import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
