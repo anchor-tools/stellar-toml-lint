@@ -81,6 +81,10 @@ import { scanSsrf, renderSsrfReport, ssrfDiagnostics } from './security/ssrfScan
 import { StructuralRefactoringEngine, renderRefactorSummary } from './cst/structuralRefactoring.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
+import { QuorumSetIntersectionAuditor } from './overlay/quorumIntersectionAuditor.js';
+import { ScpBallotTracer } from './overlay/scpBallotTracer.js';
+import { ArchiveProgressionVerifier } from './overlay/archiveProgressionVerifier.js';
+import { GeographicDiversityScorer } from './overlay/diversityScorer.js';
 import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
@@ -1028,6 +1032,211 @@ async function auditCoopCoep(args: string[]): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint audit-quorum [--file <path>] [--format text|json]` */
+async function auditQuorumCommand(args: string[]): Promise<number> {
+  let file = 'stellar.toml';
+  let format: 'text' | 'json' = 'text';
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--format') {
+      const val = requireValue(args, ++i, arg);
+      if (val === 'text' || val === 'json') format = val;
+      else {
+        process.stderr.write('--format expects text or json\n');
+        return 2;
+      }
+    } else if (arg === '--json') format = 'json';
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-quorum\n`);
+      return 2;
+    }
+  }
+
+  try {
+    const content = await readFile(resolve(file), 'utf8');
+    const auditor = new QuorumSetIntersectionAuditor();
+    const result = auditor.audit(content);
+    if (format === 'json') {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    } else {
+      process.stdout.write(`Quorum Intersection: ${result.hasQuorumIntersection ? 'PASS' : 'FAIL'}\n`);
+      process.stdout.write(`Minimal Quorums: ${result.minimalQuorums.length}\n`);
+      process.stdout.write(`Split-Brain Risk: ${result.hasSplitBrainRisk ? 'DETECTED' : 'NONE'}\n`);
+      process.stdout.write(`Fragmentation: ${result.isFragmented ? 'FRAGMENTED' : 'HEALTHY'}\n`);
+      if (result.intersectionNodes.length > 0) {
+        process.stdout.write(`Common Intersection Nodes: ${result.intersectionNodes.join(', ')}\n`);
+      }
+      for (const w of result.warnings) {
+        process.stdout.write(`Warning: ${w}\n`);
+      }
+    }
+    return result.hasQuorumIntersection && !result.hasSplitBrainRisk ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint verify-archive-lag [--file <path>] [--horizon <url>] [--live-ledger <num>] [--format text|json]` */
+async function verifyArchiveLagCommand(args: string[]): Promise<number> {
+  let file = 'stellar.toml';
+  let horizonUrl: string | undefined;
+  let liveLedger: number | undefined;
+  let format: 'text' | 'json' = 'text';
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--horizon') horizonUrl = requireValue(args, ++i, arg);
+    else if (arg === '--live-ledger') liveLedger = Number(requireValue(args, ++i, arg));
+    else if (arg === '--format') {
+      const val = requireValue(args, ++i, arg);
+      if (val === 'text' || val === 'json') format = val;
+      else {
+        process.stderr.write('--format expects text or json\n');
+        return 2;
+      }
+    } else if (arg === '--json') format = 'json';
+    else {
+      process.stderr.write(`Unknown option ${arg} for verify-archive-lag\n`);
+      return 2;
+    }
+  }
+
+  try {
+    const content = await readFile(resolve(file), 'utf8');
+    const verifier = new ArchiveProgressionVerifier({
+      horizonUrl,
+      liveLedger,
+    });
+    const report = await verifier.verify(content);
+    if (format === 'json') {
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    } else {
+      process.stdout.write(`Archive Progression: ${report.ok ? 'HEALTHY' : 'LAGGING'}\n`);
+      if (report.liveLedger !== undefined) {
+        process.stdout.write(`Live Ledger: ${report.liveLedger}\n`);
+      }
+      for (const a of report.archives) {
+        process.stdout.write(
+          `Archive: ${a.archiveUrl} (current: ${a.currentLedger ?? 'unknown'}, checkpoint: ${a.checkpointHeight ?? 'unknown'}, lag: ${a.checkpointLag ?? 0} cp)\n`,
+        );
+      }
+      for (const err of report.errors) {
+        process.stdout.write(`Error: ${err}\n`);
+      }
+    }
+    return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint score-diversity [--file <path>] [--format text|json]` */
+async function scoreDiversityCommand(args: string[]): Promise<number> {
+  let file = 'stellar.toml';
+  let format: 'text' | 'json' = 'text';
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--format') {
+      const val = requireValue(args, ++i, arg);
+      if (val === 'text' || val === 'json') format = val;
+      else {
+        process.stderr.write('--format expects text or json\n');
+        return 2;
+      }
+    } else if (arg === '--json') format = 'json';
+    else {
+      process.stderr.write(`Unknown option ${arg} for score-diversity\n`);
+      return 2;
+    }
+  }
+
+  try {
+    const content = await readFile(resolve(file), 'utf8');
+    const scorer = new GeographicDiversityScorer();
+    const report = await scorer.score(content);
+    if (format === 'json') {
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    } else {
+      process.stdout.write(`Validators Resolved: ${report.resolvedValidators}/${report.totalValidators}\n`);
+      process.stdout.write(
+        `ASN Diversity: Simpson=${report.asnDiversity.simpsonIndex}, Shannon=${report.asnDiversity.shannonEntropy}\n`,
+      );
+      process.stdout.write(
+        `Datacenter Diversity: Simpson=${report.datacenterDiversity.simpsonIndex}, Shannon=${report.datacenterDiversity.shannonEntropy}\n`,
+      );
+      process.stdout.write(
+        `Concentration Risk: ASN=${report.hasAsnConcentrationRisk ? 'HIGH' : 'LOW'}, Datacenter=${report.hasDatacenterConcentrationRisk ? 'HIGH' : 'LOW'}\n`,
+      );
+      for (const w of report.warnings) {
+        process.stdout.write(`Warning: ${w}\n`);
+      }
+    }
+    return !report.hasAsnConcentrationRisk && !report.hasDatacenterConcentrationRisk ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint trace-scp --file <xdr-file> [--timeout <ms>] [--format text|json]` */
+async function traceScpCommand(args: string[]): Promise<number> {
+  let file: string | undefined;
+  let timeoutMs: number | undefined;
+  let format: 'text' | 'json' = 'text';
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--timeout') timeoutMs = Number(requireValue(args, ++i, arg));
+    else if (arg === '--format') {
+      const val = requireValue(args, ++i, arg);
+      if (val === 'text' || val === 'json') format = val;
+      else {
+        process.stderr.write('--format expects text or json\n');
+        return 2;
+      }
+    } else if (arg === '--json') format = 'json';
+    else {
+      process.stderr.write(`Unknown option ${arg} for trace-scp\n`);
+      return 2;
+    }
+  }
+
+  if (file === undefined) {
+    process.stderr.write('Usage: stellar-toml-lint trace-scp --file <xdr-file> [--timeout <ms>] [--format text|json]\n');
+    return 2;
+  }
+
+  try {
+    const raw = await readFile(resolve(file));
+    const tracer = new ScpBallotTracer({ stallTimeoutMs: timeoutMs });
+    tracer.record(raw);
+    const traces = tracer.getAllTraces();
+    const stalls = tracer.detectStalls();
+
+    if (format === 'json') {
+      process.stdout.write(`${JSON.stringify({ traces, stalls }, null, 2)}\n`);
+    } else {
+      process.stdout.write(`Slots Traced: ${traces.length}\n`);
+      process.stdout.write(`Consensus Stalls: ${stalls.length}\n`);
+      for (const stall of stalls) {
+        process.stdout.write(`Stall at Slot ${stall.slotIndex}: ${stall.reason}\n`);
+      }
+    }
+    return stalls.length === 0 ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 /** `stellar-toml-lint verify-federation-sync --domain <domain>` */
 async function verifyFederationSyncCommand(args: string[]): Promise<number> {
   let domain: string | undefined;
@@ -1466,6 +1675,10 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'verify-archive-gpg') return verifyArchiveGpgCommand(argv.slice(1));
+  if (argv[0] === 'audit-quorum') return auditQuorumCommand(argv.slice(1));
+  if (argv[0] === 'verify-archive-lag') return verifyArchiveLagCommand(argv.slice(1));
+  if (argv[0] === 'score-diversity') return scoreDiversityCommand(argv.slice(1));
+  if (argv[0] === 'trace-scp') return traceScpCommand(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
   if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));

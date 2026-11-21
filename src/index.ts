@@ -754,3 +754,45 @@ export type {
 } from './engine/semanticRuleEngine.js';
 export { PluginLoadError, loadPluginRules } from './engine/ruleLoader.js';
 export type { PluginSources } from './engine/ruleLoader.js';
+
+export { QuorumSetIntersectionAuditor } from './overlay/quorumIntersectionAuditor.js';
+export type {
+  QuorumSetDefinition,
+  ValidatorQuorumDefinition,
+  QuorumIntersectionResult,
+  FragmentationDetails,
+} from './overlay/quorumIntersectionAuditor.js';
+
+export { ScpBallotTracer, DEFAULT_STALL_TIMEOUT_MS } from './overlay/scpBallotTracer.js';
+export type {
+  ScpPhase,
+  ScpBallotInfo,
+  ScpStatementData,
+  ScpTraceEvent,
+  SlotConsensusTrace,
+  ConsensusStall,
+  ScpBallotTracerOptions,
+} from './overlay/scpBallotTracer.js';
+
+export {
+  ArchiveProgressionVerifier,
+  CHECKPOINT_FREQUENCY,
+  formatCheckpointLedgerHex,
+} from './overlay/archiveProgressionVerifier.js';
+export type {
+  StellarHistoryJson,
+  ArchiveProgressionStatus,
+  ArchiveProgressionReport,
+  ArchiveProgressionVerifierOptions,
+} from './overlay/archiveProgressionVerifier.js';
+
+export { GeographicDiversityScorer, parseHostPort } from './overlay/diversityScorer.js';
+export type {
+  ValidatorLocation,
+  DiversityMetrics,
+  GeographicDiversityReport,
+  GeoDnsResolver,
+  GeoLookupResolver,
+  GeographicDiversityScorerOptions,
+} from './overlay/diversityScorer.js';
+
