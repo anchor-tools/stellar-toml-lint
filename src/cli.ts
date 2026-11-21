@@ -12,9 +12,11 @@ import { createReadStream, watch } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
+import { loadPluginRules } from './engine/ruleLoader.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { SemanticRuleEngine } from './engine/semanticRuleEngine.js';
 import { checkNetworkAccounts } from './network-checks.js';
+import { VaultSecretEngineVerifier } from './gitops/vaultVerifier.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import {
   formatCheckstyle,
@@ -49,6 +51,11 @@ import {
 } from './protocols/clawbackAuditGenerator.js';
 import { validateUnicode } from './cst/unicodeValidator.js';
 import { sortCanonical } from './cst/canonicalSortCodemod.js';
+import {
+  renderSemanticDiff,
+  renderSemanticDiffJson,
+  SemanticTomlDiffer,
+} from './cst/semanticDiffer.js';
 import { formatUnifiedDiff } from './line-diff.js';
 import {
   auditConsumerProtection,
@@ -81,10 +88,13 @@ import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVer
 import { CrossOriginIsolationAuditor, renderIsolationReport } from './wasm/isolationAuditor.js';
 import {
   auditErrorTaxonomyCommand,
+  auditTlsCommand,
   calculateUptimeCommand,
   probeSlaCommand,
   verifyMetricsCommand,
+  verifyRateHeadersCommand,
 } from './telemetry/commands.js';
+import { LosslessCstFormatter } from './cst/cstFormatter.js';
 import {
   BrowserBoundaryVerifier,
   renderBrowserBoundaryReport,
@@ -122,6 +132,15 @@ import { getTomlJsonSchema } from './schema.js';
 import { runCloudKmsSignerCheck, type KmsThresholdLevel } from './gitops/kmsSignerCoordinator.js';
 import { formatKmsSignerReport } from './gitops/kmsReport.js';
 import { KmsError } from './gitops/kmsTypes.js';
+import {
+  DriftDetectionError,
+  GitOpsDriftDetector,
+  liveUrlForDomain,
+  renderDriftErrorJson,
+  renderDriftJson,
+  renderDriftLineDiff,
+  renderDriftText,
+} from './gitops/driftDetector.js';
 import { generateCompletion, isCompletionShell } from './completion.js';
 import { WasiSandboxRunner } from './wasm/wasiRunner.js';
 import { WasiSandboxError } from './wasm/errors.js';
@@ -134,7 +153,8 @@ import {
   renderDirectorySyncReport,
 } from './protocols/directorySyncVerifier.js';
 import { isWasmMemory, wasmRuntime } from './wasm/wasmApi.js';
-import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
+import type { Diagnostic, LintOptions, LintResult, RuleOverrides } from './types.js';
+import type { SemanticRule } from './engine/semanticRuleEngine.js';
 
 const VERSION = '0.1.0';
 const DEFAULT_PATH = 'stellar.toml';
@@ -154,6 +174,8 @@ interface Cli {
   quiet: boolean;
   showHelp: boolean;
   rules: RuleOverrides;
+  rulesDir: string[];
+  plugins: string[];
   preset?: PresetName;
   maxWarnings?: number;
   checkNetwork: boolean;
@@ -179,6 +201,7 @@ interface Cli {
   auditDnsTakeover: boolean;
   auditSecrets: boolean;
   auditSsrf: boolean;
+  auditVaultSecrets: boolean;
   badgeSvg?: string;
   badgeJson?: string;
   exportApConfig?: boolean;
@@ -261,11 +284,28 @@ USAGE
   stellar-toml-lint calculate-uptime --log-file <path> [--format text|markdown|json]
                                          Availability over 24h/7d/30d, incidents and
                                          downtime streaks from JSON/CSV health logs
+  stellar-toml-lint format --file <file> [--write]
+                                         Format stellar.toml losslessly preserving comments
+  stellar-toml-lint verify-rate-headers --url <url> [--burst <n>] [--format text|json]
+                                         Verify API rate-limit headers (RFC 6585)
+  stellar-toml-lint detect-drift --domain <domain> [--git-path <path>] [--ref <ref>]
+                                         [--format text|json|diff] [--timeout <ms>]
+                                         [--url <live-url>] [--max-history <n>]
+                                         Compare the stellar.toml in Git with the live
+                                         one; report unreleased commits and out-of-band
+                                         production edits (exit 0 in sync, 1 drift,
+                                         2 on fetch/git errors)
+  stellar-toml-lint audit-tls --domain <domain> [--format text|json]
+                                         Audit SSL/TLS renewal and OCSP stapling health
   stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>]
                                          [--format text|json]
                                          Map every public key in the file to its roles
                                          and report reused signing, issuer, account and
                                          validator keys
+  stellar-toml-lint diff <a> <b> [--json]
+                                         Compare two stellar.toml files, URLs or
+                                         - (stdin) by value rather than by line;
+                                         exit 1 on a breaking change
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -279,6 +319,11 @@ OPTIONS
       --warn <rule>       Lower a rule to warning (repeatable)
       --preset <name>     Start from a role's rule bundle: validator, anchor-sep24,
                           or issuer (see PRESETS)
+      --rules-dir <dir>   Load rule plugins from a directory of .js/.mjs/.cjs
+                          modules (repeatable). Each module exports one rule as
+                          its default export, or a list of rules as "rules".
+      --plugin <spec>     Load a rule plugin from a module specifier — a path or
+                          an installed package name (repeatable)
   -i, --interactive       Full-screen dashboard to walk the findings. Needs a TTY;
                           without one the text reporter is used instead
       --lsp               Run as a Language Server on stdio (diagnostics,
@@ -353,6 +398,9 @@ OPTIONS
                            flag dangling pointers to claimable cloud resources
        --audit-secrets     Halt with exit 1 on leaked Stellar seeds, cloud keys,
                            bearer tokens or PEM blocks; output is always redacted
+       --audit-vault-secrets
+                           Halt with exit 1 on misconfigured Vault secret engine
+                           paths, exposed tokens, and TTL misconfigurations
        --audit-ssrf        Flag advertised URLs resolving to private, loopback,
                            link-local or multicast IPs, including DNS rebinding
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
@@ -1231,50 +1279,175 @@ async function refactorCommand(args: string[]): Promise<number> {
   }
 }
 
-async function diffCommand(argv: string[]): Promise<number> {
-  let source: string | undefined;
-  let target: string | undefined;
-  let format: 'text' | 'markdown' | 'json' = 'text';
-  let exitCode = false;
+/**
+ * `stellar-toml-lint diff <source> <target> [--json]`
+ *
+ * Compares two documents by value rather than by line, which is what makes it
+ * usable as a deployment review gate: `git diff` of a restaged `stellar.toml` is
+ * mostly the canonical sort having done its job.
+ *
+ * The exit code follows the severity mapping the linter already uses — findings
+ * that would break a client are errors, everything else is information. So an
+ * identical pair and a harmless edit both exit 0, and a run exits 1 only when
+ * something a client is already relying on went away. A side that does not parse
+ * exits 2, because the comparison could not be made at all.
+ */
+async function diffCommand(args: string[]): Promise<number> {
+  const inputs: string[] = [];
+  let json = false;
 
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!;
-    if (arg === '--format' || arg === '-f') {
-      const val = argv[++i];
-      if (val === 'text' || val === 'markdown' || val === 'json') {
-        format = val;
-      } else {
-        process.stderr.write(`Invalid --format: ${val}. Must be text, markdown, or json\n`);
-        return 2;
-      }
-    } else if (arg === '--exit-code') {
-      exitCode = true;
-    } else if (!arg.startsWith('-')) {
-      if (!source) source = arg;
-      else if (!target) target = arg;
-    }
+  for (const arg of args) {
+    if (arg === '--json') json = true;
+    else if (arg.startsWith('-') && arg !== '-') {
+      process.stderr.write(`Unknown option ${arg} for diff\n`);
+      return 2;
+    } else inputs.push(arg);
   }
 
-  if (!source || !target) {
-    process.stderr.write(
-      'Usage: stellar-toml-lint diff <source> <target> [--format text|markdown|json] [--exit-code]\n',
-    );
+  const usage = 'Usage: stellar-toml-lint diff <source> <target> [--json]\n';
+  if (inputs.length !== 2) {
+    process.stderr.write(usage);
+    return 2;
+  }
+  const [source = '-', target = '-'] = inputs;
+  if (source === '-' && target === '-') {
+    process.stderr.write('Only one side of a diff can come from stdin.\n');
     return 2;
   }
 
   try {
-    const { SemanticTomlDiffer } = await import('./cst/semanticDiffer.js');
-    const differ = new SemanticTomlDiffer();
-    const result = await differ.diffFiles(source, target);
-    process.stdout.write(differ.renderReport(result, format) + '\n');
-
-    if (result.hasBreakingChanges) return 1;
-    if (exitCode && result.hasDifferences) return 1;
-    return 0;
-  } catch (err) {
-    process.stderr.write(`diff error: ${err instanceof Error ? err.message : String(err)}\n`);
+    const report = await new SemanticTomlDiffer().diffInputs(source, target);
+    process.stdout.write(
+      json ? renderSemanticDiffJson(report) : renderSemanticDiff(report, shouldUseColor()),
+    );
+    if (!report.source.parsed || !report.target.parsed) return 2;
+    return report.breaking > 0 ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
     return 2;
   }
+}
+
+async function formatCommand(argv: string[]): Promise<number> {
+  let file: string | undefined;
+  let write = false;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg === '--file' || arg === '-f') {
+      file = argv[++i];
+    } else if (arg === '--write' || arg === '-w') {
+      write = true;
+    } else if (!arg.startsWith('-')) {
+      file = arg;
+    }
+  }
+  if (!file) {
+    process.stderr.write('Usage: stellar-toml-lint format --file <stellar.toml> [--write]\n');
+    return 2;
+  }
+  try {
+    const formatter = new LosslessCstFormatter();
+    const result = await formatter.formatFile(file, write);
+    if (!write) {
+      process.stdout.write(result.formatted);
+    } else if (result.changed) {
+      process.stdout.write(`Formatted ${file}\n`);
+    } else {
+      process.stdout.write(`${file} is already formatted\n`);
+    }
+    return 0;
+  } catch (err) {
+    process.stderr.write(`Formatting error: ${err instanceof Error ? err.message : String(err)}\n`);
+    return 2;
+  }
+}
+
+/**
+ * `stellar-toml-lint detect-drift --domain <domain> [--git-path <path>]`
+ *
+ * Exit codes are the CI contract: 0 in sync, 1 drift, 2 when the check could
+ * not run (timeout, HTTP error, missing file, invalid TOML, bad arguments).
+ */
+async function detectDriftCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let url: string | undefined;
+  let gitPath: string | undefined;
+  let ref: string | undefined;
+  let format = 'text';
+  let timeoutMs: number | undefined;
+  let maxHistory: number | undefined;
+  let color: boolean | undefined;
+  const usage =
+    'Usage: stellar-toml-lint detect-drift --domain <domain> [--git-path <path>] [--ref <ref>] ' +
+    '[--format text|json|diff] [--timeout <ms>] [--url <live-url>] [--max-history <n>]\n';
+  const positive = (flag: string, raw: string): number => {
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value <= 0)
+      throw new Error(`${flag} expects a positive integer.`);
+    return value;
+  };
+
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] as string;
+      if (arg === '--domain') domain = requireValue(args, ++i, arg);
+      else if (arg === '--url') url = requireValue(args, ++i, arg);
+      else if (arg === '--git-path') gitPath = requireValue(args, ++i, arg);
+      else if (arg === '--ref') ref = requireValue(args, ++i, arg);
+      else if (arg === '--format') format = requireValue(args, ++i, arg);
+      else if (arg === '--timeout') timeoutMs = positive(arg, requireValue(args, ++i, arg));
+      else if (arg === '--max-history') maxHistory = positive(arg, requireValue(args, ++i, arg));
+      else if (arg === '--color') color = true;
+      else if (arg === '--no-color') color = false;
+      else throw new Error(`Unknown option ${arg} for detect-drift`);
+    }
+    if (!['text', 'json', 'diff'].includes(format)) {
+      throw new Error('--format expects text, json or diff.');
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n${usage}`);
+    return 2;
+  }
+  if (domain === undefined && url === undefined) {
+    process.stderr.write(usage);
+    return 2;
+  }
+
+  const useColor = color ?? shouldUseColor();
+  let liveUrl: string | undefined = url;
+  try {
+    liveUrl ??= liveUrlForDomain(domain!);
+    const report = await new GitOpsDriftDetector({
+      ...(domain !== undefined ? { domain } : {}),
+      url: liveUrl,
+      ...(gitPath !== undefined ? { gitPath } : {}),
+      ...(ref !== undefined ? { ref } : {}),
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+      ...(maxHistory !== undefined ? { maxHistory } : {}),
+    }).detect();
+    if (format === 'json') process.stdout.write(renderDriftJson(report));
+    else if (format === 'diff')
+      process.stdout.write(renderDriftLineDiff(report, { color: useColor }));
+    else process.stdout.write(renderDriftText(report, { color: useColor }));
+    return report.inSync ? 0 : 1;
+  } catch (error) {
+    if (format === 'json') {
+      process.stdout.write(
+        renderDriftErrorJson(error instanceof Error ? error : new Error(String(error)), liveUrl),
+      );
+    }
+    const prefix = error instanceof DriftDetectionError ? `${error.code}: ` : '';
+    process.stderr.write(`${prefix}${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** Run the Vault secret engine verifier; returns 1 to halt, undefined to continue. */
+async function auditVaultSecretsOrHalt(path: string, source: string): Promise<number | undefined> {
+  const result = await new VaultSecretEngineVerifier().verifyFile(path, source);
+  if (result.passed) return undefined;
+  process.stderr.write(`${result.summary}\n`);
+  return 1;
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -1310,6 +1483,11 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
+  if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
+  if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
+  if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
+  if (argv[0] === 'format') return formatCommand(argv.slice(1));
+  if (argv[0] === 'diff') return diffCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -1342,6 +1520,36 @@ async function main(argv: string[]): Promise<number> {
 
   if (cli.sortKeys) return sortKeysCommand(cli, color);
 
+  // Plugins load once, here, before the first file: `lint()` stays synchronous and
+  // keeps the filesystem out of the core, and a broken plugin is a usage error
+  // rather than a finding repeated against every input. `runLint` closes over
+  // these, so `--watch` and `--domain` get the same rules as a plain file run.
+  let pluginRules: SemanticRule[] = [];
+  if (cli.rulesDir.length > 0 || cli.plugins.length > 0) {
+    try {
+      pluginRules = await loadPluginRules({
+        dirs: cli.rulesDir,
+        modules: cli.plugins,
+        reservedIds: allRules.map((rule) => rule.id),
+      });
+    } catch (error) {
+      process.stderr.write(`${message(error)}\n`);
+      return 2;
+    }
+    // `parseArgs` could not know these ids yet; now that it does, a typo in
+    // `--off/--error/--warn` fails the same way it does without plugins.
+    const loadedIds = pluginRules.map((rule) => rule.id);
+    for (const id of Object.keys(cli.rules)) assertKnownRule(id, undefined, loadedIds);
+    if (!cli.quiet && loadedIds.length > 0) {
+      process.stderr.write(`Loaded ${loadedIds.length} plugin rule(s): ${loadedIds.join(', ')}\n`);
+    }
+  }
+  const pluginRuleIds = pluginRules.map((rule) => rule.id);
+  // Absent rather than empty: an option that is not set is the same run as
+  // before plugins existed, and `lint()` only ever touches the engine when it is.
+  const pluginOptions: Pick<LintOptions, 'semanticRules'> =
+    pluginRules.length > 0 ? { semanticRules: pluginRules } : {};
+
   const runLint = async (cli: Cli, color: boolean): Promise<number> => {
     if (cli.lsp) {
       // The framed stdio server: diagnostics, quick fixes, and hover. It used to
@@ -1364,7 +1572,7 @@ async function main(argv: string[]): Promise<number> {
         cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
 
       if (cli.domain && cli.paths.length === 0) {
-        const config = await loadConfig(process.cwd());
+        const config = await loadConfig(process.cwd(), pluginRuleIds);
         strict = strict || config.strict;
         maxWarnings ??= config.maxWarnings;
         const rules = { ...config.rules, ...cli.rules };
@@ -1375,6 +1583,7 @@ async function main(argv: string[]): Promise<number> {
             rules,
             checkNetwork: cli.checkNetwork,
             followLinks: true,
+            ...pluginOptions,
           },
           fetchImpl,
         );
@@ -1390,6 +1599,20 @@ async function main(argv: string[]): Promise<number> {
             // The parsed document is still scanned when the refetch fails.
           }
           const halted = await auditSecretsOrHalt(domainResult.parsed, secretSource, rules);
+          if (halted !== undefined) return halted;
+        }
+        if (cli.auditVaultSecrets) {
+          const host = cli.domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+          const response = await fetchImpl(`https://${host}/.well-known/stellar.toml`, {
+            redirect: 'follow',
+          });
+          if (!response.ok) {
+            process.stderr.write(
+              `Could not fetch https://${host}/.well-known/stellar.toml: HTTP ${response.status}\n`,
+            );
+            return 2;
+          }
+          const halted = await auditVaultSecretsOrHalt('stellar.toml', await response.text());
           if (halted !== undefined) return halted;
         }
         if (domainResult.parsed && cli.checkNetwork) {
@@ -1471,7 +1694,10 @@ async function main(argv: string[]): Promise<number> {
       } else {
         const paths = await expandInputs(cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH]);
         for (const path of paths) {
-          const config = await loadConfig(path === '-' ? process.cwd() : dirname(resolve(path)));
+          const config = await loadConfig(
+            path === '-' ? process.cwd() : dirname(resolve(path)),
+            pluginRuleIds,
+          );
           const fileStrict = cli.strict || config.strict;
           strict = strict || config.strict;
           maxWarnings ??= config.maxWarnings;
@@ -1483,10 +1709,16 @@ async function main(argv: string[]): Promise<number> {
             rules,
             checkNetwork: cli.checkNetwork,
             ...(cli.domain ? { domain: cli.domain } : {}),
+            ...pluginOptions,
           });
 
           if (cli.auditSecrets) {
             const halted = await auditSecretsOrHalt(fileResult.parsed, source, rules);
+            if (halted !== undefined) return halted;
+          }
+
+          if (cli.auditVaultSecrets) {
+            const halted = await auditVaultSecretsOrHalt(path === '-' ? 'stdin' : path, source);
             if (halted !== undefined) return halted;
           }
 
@@ -1592,7 +1824,7 @@ async function main(argv: string[]): Promise<number> {
               networkDiagnostics.push(
                 ...(await followTomlPointers(
                   fileResult.parsed,
-                  { strict: fileStrict, rules, domain: cli.domain },
+                  { strict: fileStrict, rules, domain: cli.domain, ...pluginOptions },
                   fetchImpl,
                 )),
               );
@@ -2008,6 +2240,15 @@ function verdict(
   return true;
 }
 
+/**
+ * True when the command line asks for rules the built-in catalog cannot know
+ * about, which is what defers the `--off/--error/--warn` id check until after
+ * the plugins load.
+ */
+function usesPluginSources(argv: string[]): boolean {
+  return argv.includes('--rules-dir') || argv.includes('--plugin');
+}
+
 function parseArgs(argv: string[]): Cli | 'handled' {
   const cli: Cli = {
     paths: [],
@@ -2016,6 +2257,8 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     quiet: false,
     showHelp: false,
     rules: {},
+    rulesDir: [],
+    plugins: [],
     checkNetwork: false,
     followLinks: false,
     verifySep10: false,
@@ -2037,6 +2280,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditDnsTakeover: false,
     auditSecrets: false,
     auditSsrf: false,
+    auditVaultSecrets: false,
     checkContracts: false,
     graphIncludeContracts: false,
     graphIncludeValidators: false,
@@ -2216,6 +2460,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.auditSsrf = true;
         break;
 
+      case '--audit-vault-secrets':
+        cli.auditVaultSecrets = true;
+        break;
+
       case '--follow-links':
         cli.followLinks = true;
         break;
@@ -2324,10 +2572,23 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--error':
       case '--warn': {
         const id = requireValue(argv, ++i, arg);
-        assertKnownRule(id);
-        cli.rules[id] = arg === '--off' ? 'off' : (arg.slice(2) as Severity);
+        // A plugin id is only known once its module is loaded, which is async and
+        // happens in `main`. When plugin flags are present the check runs there
+        // instead, against the built-ins *plus* the ids that actually loaded.
+        if (!usesPluginSources(argv)) assertKnownRule(id);
+        // The flag says `--warn`; the severity token is `warning`. Storing the
+        // flag's spelling made every summary count read NaN.
+        cli.rules[id] = arg === '--off' ? 'off' : arg === '--warn' ? 'warning' : 'error';
         break;
       }
+
+      case '--rules-dir':
+        cli.rulesDir.push(requireValue(argv, ++i, arg));
+        break;
+
+      case '--plugin':
+        cli.plugins.push(requireValue(argv, ++i, arg));
+        break;
 
       case '--preset': {
         const value = requireValue(argv, ++i, arg);

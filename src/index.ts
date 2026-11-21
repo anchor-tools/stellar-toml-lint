@@ -343,6 +343,11 @@ export {
   KmsThrottlingError,
   KmsUnsupportedAlgorithmError,
   withKmsRetry,
+  GitOpsDriftDetector,
+  DriftDetectionError,
+  detectDrift,
+  renderDriftText,
+  renderDriftJson,
 } from './gitops/index.js';
 export type {
   CloudKmsSignerCoordinatorOptions,
@@ -356,6 +361,10 @@ export type {
   KmsSignerCheck,
   KmsSignResult,
   KmsThresholdLevel,
+  DriftDetectionOptions,
+  DriftFinding,
+  DriftReport,
+  DriftType,
 } from './gitops/index.js';
 export type { LspCodeAction, LspRange, LspTextEdit, LspWorkspaceEdit } from './lsp/code-actions.js';
 export {
@@ -699,20 +708,49 @@ export type {
   FramingDecision,
   FramingRole,
 } from './security/clickjackingAuditor.js';
-export { SemanticRuleEngine } from './engine/semanticRuleEngine.js';
+export { LosslessCstFormatter } from './cst/cstFormatter.js';
+export type { FormatterOptions } from './cst/cstFormatter.js';
+export { ResilientIncrementalParser } from './cst/resilientParser.js';
 export type {
+  ResilientParseResult,
+  ResilientDiagnostic,
+  EditRange,
+} from './cst/resilientParser.js';
+export { RateLimitHeaderVerifier } from './telemetry/rateLimitHeaderVerifier.js';
+export type {
+  RateLimitComplianceResult,
+  RateLimitFinding,
+  VerifyRateHeadersOptions,
+} from './telemetry/rateLimitHeaderVerifier.js';
+export { TlsCertificateWatchdog } from './telemetry/tlsWatchdog.js';
+export type {
+  TlsCertificateAuditResult,
+  TlsWatchdogFinding,
+  TlsRawCertInfo,
+  TlsWatchdogOptions,
+} from './telemetry/tlsWatchdog.js';
+export {
+  KNOWN_CATEGORIES,
+  PluginRuleError,
+  SemanticRuleEngine,
+  assertSemanticRule,
+  isCurrencyNode,
+  ruleProblems,
+} from './engine/semanticRuleEngine.js';
+export type {
+  AstAnyTableNode,
+  AstContainerNode,
+  AstCurrencyNode,
+  AstDocumentNode,
+  AstKeyValueNode,
+  AstNode,
+  AstNodeKind,
+  AstTableNode,
   AstVisitor,
-  AstRuleContext,
-  SemanticLintRule,
-  RulePlugin,
-} from './engine/astVisitor.js';
-export { LspDocumentSymbolProvider, SymbolKind } from './lsp/documentSymbolProvider.js';
-export type { DocumentSymbol, SymbolKindValue } from './lsp/documentSymbolProvider.js';
-export { SemanticTomlDiffer } from './cst/semanticDiffer.js';
-export type {
-  SemanticDelta,
-  BreakingChange,
-  SemanticDiffResult,
-  DifferOptions,
-  DiffChangeType,
-} from './cst/semanticDiffer.js';
+  EngineInput,
+  PluginContext,
+  PluginReport,
+  SemanticRule,
+} from './engine/semanticRuleEngine.js';
+export { PluginLoadError, loadPluginRules } from './engine/ruleLoader.js';
+export type { PluginSources } from './engine/ruleLoader.js';

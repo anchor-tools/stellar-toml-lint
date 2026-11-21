@@ -1,681 +1,680 @@
-import fs from 'node:fs';
-import { parse as parseToml } from 'smol-toml';
+/**
+ * Semantic diff between two `stellar.toml` documents.
+ *
+ * Run as `stellar-toml-lint diff <source> <target>`, where each side is a file,
+ * an `http(s)` URL, or `-` for stdin — the live production document against the
+ * candidate an anchor is about to deploy.
+ *
+ * A text diff answers "which lines moved", which is the wrong question here: the
+ * canonical sort reorders keys, an editor reindents a table, and forty changed
+ * lines turn out to mean nothing. This compares the *parsed* documents, so layout
+ * produces an empty diff and every change it does report is one a client would
+ * read differently. Array entries pair on their SEP-1 identity key — `code` for
+ * currencies, `PUBLIC_KEY` for validators — rather than their position, so a
+ * currency is still the same currency when the entries around it move.
+ */
 
-export type DiffChangeType = 'added' | 'removed' | 'modified' | 'unchanged';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import process from 'node:process';
+import { parse } from 'smol-toml';
+import { makeColors } from '../reporters.js';
+import { ACCOUNT_ID_FIELDS, DEPRECATED_FIELDS, HTTPS_ENDPOINT_FIELDS } from '../spec.js';
+import { CANONICAL_ARRAY_ORDER } from './canonicalSortCodemod.js';
 
-export interface SemanticDelta {
+export type DiffKind = 'added' | 'removed' | 'modified';
+
+/** What a changed path *is*, which is what decides whether it breaks anyone. */
+export type DiffCategory =
+  | 'network'
+  | 'signing-key'
+  | 'endpoint'
+  | 'documentation'
+  | 'currency'
+  | 'validator'
+  | 'principal'
+  | 'general';
+
+export interface SemanticChange {
+  /** Dotted path with array keys, e.g. `CURRENCIES[USD].issuer`. */
   path: string;
-  type: DiffChangeType;
-  oldValue?: unknown;
-  newValue?: unknown;
-  isBreaking: boolean;
-  breakingReason?: string;
+  kind: DiffKind;
+  /** SEP-1 section the path lives in; `''` is the document root. */
+  section: string;
+  category: DiffCategory;
+  breaking: boolean;
+  /** Set when `breaking`: what a client already holds that stops working. */
+  reason?: string;
+  /** The leaf value, or the whole entry for an array-table add or removal. */
+  before?: unknown;
+  after?: unknown;
 }
 
-export interface BreakingChange {
-  path: string;
-  category: 'currency' | 'validator' | 'signing_key' | 'service_endpoint' | 'version' | 'schema';
-  message: string;
-  oldValue?: unknown;
-  newValue?: unknown;
+export interface SemanticDiffSide {
+  /** Exactly what the caller passed: a path, a URL, or `-`. */
+  input: string;
+  parsed: boolean;
+  /** Why the side could not be diffed, when `parsed` is false. */
+  error?: string;
+  /** Top-level fields, so an empty document reads as empty and not as equal. */
+  fields: number;
 }
 
-export interface SemanticDiffResult {
-  hasDifferences: boolean;
-  hasBreakingChanges: boolean;
-  deltas: SemanticDelta[];
-  breakingChanges: BreakingChange[];
-  summary: {
-    added: number;
-    removed: number;
-    modified: number;
-    breaking: number;
-  };
+export interface SemanticDiff {
+  source: SemanticDiffSide;
+  target: SemanticDiffSide;
+  /** In document order: source keys first, then whatever only the target has. */
+  changes: SemanticChange[];
+  added: number;
+  removed: number;
+  modified: number;
+  breaking: number;
 }
 
-export interface DifferOptions {
+export interface SemanticTomlDifferOptions {
   fetchImpl?: typeof fetch;
-  color?: boolean;
+  timeoutMs?: number;
 }
 
-const KNOWN_SEP_ENDPOINTS: Record<string, string> = {
-  TRANSFER_SERVER: 'SEP-6 / SEP-24 Transfer Server',
-  TRANSFER_SERVER_0_0_2: 'SEP-6 Transfer Server v0.0.2',
-  KYC_SERVER: 'SEP-12 KYC Server',
-  WEB_AUTH_ENDPOINT: 'SEP-10 Web Authentication Endpoint',
-  FEDERATION_SERVER: 'SEP-2 Federation Server',
-  ANCHOR_QUOTE_SERVER: 'SEP-38 Anchor RFQ/Quote Server',
-  DIRECT_PAYMENT_SERVER: 'SEP-31 Direct Payment Server',
+export interface DiffLabels {
+  source?: string;
+  target?: string;
+}
+
+/** How long a side is given over the network before the run gives up. */
+const DEFAULT_TIMEOUT_MS = 10_000;
+
+/** Collection members shown before the rest collapse into a count. */
+const MAX_LIST_ITEMS = 3;
+
+const SIGNING_KEY_FIELDS = new Set<string>(ACCOUNT_ID_FIELDS);
+const ENDPOINT_FIELDS = new Set<string>(HTTPS_ENDPOINT_FIELDS);
+
+/** Root fields whose value clients already hold, so a new one invalidates it. */
+const CRITICAL_ROOT_FIELDS: Readonly<Record<string, string>> = {
+  NETWORK_PASSPHRASE:
+    'asset and account IDs are only meaningful on the network named here, so every client that resolved the old value is now on the wrong network',
+  SIGNING_KEY:
+    'SEP-10 and SEP-45 responses are verified against this key, so clients holding the previous one start rejecting the anchor',
+  URI_REQUEST_SIGNING_KEY: 'clients verify signed asset URI requests against this key',
 };
 
+/**
+ * Which SEP a root endpoint field announces, transcribed from the SEP-1 field
+ * tables. Deleting the field deletes the support, which is why this is the one
+ * catalog a *removal* consults.
+ */
+const SEP_BY_ENDPOINT_FIELD: Readonly<Record<string, string>> = {
+  FEDERATION_SERVER: 'SEP-2 federation',
+  AUTH_SERVER: 'SEP-3 compliance',
+  TRANSFER_SERVER: 'SEP-6 deposits and withdrawals',
+  TRANSFER_SERVER_SEP0024: 'SEP-24 interactive transfers',
+  KYC_SERVER: 'SEP-12 customer data',
+  WEB_AUTH_ENDPOINT: 'SEP-10 authentication',
+  WEB_AUTH_FOR_CONTRACTS_ENDPOINT: 'SEP-45 smart contract authentication',
+  DIRECT_PAYMENT_SERVER: 'SEP-31 remittances',
+  ANCHOR_QUOTE_SERVER: 'SEP-38 quotes',
+};
+
+/**
+ * Entry fields that carry an identity wallets or peers have already stored,
+ * keyed by the section they live in.
+ */
+const CRITICAL_ENTRY_FIELDS: Readonly<Record<string, Record<string, string>>> = {
+  CURRENCIES: {
+    issuer: 'the issuer account is part of the asset, so this code now names a different asset',
+    contract: 'the smart contract is the asset, so wallets are pointed at a different token',
+  },
+  VALIDATORS: {
+    HOST: 'other operators write this host into their stellar-core quorum config',
+    ALIAS: 'the alias is the name operators use to reference this validator in quorum slices',
+  },
+};
+
+/** Array sections where losing an entry takes something away from a client. */
+const BREAKING_REMOVAL_SECTIONS: Readonly<Record<string, string>> = {
+  CURRENCIES: 'the asset is no longer advertised, so wallets and exchanges stop offering it',
+  VALIDATORS: 'operators following this validator lose the contact information for it',
+};
+
+const SECTION_CATEGORY: Readonly<Record<string, DiffCategory>> = {
+  DOCUMENTATION: 'documentation',
+  PRINCIPALS: 'principal',
+  CURRENCIES: 'currency',
+  VALIDATORS: 'validator',
+};
+
+/** A parsed side plus the document, which stays out of the report. */
+interface ParseResult extends SemanticDiffSide {
+  document?: Record<string, unknown>;
+}
+
+/** How an array's entries are paired, and what dropping one costs a client. */
+interface ArrayMatch {
+  identity?: string;
+  removal?: string;
+}
+
+const NO_MATCH: ArrayMatch = {};
+
 export class SemanticTomlDiffer {
-  private fetchImpl: typeof fetch;
+  private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
 
-  constructor(options?: DifferOptions) {
-    this.fetchImpl =
-      options?.fetchImpl ??
-      (typeof fetch !== 'undefined' ? fetch : (undefined as unknown as typeof fetch));
+  constructor(options: SemanticTomlDifferOptions = {}) {
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
-  /**
-   * Parse and compare two TOML string inputs semantically.
-   */
-  public diffTexts(sourceToml: string, targetToml: string): SemanticDiffResult {
-    const sourceObj = this.safeParse(sourceToml, 'source');
-    const targetObj = this.safeParse(targetToml, 'target');
-
-    return this.diffObjects(sourceObj, targetObj);
-  }
-
-  /**
-   * Load and compare two TOML files or HTTP URLs semantically.
-   */
-  public async diffFiles(
-    sourcePathOrUrl: string,
-    targetPathOrUrl: string,
-  ): Promise<SemanticDiffResult> {
-    const sourceContent = await this.readContent(sourcePathOrUrl);
-    const targetContent = await this.readContent(targetPathOrUrl);
-    return this.diffTexts(sourceContent, targetContent);
-  }
-
-  private async readContent(pathOrUrl: string): Promise<string> {
-    if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
-      if (!this.fetchImpl) {
-        throw new Error('fetch is not available in the current environment');
-      }
-      const resp = await this.fetchImpl(pathOrUrl);
-      if (!resp.ok) {
-        throw new Error(`Failed to fetch ${pathOrUrl}: HTTP ${resp.status} ${resp.statusText}`);
-      }
-      return await resp.text();
-    }
-    return await fs.promises.readFile(pathOrUrl, 'utf-8');
-  }
-
-  private safeParse(content: string, label: string): Record<string, unknown> {
-    try {
-      const parsed = parseToml(content);
-      if (typeof parsed !== 'object' || parsed === null) {
-        return {};
-      }
-      return parsed as Record<string, unknown>;
-    } catch (err) {
-      throw new Error(
-        `Failed to parse ${label} TOML: ${err instanceof Error ? err.message : String(err)}`,
-        {
-          cause: err,
-        },
-      );
-    }
-  }
-
-  /**
-   * Compare two parsed TOML objects and compute semantic diff and breaking changes.
-   */
-  public diffObjects(
-    source: Record<string, unknown>,
-    target: Record<string, unknown>,
-  ): SemanticDiffResult {
-    const deltas: SemanticDelta[] = [];
-    const breakingChanges: BreakingChange[] = [];
-
-    // 1. Root / Top-level primitive scalar keys & known endpoints
-    this.diffRootScalarsAndEndpoints(source, target, deltas, breakingChanges);
-
-    // 2. DOCUMENTATION table
-    this.diffSimpleTable('DOCUMENTATION', source['DOCUMENTATION'], target['DOCUMENTATION'], deltas);
-
-    // 3. CURRENCIES array of tables
-    this.diffCurrencies(source['CURRENCIES'], target['CURRENCIES'], deltas, breakingChanges);
-
-    // 4. VALIDATORS array of tables
-    this.diffValidators(source['VALIDATORS'], target['VALIDATORS'], deltas, breakingChanges);
-
-    // 5. PRINCIPALS array of tables
-    this.diffPrincipals(source['PRINCIPALS'], target['PRINCIPALS'], deltas);
-
-    // 6. Generic check for any other arbitrary top-level tables or keys
-    this.diffRemainingKeys(source, target, deltas);
-
-    const counts = {
-      added: deltas.filter((d) => d.type === 'added').length,
-      removed: deltas.filter((d) => d.type === 'removed').length,
-      modified: deltas.filter((d) => d.type === 'modified').length,
-      breaking: breakingChanges.length,
-    };
+  /** Diff two documents that are already in memory. */
+  diff(sourceText: string, targetText: string, labels: DiffLabels = {}): SemanticDiff {
+    const source = parseSide(labels.source ?? 'source', sourceText);
+    const target = parseSide(labels.target ?? 'target', targetText);
+    const changes =
+      source.document !== undefined && target.document !== undefined
+        ? this.diffRecords(source.document, target.document, '', '')
+        : [];
 
     return {
-      hasDifferences: counts.added > 0 || counts.removed > 0 || counts.modified > 0,
-      hasBreakingChanges: breakingChanges.length > 0,
-      deltas,
-      breakingChanges,
-      summary: counts,
+      source: withoutDocument(source),
+      target: withoutDocument(target),
+      changes,
+      added: changes.filter((change) => change.kind === 'added').length,
+      removed: changes.filter((change) => change.kind === 'removed').length,
+      modified: changes.filter((change) => change.kind === 'modified').length,
+      breaking: changes.filter((change) => change.breaking).length,
     };
   }
 
-  private diffRootScalarsAndEndpoints(
-    source: Record<string, unknown>,
-    target: Record<string, unknown>,
-    deltas: SemanticDelta[],
-    breaking: BreakingChange[],
-  ): void {
-    const specialRootKeys = new Set([
-      'VERSION',
-      'SIGNING_KEY',
-      'NETWORK_PASSPHRASE',
-      'FEDERATION_SERVER',
-      'AUTH_SERVER',
-      'TRANSFER_SERVER',
-      'TRANSFER_SERVER_0_0_2',
-      'KYC_SERVER',
-      'WEB_AUTH_ENDPOINT',
-      'ANCHOR_QUOTE_SERVER',
-      'DIRECT_PAYMENT_SERVER',
-      'HORIZON_URL',
+  /**
+   * Load both sides and diff them.
+   *
+   * Each input is an `http(s)` URL, a path, or `-` for stdin — but only one of
+   * them may be `-`, since there is a single stream to read.
+   */
+  async diffInputs(sourceInput: string, targetInput: string): Promise<SemanticDiff> {
+    const [sourceText, targetText] = await Promise.all([
+      this.load(sourceInput),
+      this.load(targetInput),
     ]);
-
-    for (const key of specialRootKeys) {
-      const oldVal = source[key];
-      const newVal = target[key];
-
-      if (oldVal === undefined && newVal !== undefined) {
-        deltas.push({ path: key, type: 'added', newValue: newVal, isBreaking: false });
-      } else if (oldVal !== undefined && newVal === undefined) {
-        let isBreak = false;
-        let reason: string | undefined;
-
-        if (key === 'SIGNING_KEY') {
-          isBreak = true;
-          reason = 'Signing key was removed from the anchor definition';
-          breaking.push({
-            path: key,
-            category: 'signing_key',
-            message: reason,
-            oldValue: oldVal,
-          });
-        } else if (KNOWN_SEP_ENDPOINTS[key]) {
-          isBreak = true;
-          reason = `Supported service endpoint ${key} (${KNOWN_SEP_ENDPOINTS[key]}) was removed`;
-          breaking.push({
-            path: key,
-            category: 'service_endpoint',
-            message: reason,
-            oldValue: oldVal,
-          });
-        }
-
-        deltas.push({
-          path: key,
-          type: 'removed',
-          oldValue: oldVal,
-          isBreaking: isBreak,
-          breakingReason: reason,
-        });
-      } else if (oldVal !== undefined && newVal !== undefined && !this.isEqual(oldVal, newVal)) {
-        let isBreak = false;
-        let reason: string | undefined;
-
-        if (key === 'SIGNING_KEY') {
-          isBreak = true;
-          reason = `Signing key changed from ${String(oldVal)} to ${String(newVal)}`;
-          breaking.push({
-            path: key,
-            category: 'signing_key',
-            message: reason,
-            oldValue: oldVal,
-            newValue: newVal,
-          });
-        } else if (key === 'VERSION') {
-          if (String(newVal) < String(oldVal)) {
-            isBreak = true;
-            reason = `Downgraded VERSION from ${String(oldVal)} to ${String(newVal)}`;
-            breaking.push({
-              path: key,
-              category: 'version',
-              message: reason,
-              oldValue: oldVal,
-              newValue: newVal,
-            });
-          }
-        } else if (KNOWN_SEP_ENDPOINTS[key]) {
-          isBreak = true;
-          reason = `Service endpoint ${key} URL altered from ${String(oldVal)} to ${String(newVal)}`;
-          breaking.push({
-            path: key,
-            category: 'service_endpoint',
-            message: reason,
-            oldValue: oldVal,
-            newValue: newVal,
-          });
-        }
-
-        deltas.push({
-          path: key,
-          type: 'modified',
-          oldValue: oldVal,
-          newValue: newVal,
-          isBreaking: isBreak,
-          breakingReason: reason,
-        });
-      }
-    }
+    return this.diff(sourceText, targetText, { source: sourceInput, target: targetInput });
   }
 
-  private diffSimpleTable(
-    tableName: string,
-    sourceTable: unknown,
-    targetTable: unknown,
-    deltas: SemanticDelta[],
-  ): void {
-    const src = (
-      typeof sourceTable === 'object' && sourceTable !== null ? sourceTable : {}
-    ) as Record<string, unknown>;
-    const tgt = (
-      typeof targetTable === 'object' && targetTable !== null ? targetTable : {}
-    ) as Record<string, unknown>;
-
-    const allKeys = new Set([...Object.keys(src), ...Object.keys(tgt)]);
-    for (const key of allKeys) {
-      const oldVal = src[key];
-      const newVal = tgt[key];
-      const path = `${tableName}.${key}`;
-
-      if (oldVal === undefined && newVal !== undefined) {
-        deltas.push({ path, type: 'added', newValue: newVal, isBreaking: false });
-      } else if (oldVal !== undefined && newVal === undefined) {
-        deltas.push({ path, type: 'removed', oldValue: oldVal, isBreaking: false });
-      } else if (oldVal !== undefined && newVal !== undefined && !this.isEqual(oldVal, newVal)) {
-        deltas.push({
-          path,
-          type: 'modified',
-          oldValue: oldVal,
-          newValue: newVal,
-          isBreaking: false,
-        });
-      }
+  /** Resolve one input reference to the text it points at. */
+  async load(input: string): Promise<string> {
+    if (/^https?:\/\//i.test(input)) {
+      const response = await this.fetchImpl(input, { signal: AbortSignal.timeout(this.timeoutMs) });
+      if (!response.ok) throw new Error(`Could not fetch ${input}: HTTP ${response.status}`);
+      return response.text();
     }
+    if (input === '-') return readStdin();
+    return readFile(resolve(input), 'utf8');
   }
 
-  private diffCurrencies(
-    sourceCurrencies: unknown,
-    targetCurrencies: unknown,
-    deltas: SemanticDelta[],
-    breaking: BreakingChange[],
-  ): void {
-    const srcList = Array.isArray(sourceCurrencies)
-      ? (sourceCurrencies as Record<string, unknown>[])
-      : [];
-    const tgtList = Array.isArray(targetCurrencies)
-      ? (targetCurrencies as Record<string, unknown>[])
-      : [];
+  private diffRecords(
+    before: Record<string, unknown>,
+    after: Record<string, unknown>,
+    basePath: string,
+    section: string,
+  ): SemanticChange[] {
+    const changes: SemanticChange[] = [];
+    for (const key of unionKeys(before, after)) {
+      const path = join(basePath, key);
+      // `Object.hasOwn` rather than `in`: `smol-toml` hands back prototypes-less
+      // tables, which have no inherited members to trip over and no
+      // `hasOwnProperty` method to call.
+      const hasBefore = Object.hasOwn(before, key);
+      const hasAfter = Object.hasOwn(after, key);
+      // Only the document root introduces a section: `WEB_AUTH_ENDPOINT` is a
+      // root field of its own, while the fields under it belong to DOCUMENTATION.
+      const childSection = section === '' ? key : section;
 
-    const srcMap = new Map<string, Record<string, unknown>>();
-    for (const cur of srcList) {
-      const code = String(cur['code'] ?? '');
-      const issuer = String(cur['issuer'] ?? '');
-      const key = `${code}:${issuer}`;
-      srcMap.set(key, cur);
-    }
-
-    const tgtMap = new Map<string, Record<string, unknown>>();
-    for (const cur of tgtList) {
-      const code = String(cur['code'] ?? '');
-      const issuer = String(cur['issuer'] ?? '');
-      const key = `${code}:${issuer}`;
-      tgtMap.set(key, cur);
-    }
-
-    // Check for removed currencies or issuer mutations
-    for (const [key, srcCur] of srcMap.entries()) {
-      const code = String(srcCur['code'] ?? '');
-      const issuer = String(srcCur['issuer'] ?? '');
-
-      if (!tgtMap.has(key)) {
-        // Check if currency code still exists but issuer changed
-        const sameCodeMatch = Array.from(tgtMap.values()).find(
-          (c) => String(c['code'] ?? '') === code,
-        );
-        if (sameCodeMatch) {
-          const newIssuer = String(sameCodeMatch['issuer'] ?? '');
-          const msg = `Asset issuer for currency ${code} changed from ${issuer} to ${newIssuer}`;
-          breaking.push({
-            path: `CURRENCIES[code=${code}].issuer`,
-            category: 'currency',
-            message: msg,
-            oldValue: issuer,
-            newValue: newIssuer,
-          });
-          deltas.push({
-            path: `CURRENCIES[code=${code}].issuer`,
-            type: 'modified',
-            oldValue: issuer,
-            newValue: newIssuer,
-            isBreaking: true,
-            breakingReason: msg,
-          });
-        } else {
-          const msg = `Currency asset ${code}${issuer ? ` (issuer: ${issuer})` : ''} was removed`;
-          breaking.push({
-            path: `CURRENCIES[code=${code}]`,
-            category: 'currency',
-            message: msg,
-            oldValue: srcCur,
-          });
-          deltas.push({
-            path: `CURRENCIES[code=${code}]`,
-            type: 'removed',
-            oldValue: srcCur,
-            isBreaking: true,
-            breakingReason: msg,
-          });
-        }
-      } else {
-        // Exists in both: compare fields
-        const tgtCur = tgtMap.get(key)!;
-        this.diffCurrencyFields(code, srcCur, tgtCur, deltas, breaking);
-      }
-    }
-
-    // Check for newly added currencies
-    for (const [key, tgtCur] of tgtMap.entries()) {
-      if (!srcMap.has(key)) {
-        const code = String(tgtCur['code'] ?? '');
-        const sameCodeInSrc = Array.from(srcMap.values()).some(
-          (c) => String(c['code'] ?? '') === code,
-        );
-        if (!sameCodeInSrc) {
-          deltas.push({
-            path: `CURRENCIES[code=${code}]`,
-            type: 'added',
-            newValue: tgtCur,
-            isBreaking: false,
-          });
-        }
-      }
-    }
-  }
-
-  private diffCurrencyFields(
-    code: string,
-    src: Record<string, unknown>,
-    tgt: Record<string, unknown>,
-    deltas: SemanticDelta[],
-    breaking: BreakingChange[],
-  ): void {
-    const keys = new Set([...Object.keys(src), ...Object.keys(tgt)]);
-    for (const k of keys) {
-      if (k === 'code' || k === 'issuer') continue;
-      const oldVal = src[k];
-      const newVal = tgt[k];
-      const path = `CURRENCIES[code=${code}].${k}`;
-
-      if (oldVal === undefined && newVal !== undefined) {
-        deltas.push({ path, type: 'added', newValue: newVal, isBreaking: false });
-      } else if (oldVal !== undefined && newVal === undefined) {
-        deltas.push({ path, type: 'removed', oldValue: oldVal, isBreaking: false });
-      } else if (oldVal !== undefined && newVal !== undefined && !this.isEqual(oldVal, newVal)) {
-        let isBreak = false;
-        let reason: string | undefined;
-
-        if (k === 'status' && String(oldVal) === 'live' && String(newVal) !== 'live') {
-          isBreak = true;
-          reason = `Currency ${code} status changed from ${String(oldVal)} to ${String(newVal)}`;
-          breaking.push({
+      if (!hasBefore || !hasAfter) {
+        changes.push(
+          ...this.diffOneSided(
             path,
-            category: 'currency',
-            message: reason,
-            oldValue: oldVal,
-            newValue: newVal,
-          });
-        }
-
-        deltas.push({
-          path,
-          type: 'modified',
-          oldValue: oldVal,
-          newValue: newVal,
-          isBreaking: isBreak,
-          breakingReason: reason,
-        });
-      }
-    }
-  }
-
-  private diffValidators(
-    sourceValidators: unknown,
-    targetValidators: unknown,
-    deltas: SemanticDelta[],
-    breaking: BreakingChange[],
-  ): void {
-    const srcList = Array.isArray(sourceValidators)
-      ? (sourceValidators as Record<string, unknown>[])
-      : [];
-    const tgtList = Array.isArray(targetValidators)
-      ? (targetValidators as Record<string, unknown>[])
-      : [];
-
-    const srcMap = new Map<string, Record<string, unknown>>();
-    for (const val of srcList) {
-      const pk = String(val['PUBLIC_KEY'] ?? val['name'] ?? JSON.stringify(val));
-      srcMap.set(pk, val);
-    }
-
-    const tgtMap = new Map<string, Record<string, unknown>>();
-    for (const val of tgtList) {
-      const pk = String(val['PUBLIC_KEY'] ?? val['name'] ?? JSON.stringify(val));
-      tgtMap.set(pk, val);
-    }
-
-    for (const [pk, val] of srcMap.entries()) {
-      if (!tgtMap.has(pk)) {
-        const msg = `Validator ${pk} was removed from the trusted quorum set`;
-        breaking.push({
-          path: `VALIDATORS[${pk}]`,
-          category: 'validator',
-          message: msg,
-          oldValue: val,
-        });
-        deltas.push({
-          path: `VALIDATORS[${pk}]`,
-          type: 'removed',
-          oldValue: val,
-          isBreaking: true,
-          breakingReason: msg,
-        });
+            section,
+            childSection,
+            hasBefore ? before[key] : undefined,
+            hasAfter ? after[key] : undefined,
+          ),
+        );
       } else {
-        const tgtVal = tgtMap.get(pk)!;
-        const keys = new Set([...Object.keys(val), ...Object.keys(tgtVal)]);
-        for (const k of keys) {
-          const oldV = val[k];
-          const newV = tgtVal[k];
-          if (oldV !== undefined && newV !== undefined && !this.isEqual(oldV, newV)) {
-            deltas.push({
-              path: `VALIDATORS[${pk}].${k}`,
-              type: 'modified',
-              oldValue: oldV,
-              newValue: newV,
-              isBreaking: false,
-            });
-          }
-        }
+        changes.push(...this.diffValues(before[key], after[key], path, section, childSection));
       }
     }
-
-    for (const [pk, val] of tgtMap.entries()) {
-      if (!srcMap.has(pk)) {
-        deltas.push({
-          path: `VALIDATORS[${pk}]`,
-          type: 'added',
-          newValue: val,
-          isBreaking: false,
-        });
-      }
-    }
-  }
-
-  private diffPrincipals(
-    sourcePrincipals: unknown,
-    targetPrincipals: unknown,
-    deltas: SemanticDelta[],
-  ): void {
-    const srcList = Array.isArray(sourcePrincipals)
-      ? (sourcePrincipals as Record<string, unknown>[])
-      : [];
-    const tgtList = Array.isArray(targetPrincipals)
-      ? (targetPrincipals as Record<string, unknown>[])
-      : [];
-
-    const keyOf = (p: Record<string, unknown>) =>
-      String(p['name'] ?? p['email'] ?? JSON.stringify(p));
-
-    const srcKeys = new Set(srcList.map(keyOf));
-    const tgtKeys = new Set(tgtList.map(keyOf));
-
-    for (const p of srcList) {
-      const k = keyOf(p);
-      if (!tgtKeys.has(k)) {
-        deltas.push({ path: `PRINCIPALS[${k}]`, type: 'removed', oldValue: p, isBreaking: false });
-      }
-    }
-
-    for (const p of tgtList) {
-      const k = keyOf(p);
-      if (!srcKeys.has(k)) {
-        deltas.push({ path: `PRINCIPALS[${k}]`, type: 'added', newValue: p, isBreaking: false });
-      }
-    }
-  }
-
-  private diffRemainingKeys(
-    source: Record<string, unknown>,
-    target: Record<string, unknown>,
-    deltas: SemanticDelta[],
-  ): void {
-    const handledKeys = new Set([
-      'VERSION',
-      'SIGNING_KEY',
-      'NETWORK_PASSPHRASE',
-      'FEDERATION_SERVER',
-      'AUTH_SERVER',
-      'TRANSFER_SERVER',
-      'TRANSFER_SERVER_0_0_2',
-      'KYC_SERVER',
-      'WEB_AUTH_ENDPOINT',
-      'ANCHOR_QUOTE_SERVER',
-      'DIRECT_PAYMENT_SERVER',
-      'HORIZON_URL',
-      'DOCUMENTATION',
-      'CURRENCIES',
-      'VALIDATORS',
-      'PRINCIPALS',
-    ]);
-
-    const allKeys = new Set([...Object.keys(source), ...Object.keys(target)]);
-    for (const k of allKeys) {
-      if (handledKeys.has(k)) continue;
-      const oldVal = source[k];
-      const newVal = target[k];
-
-      if (oldVal === undefined && newVal !== undefined) {
-        deltas.push({ path: k, type: 'added', newValue: newVal, isBreaking: false });
-      } else if (oldVal !== undefined && newVal === undefined) {
-        deltas.push({ path: k, type: 'removed', oldValue: oldVal, isBreaking: false });
-      } else if (oldVal !== undefined && newVal !== undefined && !this.isEqual(oldVal, newVal)) {
-        deltas.push({
-          path: k,
-          type: 'modified',
-          oldValue: oldVal,
-          newValue: newVal,
-          isBreaking: false,
-        });
-      }
-    }
-  }
-
-  private isEqual(a: unknown, b: unknown): boolean {
-    if (a === b) return true;
-    if (a === null || b === null || typeof a !== typeof b) return false;
-    if (typeof a === 'object') {
-      return JSON.stringify(a) === JSON.stringify(b);
-    }
-    return false;
+    return changes;
   }
 
   /**
-   * Render diff result in human-readable markdown / terminal format or JSON.
+   * A key only one of the documents has.
+   *
+   * An array table is still reported entry by entry when the whole section
+   * disappeared: an anchor that drops its last `[[CURRENCIES]]` has delisted an
+   * asset exactly as surely as one that dropped one of five, and the path should
+   * say which asset either way.
    */
-  public renderReport(
-    result: SemanticDiffResult,
-    format: 'text' | 'markdown' | 'json' = 'text',
-  ): string {
-    if (format === 'json') {
-      return JSON.stringify(result, null, 2);
-    }
-
-    const lines: string[] = [];
-    const isMarkdown = format === 'markdown';
-
-    if (isMarkdown) {
-      lines.push('## Semantic TOML Diff Report');
-      lines.push('');
-      lines.push(
-        `**Changes**: ${result.summary.added} added, ${result.summary.removed} removed, ${result.summary.modified} modified | **Breaking**: ${result.summary.breaking}`,
+  private diffOneSided(
+    path: string,
+    section: string,
+    childSection: string,
+    before: unknown,
+    after: unknown,
+  ): SemanticChange[] {
+    const present = before === undefined ? after : before;
+    if (Array.isArray(present) && present.length > 0 && present.every(isRecord)) {
+      return this.diffArrays(
+        Array.isArray(before) ? before : [],
+        Array.isArray(after) ? after : [],
+        path,
+        childSection,
+        this.matchFor(section, childSection),
       );
-      lines.push('');
-    } else {
-      lines.push('=== Semantic TOML Diff Report ===');
-      lines.push(
-        `Summary: +${result.summary.added} added, -${result.summary.removed} removed, ~${result.summary.modified} modified (${result.summary.breaking} breaking)`,
-      );
-      lines.push('');
     }
-
-    if (!result.hasDifferences) {
-      lines.push(
-        isMarkdown
-          ? '*No semantic differences found between TOML files.*'
-          : 'No semantic differences found.',
-      );
-      return lines.join('\n');
-    }
-
-    if (result.hasBreakingChanges) {
-      if (isMarkdown) {
-        lines.push('> [!CRITICAL] BREAKING CHANGES DETECTED:');
-        for (const bc of result.breakingChanges) {
-          lines.push(`> - **${bc.path}**: ${bc.message}`);
-        }
-        lines.push('');
-      } else {
-        lines.push('🚨 CRITICAL BREAKING CHANGES:');
-        for (const bc of result.breakingChanges) {
-          lines.push(`  [!] ${bc.path}: ${bc.message}`);
-        }
-        lines.push('');
-      }
-    }
-
-    lines.push(isMarkdown ? '### Detailed Deltas' : 'Detailed Deltas:');
-    for (const delta of result.deltas) {
-      const tag = delta.isBreaking ? '[BREAKING] ' : '';
-      switch (delta.type) {
-        case 'added':
-          lines.push(`+ [added] ${tag}${delta.path}: ${JSON.stringify(delta.newValue)}`);
-          break;
-        case 'removed':
-          lines.push(`- [removed] ${tag}${delta.path}: ${JSON.stringify(delta.oldValue)}`);
-          break;
-        case 'modified':
-          lines.push(
-            `~ [modified] ${tag}${delta.path}: ${JSON.stringify(delta.oldValue)} -> ${JSON.stringify(delta.newValue)}`,
-          );
-          break;
-        default:
-          break;
-      }
-    }
-
-    return lines.join('\n');
+    const kind: DiffKind = before === undefined ? 'added' : 'removed';
+    return [this.change(path, section, kind, before, after)];
   }
+
+  /**
+   * `section` is where a change to this value belongs; `childSection` is where a
+   * change to what the value *contains* belongs. They differ only at the root,
+   * where a table names the SEP-1 section its fields live in.
+   */
+  private diffValues(
+    before: unknown,
+    after: unknown,
+    path: string,
+    section: string,
+    childSection: string,
+  ): SemanticChange[] {
+    if (isRecord(before) && isRecord(after)) {
+      return this.diffRecords(before, after, path, childSection);
+    }
+    if (Array.isArray(before) && Array.isArray(after)) {
+      return this.diffArrays(
+        before,
+        after,
+        path,
+        childSection,
+        this.matchFor(section, childSection),
+      );
+    }
+    if (sameValue(before, after)) return [];
+    return [this.change(path, section, 'modified', before, after)];
+  }
+
+  /**
+   * How the entries of an array are identified and what losing one means. Only a
+   * top-level table has either: `[[CURRENCIES]]` is keyed by `code`, while a
+   * nested `collateral_addresses` is a list of strings with nothing to match on.
+   */
+  private matchFor(section: string, childSection: string): ArrayMatch {
+    if (section !== '') return NO_MATCH;
+    return {
+      identity: CANONICAL_ARRAY_ORDER[childSection],
+      removal: BREAKING_REMOVAL_SECTIONS[childSection],
+    };
+  }
+
+  /**
+   * Compare array entries by identity rather than position.
+   *
+   * Sections SEP-1 gives an identity key to (`code`, `PUBLIC_KEY`) match on it, so
+   * reordering `[[CURRENCIES]]` is not a diff. Everything else — `[[PRINCIPALS]]`
+   * and nested arrays like `collateral_addresses` — is compared position by
+   * position, which means a mid-list removal reads as a run of modifications
+   * ending in one removal. That is the same trade a line diff makes, and it is
+   * the honest one when the entries carry nothing to match on.
+   */
+  private diffArrays(
+    before: unknown[],
+    after: unknown[],
+    path: string,
+    section: string,
+    match: ArrayMatch,
+  ): SemanticChange[] {
+    const beforeKeys = entryKeys(before, match.identity);
+    const afterKeys = entryKeys(after, match.identity);
+    const afterIndex = new Map<string, number>();
+    afterKeys.forEach((key, index) => afterIndex.set(key, index));
+    const beforeIndex = new Map<string, number>();
+    beforeKeys.forEach((key, index) => beforeIndex.set(key, index));
+
+    const changes: SemanticChange[] = [];
+    beforeKeys.forEach((key, index) => {
+      const entryPath = `${path}[${key}]`;
+      const matched = afterIndex.get(key);
+      if (matched === undefined) {
+        changes.push(this.entryChange(entryPath, section, 'removed', before[index], match));
+      } else {
+        changes.push(
+          ...this.diffValues(before[index], after[matched], entryPath, section, section),
+        );
+      }
+    });
+    afterKeys.forEach((key, index) => {
+      if (beforeIndex.has(key)) return;
+      changes.push(this.entryChange(`${path}[${key}]`, section, 'added', after[index], match));
+    });
+    return changes;
+  }
+
+  /** A whole array-table entry appearing or disappearing. */
+  private entryChange(
+    path: string,
+    section: string,
+    kind: 'added' | 'removed',
+    value: unknown,
+    match: ArrayMatch,
+  ): SemanticChange {
+    return this.build(
+      path,
+      section,
+      kind,
+      kind === 'removed' ? value : undefined,
+      kind === 'added' ? value : undefined,
+      kind === 'removed' ? match.removal : undefined,
+    );
+  }
+
+  private change(
+    path: string,
+    section: string,
+    kind: DiffKind,
+    before: unknown,
+    after: unknown,
+  ): SemanticChange {
+    return this.build(path, section, kind, before, after, this.reasonFor(section, path, kind));
+  }
+
+  private build(
+    path: string,
+    section: string,
+    kind: DiffKind,
+    before: unknown,
+    after: unknown,
+    reason: string | undefined,
+  ): SemanticChange {
+    const field = fieldOf(path);
+    const change: SemanticChange = {
+      path,
+      kind,
+      section,
+      category: categoryOf(section, field),
+      breaking: reason !== undefined,
+    };
+    if (reason !== undefined) change.reason = reason;
+    if (kind !== 'removed') change.after = after;
+    if (kind !== 'added') change.before = before;
+    return change;
+  }
+
+  /** Why this change breaks a client that read the source document. */
+  private reasonFor(section: string, path: string, kind: DiffKind): string | undefined {
+    // Publishing something new cannot break a client that has not seen it.
+    if (kind === 'added') return undefined;
+    const field = fieldOf(path);
+
+    if (section === '') {
+      const critical = CRITICAL_ROOT_FIELDS[field];
+      if (critical !== undefined) return critical;
+      if (kind === 'removed' && !isDeprecated(field)) {
+        const sep = SEP_BY_ENDPOINT_FIELD[field];
+        if (sep !== undefined) return `${field} is how clients discover ${sep}; it is now gone`;
+      }
+      return undefined;
+    }
+
+    return CRITICAL_ENTRY_FIELDS[section]?.[field];
+  }
+}
+
+/** {@link SemanticTomlDiffer.diff} without constructing one. */
+export function diffSemanticToml(
+  sourceText: string,
+  targetText: string,
+  labels: DiffLabels = {},
+): SemanticDiff {
+  return new SemanticTomlDiffer().diff(sourceText, targetText, labels);
+}
+
+/**
+ * Terminal markdown for a diff report.
+ *
+ * Markdown headings and bullets so the same text drops into a pull-request
+ * comment, with the `+` and `-` markers coloured the way `git diff` colours them.
+ * A report whose side did not parse says so instead of claiming there is nothing
+ * to review.
+ */
+export function renderSemanticDiff(report: SemanticDiff, color = false): string {
+  const c = makeColors(color);
+  const lines: string[] = ['# stellar.toml semantic diff', ''];
+
+  for (const side of [report.source, report.target]) {
+    const detail = side.parsed
+      ? c.grey(`(${count(side.fields, 'field')})`)
+      : c.red('did not parse');
+    lines.push(
+      `- **${side === report.source ? 'source' : 'target'}:** \`${side.input}\` ${detail}`,
+    );
+  }
+  lines.push('');
+
+  for (const side of [report.source, report.target]) {
+    if (side.error !== undefined) lines.push(c.red(`! ${side.input}: ${side.error}`));
+  }
+  if (!report.source.parsed || !report.target.parsed) return `${lines.join('\n')}\n`;
+
+  lines.push(summaryLine(report, c));
+  lines.push('');
+
+  if (report.changes.length === 0) {
+    lines.push(
+      'No semantic changes. The documents describe the same configuration, whatever order, ' +
+        'indentation and comments they happen to use.',
+    );
+    return `${lines.join('\n')}\n`;
+  }
+
+  lines.push('## Changes', '');
+  for (const change of report.changes) lines.push(...renderChange(change, c));
+  return `${lines.join('\n')}\n`;
+}
+
+/** Machine-readable changelog: the report, verbatim, as pretty-printed JSON. */
+export function renderSemanticDiffJson(report: SemanticDiff): string {
+  return `${JSON.stringify(report, null, 2)}\n`;
+}
+
+type Colors = ReturnType<typeof makeColors>;
+
+function summaryLine(report: SemanticDiff, c: Colors): string {
+  const parts = [
+    c.green(`${report.added} added`),
+    c.red(`${report.removed} removed`),
+    c.yellow(`${report.modified} modified`),
+  ];
+  const alert = `${report.breaking} ${plural(report.breaking, 'breaking change')}`;
+  parts.push(report.breaking > 0 ? c.bold(c.red(`BREAKING: ${alert}`)) : c.grey('0 breaking'));
+  return parts.join(' · ');
+}
+
+function renderChange(change: SemanticChange, c: Colors): string[] {
+  const sign =
+    change.kind === 'added' ? c.green('+') : change.kind === 'removed' ? c.red('-') : c.yellow('~');
+  const tag = change.breaking ? ` ${c.bold(c.red('BREAKING'))}` : '';
+  const lines = [`${sign} \`${change.path}\`${tag}`];
+
+  if (change.kind === 'modified') {
+    lines.push(`  ${c.red(`- ${formatValue(change.before)}`)}`);
+    lines.push(`  ${c.green(`+ ${formatValue(change.after)}`)}`);
+  } else {
+    const value = change.kind === 'added' ? change.after : change.before;
+    lines.push(`  ${sign} ${formatValue(value)}`);
+  }
+  if (change.reason !== undefined) lines.push(`  ${c.red('!')} ${change.reason}`);
+  return lines;
+}
+
+/**
+ * One-line rendering of a value.
+ *
+ * Whole entries are added and removed as units, so their contents have to fit on
+ * a line: the first few members show, the rest collapse into a count, and the
+ * JSON report stays the complete record.
+ */
+export function formatValue(value: unknown): string {
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) {
+    const shown = value.slice(0, MAX_LIST_ITEMS).map(formatValue);
+    if (shown.length < value.length) shown.push(`… ${value.length - shown.length} more`);
+    return `[${shown.join(', ')}]`;
+  }
+  if (isRecord(value)) {
+    const entries = Object.entries(value);
+    const shown = entries
+      .slice(0, MAX_LIST_ITEMS)
+      .map(([key, item]) => `${key}=${formatLeaf(item)}`);
+    if (shown.length < entries.length) shown.push(`… ${entries.length - shown.length} more`);
+    return `{${shown.join(', ')}}`;
+  }
+  return String(value);
+}
+
+/** Nested collections get no room in a one-line summary. */
+function formatLeaf(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.length} values]`;
+  if (isRecord(value)) return `{${Object.keys(value).length} fields}`;
+  return formatValue(value);
+}
+
+function parseSide(input: string, text: string): ParseResult {
+  try {
+    const document = parse(text) as Record<string, unknown>;
+    return { input, parsed: true, fields: Object.keys(document).length, document };
+  } catch (error) {
+    return { input, parsed: false, fields: 0, error: `Invalid TOML: ${firstLine(error)}` };
+  }
+}
+
+/** The report is a changelog; the parsed document it was derived from is not. */
+function withoutDocument(side: ParseResult): SemanticDiffSide {
+  const report: SemanticDiffSide = {
+    input: side.input,
+    parsed: side.parsed,
+    fields: side.fields,
+  };
+  if (side.error !== undefined) report.error = side.error;
+  return report;
+}
+
+/**
+ * Keys of both tables, source order first.
+ */
+function unionKeys(before: Record<string, unknown>, after: Record<string, unknown>): string[] {
+  const seen = new Set<string>();
+  const keys: string[] = [];
+  for (const key of [...Object.keys(before), ...Object.keys(after)]) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    keys.push(key);
+  }
+  return keys;
+}
+
+function entryKeys(entries: unknown[], identity: string | undefined): string[] {
+  const counts = new Map<string, number>();
+  return entries.map((entry, index) => {
+    const raw = identity === undefined || !isRecord(entry) ? undefined : entry[identity];
+    const base =
+      typeof raw === 'string' && raw.length > 0
+        ? raw
+        : typeof raw === 'number'
+          ? String(raw)
+          : `#${index + 1}`;
+    const seen = (counts.get(base) ?? 0) + 1;
+    counts.set(base, seen);
+    return seen === 1 ? base : `${base}#${seen}`;
+  });
+}
+
+function sameValue(before: unknown, after: unknown): boolean {
+  if (before === after) return true;
+  return canonicalText(before) === canonicalText(after);
+}
+
+/**
+ * JSON text with table keys in sorted order.
+ *
+ * Sorting is the point: two nested tables that agree field by field but were
+ * written in a different order are the same value, and a diff that says otherwise
+ * is the noise this module exists to remove.
+ */
+function canonicalText(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalText).join(',')}]`;
+  // The parser keeps the authored offset in `toISOString`, so two spellings of one
+  // instant print differently; equality has to compare the instant itself.
+  if (value instanceof Date) return String(value.getTime());
+  if (isRecord(value)) {
+    const entries = Object.keys(value)
+      .sort()
+      .map((key) => `${key}:${canonicalText(value[key])}`);
+    return `{${entries.join(',')}}`;
+  }
+  return JSON.stringify(value) ?? String(value);
+}
+
+/**
+ * A table rather than a value.
+ *
+ * The parser returns a `Date` for an offset date-time, which `typeof` calls an
+ * object; counting it as a table would compare two empty key sets and report a
+ * changed instant as no change at all.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date)
+  );
+}
+
+function categoryOf(section: string, field: string): DiffCategory {
+  if (section !== '') return SECTION_CATEGORY[section] ?? 'general';
+  if (field === 'NETWORK_PASSPHRASE') return 'network';
+  if (SIGNING_KEY_FIELDS.has(field)) return 'signing-key';
+  if (ENDPOINT_FIELDS.has(field)) return 'endpoint';
+  return SECTION_CATEGORY[field] ?? 'general';
+}
+
+function isDeprecated(field: string): boolean {
+  return Object.hasOwn(DEPRECATED_FIELDS, field);
+}
+
+function fieldOf(path: string): string {
+  const dot = path.lastIndexOf('.');
+  return dot === -1 ? path : path.slice(dot + 1);
+}
+
+function join(base: string, key: string): string {
+  return base === '' ? key : `${base}.${key}`;
+}
+
+function firstLine(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return text.split('\n')[0]?.trim() || 'could not parse the file';
+}
+
+function count(n: number, word: string): string {
+  return `${n} ${plural(n, word)}`;
+}
+
+function plural(n: number, word: string): string {
+  return n === 1 ? word : `${word}s`;
+}
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString('utf8');
 }

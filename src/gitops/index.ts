@@ -31,3 +31,29 @@ export type {
   KmsRetryOptions,
   KmsSignResult,
 } from './kmsTypes.js';
+export {
+  GitOpsDriftDetector,
+  DriftDetectionError,
+  detectDrift,
+  fetchLiveToml,
+  liveUrlForDomain,
+  flattenToml,
+  diffFlattened,
+  classifyDrift,
+  renderDriftText,
+  renderDriftJson,
+  renderDriftErrorJson,
+  renderDriftLineDiff,
+  DEFAULT_FETCH_TIMEOUT,
+  DEFAULT_MAX_HISTORY,
+} from './driftDetector.js';
+export type {
+  ChangeKind,
+  CommitInfo,
+  DeployedMatch,
+  DriftDetectionOptions,
+  DriftErrorCode,
+  DriftFinding,
+  DriftReport,
+  DriftType,
+} from './driftDetector.js';
