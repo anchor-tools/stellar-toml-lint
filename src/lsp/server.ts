@@ -14,8 +14,8 @@ import { lint } from '../lint.js';
 import type { Diagnostic } from '../types.js';
 import { codeActionsFor, toLspDiagnostic } from './code-actions.js';
 import type { LspCodeAction } from './code-actions.js';
-import { getDocumentSymbols } from './document-symbols.js';
-import type { LspDocumentSymbol } from './document-symbols.js';
+import { LspDocumentSymbolProvider } from './documentSymbolProvider.js';
+import type { DocumentSymbol } from './documentSymbolProvider.js';
 import { getHoverInfo } from './hover.js';
 import type { Hover } from './hover.js';
 import { ContractErrorDocs, withContractErrors } from './contract-hover.js';
@@ -54,6 +54,7 @@ export async function runLspServer(
   serverOptions: LspServerOptions = {},
 ): Promise<void> {
   const documents = new Map<string, string>();
+  const symbolProvider = new LspDocumentSymbolProvider();
   let shuttingDown = false;
   // Set on `initialize` when the editor opts in to contract lookups.
   let contractDocs: ((source: string) => ContractErrorDocs | undefined) | undefined;
@@ -135,7 +136,7 @@ export async function runLspServer(
           const params = message.params as DocumentSymbolParams;
           const source = documents.get(params.textDocument.uri);
           if (source === undefined) return { jsonrpc: '2.0', id, result: [] };
-          const result: LspDocumentSymbol[] = getDocumentSymbols(source);
+          const result: DocumentSymbol[] = symbolProvider.provideDocumentSymbols(source);
           return { jsonrpc: '2.0', id, result };
         }
         default:
