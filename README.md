@@ -681,6 +681,60 @@ To route them into the Security tab instead:
     sarif_file: stellar-toml.sarif
 ```
 
+### Multi-environment matrix workflow
+
+Anchors that publish one `stellar.toml` per tenant (development, staging,
+testnet, production) can generate a complete workflow instead of writing one:
+
+```sh
+stellar-toml-lint init-ci --matrix testnet,public
+# writes .github/workflows/stellar-toml-lint-matrix.yml
+```
+
+By default it validates `environments/<env>/stellar.toml`. Change that with
+`--file-pattern 'tenants/{environment}/.well-known/stellar.toml'`, or override
+one tenant with `--file public=public/.well-known/stellar.toml`. Each cell of
+the environment × Node.js matrix (`--node 20,22` by default):
+
+- lints the tenant's file. On `testnet` and `public` it also runs
+  `--check-network` (link reachability, TLS, Horizon). Force it on or off with
+  `--check-network` / `--no-check-network`.
+- **checks network isolation**: the file's `NETWORK_PASSPHRASE` and well-known
+  `HORIZON_URL` must belong to that environment's network, and the production
+  file must not point at `localhost`, private IPs or `staging`/`dev`/`qa` hosts.
+  These findings use `ci/*` rule ids.
+- uploads **SARIF** to code scanning under the `stellar-toml-lint/<env>`
+  category, so each tenant's alerts stay separate.
+- caches the tool install and fetched **remote assets** (logos, JSON schemas,
+  IPFS content) with `actions/cache`, so warm runs finish in seconds.
+
+A final job posts one **scorecard comment** on the pull request: a per-environment
+table with a 0–100 score, counts, and network-isolation status. It edits that
+comment in place on later pushes instead of adding new ones.
+
+The generated workflow follows GitHub's hardening guidance:
+
+- every action is pinned to a full commit SHA, with a version comment Dependabot
+  can bump;
+- the default token has `permissions: {}`, and each job grants only the scopes
+  it needs;
+- checkout uses `persist-credentials: false`, and the tool installs with
+  `--ignore-scripts`;
+- matrix and event values reach scripts only through `env`;
+- the commenting job never checks out PR code;
+- fork PRs skip the steps that need a write token.
+
+`--no-sarif`, `--no-pr-comment`, `--no-cache` and `--strict` adjust it, and
+`--stdout` prints the workflow instead of writing it. The building blocks are
+also commands:
+
+- `ci-report` turns one cell's linter JSON into SARIF, a markdown fragment and a
+  JSON report.
+- `ci-scorecard` combines those reports into the comment.
+
+Setting `STELLAR_TOML_LINT_ASSET_CACHE=<dir>` enables the asset cache for any
+run.
+
 ### Azure DevOps
 
 Copy [`templates/azure-pipelines.yml`](templates/azure-pipelines.yml) into your repository and

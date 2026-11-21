@@ -457,6 +457,31 @@ test-kms-signer OPTIONS
   -v, --version
   -h, --help
 
+init-ci OPTIONS
+  --matrix <envs>     Comma-separated environments: development, staging,
+                      testnet, public (aliases: dev, stage, prod, mainnet).
+                      Default: testnet,public
+  --node <versions>   Comma-separated Node.js versions; the first is primary
+                      and uploads SARIF and the scorecard. Default: 20,22
+  --file-pattern <p>  Tenant file path; {environment} is substituted.
+                      Default: environments/{environment}/stellar.toml
+  --file <env>=<path> Override one environment's path (repeatable)
+  --output <path>     Default: .github/workflows/stellar-toml-lint-matrix.yml
+  --check-network / --no-check-network
+                      Force live link, TLS and Horizon checks on or off for
+                      every environment (default: on for testnet and public)
+  --strict            Treat warnings as failures
+  --no-sarif          Skip code scanning upload
+  --no-pr-comment     Skip the pull request scorecard bot
+  --no-cache          Skip tool and remote asset caching
+  --stdout            Print the workflow instead of writing it
+  --force             Overwrite an existing workflow file
+
+ENVIRONMENT
+  STELLAR_TOML_LINT_ASSET_CACHE=<dir>
+                      Cache fetched logos, JSON schemas and IPFS content under
+                      <dir> for 24 hours (set automatically by init-ci workflows)
+
 CONFIG
   .stellartomlrc.json    Project defaults, discovered upward from the linted
                          file's directory (from the current directory for stdin
@@ -1474,6 +1499,9 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
+  if (argv[0] === 'init-ci') return initCiCommand(argv.slice(1));
+  if (argv[0] === 'ci-report') return ciReportCommand(argv.slice(1));
+  if (argv[0] === 'ci-scorecard') return ciScorecardCommand(argv.slice(1));
   if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
   if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
   if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
@@ -1559,8 +1587,13 @@ async function main(argv: string[]): Promise<number> {
     try {
       // Fixture mode replaces the transport for every network-bound check, so a
       // hermetic run can never reach the internet by accident.
+      const assetCache = process.env[ASSET_CACHE_ENV];
       const fetchImpl =
-        cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
+        cli.mockFixtures !== undefined
+          ? createFixtureFetch(cli.mockFixtures)
+          : assetCache
+            ? createAssetCacheFetch(fetch, resolve(assetCache))
+            : fetch;
 
       if (cli.domain && cli.paths.length === 0) {
         const config = await loadConfig(process.cwd(), pluginRuleIds);
