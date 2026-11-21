@@ -12,7 +12,15 @@
           "named": true
         },
         {
+          "type": "asset_code",
+          "named": true
+        },
+        {
           "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "contract_id",
           "named": true
         },
         {
@@ -48,6 +56,10 @@
           "named": true
         },
         {
+          "type": "public_key",
+          "named": true
+        },
+        {
           "type": "string",
           "named": true
         }
@@ -64,6 +76,10 @@
         "types": [
           {
             "type": "bare_key",
+            "named": true
+          },
+          {
+            "type": "currency_entry",
             "named": true
           },
           {
@@ -199,7 +215,15 @@
             "named": true
           },
           {
+            "type": "asset_code",
+            "named": true
+          },
+          {
             "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "contract_id",
             "named": true
           },
           {
@@ -228,6 +252,10 @@
           },
           {
             "type": "offset_date_time",
+            "named": true
+          },
+          {
+            "type": "public_key",
             "named": true
           },
           {
@@ -286,6 +314,10 @@
           },
           {
             "type": "quoted_key",
+            "named": true
+          },
+          {
+            "type": "sep_table",
             "named": true
           }
         ]
@@ -351,6 +383,10 @@
     "named": false
   },
   {
+    "type": "asset_code",
+    "named": true
+  },
+  {
     "type": "bare_key",
     "named": true
   },
@@ -362,6 +398,14 @@
     "type": "comment",
     "named": true,
     "extra": true
+  },
+  {
+    "type": "contract_id",
+    "named": true
+  },
+  {
+    "type": "currency_entry",
+    "named": true
   },
   {
     "type": "escape_sequence",
@@ -385,6 +429,14 @@
   },
   {
     "type": "offset_date_time",
+    "named": true
+  },
+  {
+    "type": "public_key",
+    "named": true
+  },
+  {
+    "type": "sep_table",
     "named": true
   },
   {
