@@ -317,6 +317,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unaffected, and both rules can be tuned with `--off`, `--warn`, and `--error` like any other.
 - `lintDomain` accepts an optional `tlsProbe` so embedders and tests can supply the session instead of
   having one opened for them. `probeTls` is exported for callers that need to measure it themselves.
+- The `textDocument/documentSymbol` outline expands values written on the right of an `=`. An inline
+  table (`SUPPORT = { EMAIL = "…" }`) is an `Object` with a child per entry, an array of them
+  (`TYPES = [{asset = …}, {asset = …}]`) is an `Array` with one `Object` per element, and a nested list
+  nests further — previously all three were a single leaf, so the detail an anchor puts in `TYPES` and
+  `collateral_addresses` had no outline at all. Elements are numbered by source position, and a list of
+  scalars stays a leaf because `ACCOUNTS = ["GA…", "GB…"]` gains nothing from two more nodes.
+  `[[CURRENCIES]]` entries now report `SymbolKind.Interface` (11) rather than `Array` (18), which is
+  what issue #544 asks for and what an asset a client has to conform to is; entries of any other array
+  table are unchanged. `test/lsp/document-symbols.test.ts` covers the tree, the ranges (every selection
+  inside its range, every child inside its parent), and the request over the LSP wire.
 
 ## [0.1.0]
 
