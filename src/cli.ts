@@ -12,6 +12,7 @@ import { createReadStream, watch } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
+import { loadPluginRules } from './engine/ruleLoader.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
 import { VaultSecretEngineVerifier } from './gitops/vaultVerifier.js';
@@ -49,6 +50,11 @@ import {
 } from './protocols/clawbackAuditGenerator.js';
 import { validateUnicode } from './cst/unicodeValidator.js';
 import { sortCanonical } from './cst/canonicalSortCodemod.js';
+import {
+  renderSemanticDiff,
+  renderSemanticDiffJson,
+  SemanticTomlDiffer,
+} from './cst/semanticDiffer.js';
 import { formatUnifiedDiff } from './line-diff.js';
 import {
   auditConsumerProtection,
@@ -146,24 +152,8 @@ import {
   renderDirectorySyncReport,
 } from './protocols/directorySyncVerifier.js';
 import { isWasmMemory, wasmRuntime } from './wasm/wasmApi.js';
-import type { Diagnostic, LintResult, RuleOverrides, Severity } from './types.js';
-import {
-  CiMatrixWorkflowGenerator,
-  type CiMatrixWorkflowOptions,
-} from './gitops/ciWorkflowGenerator.js';
-import {
-  checkNetworkIsolation,
-  parseCiMatrix,
-  resolveCiEnvironment,
-} from './gitops/ciEnvironments.js';
-import {
-  buildCiReport,
-  formatCiSarif,
-  isCiEnvironmentReport,
-  type CiEnvironmentReport,
-} from './gitops/ciSarif.js';
-import { formatCiScorecard, formatEnvironmentScorecard } from './gitops/ciScorecard.js';
-import { ASSET_CACHE_ENV, createAssetCacheFetch } from './gitops/ciAssetCache.js';
+import type { Diagnostic, LintOptions, LintResult, RuleOverrides } from './types.js';
+import type { SemanticRule } from './engine/semanticRuleEngine.js';
 
 const VERSION = '0.1.0';
 const DEFAULT_PATH = 'stellar.toml';
@@ -183,6 +173,8 @@ interface Cli {
   quiet: boolean;
   showHelp: boolean;
   rules: RuleOverrides;
+  rulesDir: string[];
+  plugins: string[];
   preset?: PresetName;
   maxWarnings?: number;
   checkNetwork: boolean;
@@ -302,16 +294,10 @@ USAGE
                                          Map every public key in the file to its roles
                                          and report reused signing, issuer, account and
                                          validator keys
-  stellar-toml-lint init-ci [--matrix testnet,public] [--node 20,22] [--stdout]
-                                         Generate a hardened GitHub Actions workflow that
-                                         validates one stellar.toml per environment
-                                         across a Node.js matrix, with SARIF upload,
-                                         asset caching and a PR scorecard comment
-  stellar-toml-lint ci-report --environment <env> --file <path> --lint-json <file>
-                                         Assert network isolation for one CI matrix cell
-                                         and write its SARIF, scorecard and JSON report
-  stellar-toml-lint ci-scorecard --input <dir> [--output <file>]
-                                         Combine CI reports into one PR scorecard comment
+  stellar-toml-lint diff <a> <b> [--json]
+                                         Compare two stellar.toml files, URLs or
+                                         - (stdin) by value rather than by line;
+                                         exit 1 on a breaking change
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -325,6 +311,11 @@ OPTIONS
       --warn <rule>       Lower a rule to warning (repeatable)
       --preset <name>     Start from a role's rule bundle: validator, anchor-sep24,
                           or issuer (see PRESETS)
+      --rules-dir <dir>   Load rule plugins from a directory of .js/.mjs/.cjs
+                          modules (repeatable). Each module exports one rule as
+                          its default export, or a list of rules as "rules".
+      --plugin <spec>     Load a rule plugin from a module specifier — a path or
+                          an installed package name (repeatable)
   -i, --interactive       Full-screen dashboard to walk the findings. Needs a TTY;
                           without one the text reporter is used instead
       --lsp               Run as a Language Server on stdio (diagnostics,
@@ -1306,274 +1297,52 @@ async function refactorCommand(args: string[]): Promise<number> {
 }
 
 /**
- * `init-ci`: writes a GitHub Actions workflow validating one stellar.toml per
- * environment across a Node.js matrix. Exit codes: 0 written, 1 the target
- * exists (without --force), 2 bad usage.
+ * `stellar-toml-lint diff <source> <target> [--json]`
+ *
+ * Compares two documents by value rather than by line, which is what makes it
+ * usable as a deployment review gate: `git diff` of a restaged `stellar.toml` is
+ * mostly the canonical sort having done its job.
+ *
+ * The exit code follows the severity mapping the linter already uses — findings
+ * that would break a client are errors, everything else is information. So an
+ * identical pair and a harmless edit both exit 0, and a run exits 1 only when
+ * something a client is already relying on went away. A side that does not parse
+ * exits 2, because the comparison could not be made at all.
  */
-async function initCiCommand(args: string[]): Promise<number> {
-  const files: NonNullable<CiMatrixWorkflowOptions['files']> = {};
-  const options: CiMatrixWorkflowOptions = { toolVersion: VERSION, files };
-  let toStdout = false;
-  let force = false;
+async function diffCommand(args: string[]): Promise<number> {
+  const inputs: string[] = [];
+  let json = false;
 
-  try {
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i] as string;
-      switch (arg) {
-        case '-h':
-        case '--help':
-          process.stdout.write(USAGE);
-          return 0;
-        case '--matrix':
-          options.environments = parseCiMatrix(requireValue(args, ++i, arg));
-          break;
-        case '--node':
-          options.nodeVersions = requireValue(args, ++i, arg)
-            .split(',')
-            .map((v) => v.trim())
-            .filter((v) => v !== '');
-          break;
-        case '--file-pattern':
-          options.filePattern = requireValue(args, ++i, arg);
-          break;
-        case '--file': {
-          const value = requireValue(args, ++i, arg);
-          const eq = value.indexOf('=');
-          const env = eq > 0 ? resolveCiEnvironment(value.slice(0, eq)) : undefined;
-          if (env === undefined) throw new Error('--file expects <environment>=<path>');
-          files[env] = value.slice(eq + 1);
-          break;
-        }
-        case '-o':
-        case '--output':
-          options.workflowPath = requireValue(args, ++i, arg);
-          break;
-        case '--check-network':
-          options.checkNetwork = true;
-          break;
-        case '--no-check-network':
-          options.checkNetwork = false;
-          break;
-        case '--strict':
-          options.strict = true;
-          break;
-        case '--no-sarif':
-          options.sarif = false;
-          break;
-        case '--no-pr-comment':
-          options.prComment = false;
-          break;
-        case '--no-cache':
-          options.cache = false;
-          break;
-        case '--stdout':
-          toStdout = true;
-          break;
-        case '--force':
-          force = true;
-          break;
-        default:
-          throw new Error(`Unknown option "${arg}" for init-ci`);
-      }
-    }
-    const matrix = options.environments ?? ['testnet', 'public'];
-    for (const env of Object.keys(files)) {
-      if (!matrix.includes(env as (typeof matrix)[number])) {
-        throw new Error(`--file names "${env}", which is not in --matrix`);
-      }
-    }
-  } catch (error) {
-    process.stderr.write(`${message(error)}\n`);
+  for (const arg of args) {
+    if (arg === '--json') json = true;
+    else if (arg.startsWith('-') && arg !== '-') {
+      process.stderr.write(`Unknown option ${arg} for diff\n`);
+      return 2;
+    } else inputs.push(arg);
+  }
+
+  const usage = 'Usage: stellar-toml-lint diff <source> <target> [--json]\n';
+  if (inputs.length !== 2) {
+    process.stderr.write(usage);
+    return 2;
+  }
+  const [source = '-', target = '-'] = inputs;
+  if (source === '-' && target === '-') {
+    process.stderr.write('Only one side of a diff can come from stdin.\n');
     return 2;
   }
 
-  let generator: CiMatrixWorkflowGenerator;
   try {
-    generator = new CiMatrixWorkflowGenerator(options);
-  } catch (error) {
-    process.stderr.write(`${message(error)}\n`);
-    return 2;
-  }
-
-  const yaml = generator.generate();
-  if (toStdout) {
-    process.stdout.write(yaml);
-    return 0;
-  }
-
-  const target = resolve(generator.workflowPath);
-  try {
-    await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, yaml, { encoding: 'utf8', flag: force ? 'w' : 'wx' });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      process.stderr.write(`${generator.workflowPath} already exists; pass --force to overwrite\n`);
-      return 1;
-    }
-    process.stderr.write(`${message(error)}\n`);
-    return 2;
-  }
-
-  const listed = Object.entries(generator.files).map(([env, file]) => `  ${env}: ${file}`);
-  process.stdout.write(
-    `Wrote ${generator.workflowPath}\nValidating:\n${listed.join('\n')}\n` +
-      'Commit it, then enable code scanning to see SARIF alerts in the Security tab.\n',
-  );
-  return 0;
-}
-
-/**
- * `ci-report`: turns one matrix cell's linter output into the environment
- * report, SARIF file and scorecard fragment. It exits 0 once inputs are valid —
- * pass/fail is published as `ok=` on $GITHUB_OUTPUT so the workflow can upload
- * results before failing the job.
- */
-async function ciReportCommand(args: string[]): Promise<number> {
-  let environment: string | undefined;
-  let file: string | undefined;
-  let lintJsonPath: string | undefined;
-  let lintExitCode = 0;
-  let node: string | undefined;
-  let outDir = 'reports';
-  let checkNetwork = false;
-  let strict = false;
-
-  try {
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i] as string;
-      if (arg === '--environment') environment = requireValue(args, ++i, arg);
-      else if (arg === '--file') file = requireValue(args, ++i, arg);
-      else if (arg === '--lint-json') lintJsonPath = requireValue(args, ++i, arg);
-      else if (arg === '--lint-exit-code') {
-        lintExitCode = Number(requireValue(args, ++i, arg));
-        if (!Number.isInteger(lintExitCode) || lintExitCode < 0) {
-          throw new Error('--lint-exit-code expects a non-negative integer');
-        }
-      } else if (arg === '--node') node = requireValue(args, ++i, arg);
-      else if (arg === '--out-dir') outDir = requireValue(args, ++i, arg);
-      else if (arg === '--check-network') checkNetwork = true;
-      else if (arg === '--strict') strict = true;
-      else throw new Error(`Unknown option "${arg}" for ci-report`);
-    }
-    if (environment === undefined || file === undefined) {
-      throw new Error(
-        'Usage: stellar-toml-lint ci-report --environment <env> --file <path> ' +
-          '[--lint-json <file>] [--lint-exit-code <n>] [--node <v>] [--out-dir <dir>]',
-      );
-    }
-  } catch (error) {
-    process.stderr.write(`${message(error)}\n`);
-    return 2;
-  }
-
-  const env = resolveCiEnvironment(environment);
-  if (env === undefined) {
-    process.stderr.write(`Unknown environment "${environment}"\n`);
-    return 2;
-  }
-
-  const source = await readFile(resolve(file), 'utf8').catch(() => undefined);
-  const lintJson =
-    lintJsonPath === undefined
-      ? undefined
-      : await readFile(resolve(lintJsonPath), 'utf8').catch(() => undefined);
-  const report = buildCiReport({
-    environment: env,
-    file,
-    ...(node === undefined ? {} : { node }),
-    checkNetwork,
-    strict,
-    lintExitCode,
-    ...(lintJson === undefined ? {} : { lintJson }),
-    isolation: source === undefined ? [] : checkNetworkIsolation(source, env),
-  });
-  if (source === undefined && report.error === undefined) {
-    report.error = `could not read ${file}`;
-    report.ok = false;
-  }
-
-  const markdown = formatEnvironmentScorecard(report);
-  try {
-    const dir = resolve(outDir);
-    await mkdir(dir, { recursive: true });
-    await writeFile(resolve(dir, `${env}.json`), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-    await writeFile(
-      resolve(dir, `${env}.sarif`),
-      formatCiSarif([report], VERSION, source === undefined ? {} : { [file]: source }),
-      'utf8',
+    const report = await new SemanticTomlDiffer().diffInputs(source, target);
+    process.stdout.write(
+      json ? renderSemanticDiffJson(report) : renderSemanticDiff(report, shouldUseColor()),
     );
-    await writeFile(resolve(dir, `${env}.md`), markdown, 'utf8');
-    if (process.env.GITHUB_OUTPUT) {
-      await writeFile(process.env.GITHUB_OUTPUT, `ok=${report.ok}\n`, { flag: 'a' });
-    }
+    if (!report.source.parsed || !report.target.parsed) return 2;
+    return report.breaking > 0 ? 1 : 0;
   } catch (error) {
     process.stderr.write(`${message(error)}\n`);
     return 2;
   }
-
-  process.stdout.write(markdown);
-  return 0;
-}
-
-/** Reads every CI report under `dir`, up to two levels of artifact folders deep. */
-async function readCiReports(dir: string): Promise<CiEnvironmentReport[]> {
-  const reports: CiEnvironmentReport[] = [];
-  const visit = async (path: string, depth: number): Promise<void> => {
-    const entries = await readdir(path, { withFileTypes: true });
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      const full = resolve(path, entry.name);
-      if (entry.isDirectory() && depth < 2) await visit(full, depth + 1);
-      else if (entry.isFile() && entry.name.endsWith('.json')) {
-        try {
-          const parsed: unknown = JSON.parse(await readFile(full, 'utf8'));
-          if (isCiEnvironmentReport(parsed)) reports.push(parsed);
-        } catch {
-          // Not a report; artifacts may carry other JSON.
-        }
-      }
-    }
-  };
-  await visit(dir, 0);
-  return reports;
-}
-
-/** `ci-scorecard`: combines the matrix's reports into the PR comment body. */
-async function ciScorecardCommand(args: string[]): Promise<number> {
-  let input: string | undefined;
-  let output: string | undefined;
-  let runUrl: string | undefined;
-  let commit: string | undefined;
-  try {
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i] as string;
-      if (arg === '--input') input = requireValue(args, ++i, arg);
-      else if (arg === '--output') output = requireValue(args, ++i, arg);
-      else if (arg === '--run-url') runUrl = requireValue(args, ++i, arg);
-      else if (arg === '--commit') commit = requireValue(args, ++i, arg);
-      else throw new Error(`Unknown option "${arg}" for ci-scorecard`);
-    }
-    if (input === undefined) {
-      throw new Error('Usage: stellar-toml-lint ci-scorecard --input <dir> [--output <file>]');
-    }
-  } catch (error) {
-    process.stderr.write(`${message(error)}\n`);
-    return 2;
-  }
-
-  let reports: CiEnvironmentReport[];
-  try {
-    reports = await readCiReports(resolve(input));
-  } catch (error) {
-    process.stderr.write(`${message(error)}\n`);
-    return 2;
-  }
-  const markdown = formatCiScorecard(reports, {
-    ...(runUrl ? { runUrl } : {}),
-    ...(commit ? { commit } : {}),
-  });
-  if (output === undefined) process.stdout.write(markdown);
-  else await writeFile(resolve(output), markdown, 'utf8');
-  return 0;
 }
 
 async function formatCommand(argv: string[]): Promise<number> {
@@ -1737,6 +1506,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
   if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
   if (argv[0] === 'format') return formatCommand(argv.slice(1));
+  if (argv[0] === 'diff') return diffCommand(argv.slice(1));
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -1769,6 +1539,36 @@ async function main(argv: string[]): Promise<number> {
 
   if (cli.sortKeys) return sortKeysCommand(cli, color);
 
+  // Plugins load once, here, before the first file: `lint()` stays synchronous and
+  // keeps the filesystem out of the core, and a broken plugin is a usage error
+  // rather than a finding repeated against every input. `runLint` closes over
+  // these, so `--watch` and `--domain` get the same rules as a plain file run.
+  let pluginRules: SemanticRule[] = [];
+  if (cli.rulesDir.length > 0 || cli.plugins.length > 0) {
+    try {
+      pluginRules = await loadPluginRules({
+        dirs: cli.rulesDir,
+        modules: cli.plugins,
+        reservedIds: allRules.map((rule) => rule.id),
+      });
+    } catch (error) {
+      process.stderr.write(`${message(error)}\n`);
+      return 2;
+    }
+    // `parseArgs` could not know these ids yet; now that it does, a typo in
+    // `--off/--error/--warn` fails the same way it does without plugins.
+    const loadedIds = pluginRules.map((rule) => rule.id);
+    for (const id of Object.keys(cli.rules)) assertKnownRule(id, undefined, loadedIds);
+    if (!cli.quiet && loadedIds.length > 0) {
+      process.stderr.write(`Loaded ${loadedIds.length} plugin rule(s): ${loadedIds.join(', ')}\n`);
+    }
+  }
+  const pluginRuleIds = pluginRules.map((rule) => rule.id);
+  // Absent rather than empty: an option that is not set is the same run as
+  // before plugins existed, and `lint()` only ever touches the engine when it is.
+  const pluginOptions: Pick<LintOptions, 'semanticRules'> =
+    pluginRules.length > 0 ? { semanticRules: pluginRules } : {};
+
   const runLint = async (cli: Cli, color: boolean): Promise<number> => {
     if (cli.lsp) {
       // The framed stdio server: diagnostics, quick fixes, and hover. It used to
@@ -1796,7 +1596,7 @@ async function main(argv: string[]): Promise<number> {
             : fetch;
 
       if (cli.domain && cli.paths.length === 0) {
-        const config = await loadConfig(process.cwd());
+        const config = await loadConfig(process.cwd(), pluginRuleIds);
         strict = strict || config.strict;
         maxWarnings ??= config.maxWarnings;
         const rules = { ...config.rules, ...cli.rules };
@@ -1807,6 +1607,7 @@ async function main(argv: string[]): Promise<number> {
             rules,
             checkNetwork: cli.checkNetwork,
             followLinks: true,
+            ...pluginOptions,
           },
           fetchImpl,
         );
@@ -1883,7 +1684,10 @@ async function main(argv: string[]): Promise<number> {
       } else {
         const paths = await expandInputs(cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH]);
         for (const path of paths) {
-          const config = await loadConfig(path === '-' ? process.cwd() : dirname(resolve(path)));
+          const config = await loadConfig(
+            path === '-' ? process.cwd() : dirname(resolve(path)),
+            pluginRuleIds,
+          );
           const fileStrict = cli.strict || config.strict;
           strict = strict || config.strict;
           maxWarnings ??= config.maxWarnings;
@@ -1895,6 +1699,7 @@ async function main(argv: string[]): Promise<number> {
             rules,
             checkNetwork: cli.checkNetwork,
             ...(cli.domain ? { domain: cli.domain } : {}),
+            ...pluginOptions,
           });
 
           if (cli.auditSecrets) {
@@ -2009,7 +1814,7 @@ async function main(argv: string[]): Promise<number> {
               networkDiagnostics.push(
                 ...(await followTomlPointers(
                   fileResult.parsed,
-                  { strict: fileStrict, rules, domain: cli.domain },
+                  { strict: fileStrict, rules, domain: cli.domain, ...pluginOptions },
                   fetchImpl,
                 )),
               );
@@ -2402,6 +2207,15 @@ function verdict(
   return true;
 }
 
+/**
+ * True when the command line asks for rules the built-in catalog cannot know
+ * about, which is what defers the `--off/--error/--warn` id check until after
+ * the plugins load.
+ */
+function usesPluginSources(argv: string[]): boolean {
+  return argv.includes('--rules-dir') || argv.includes('--plugin');
+}
+
 function parseArgs(argv: string[]): Cli | 'handled' {
   const cli: Cli = {
     paths: [],
@@ -2410,6 +2224,8 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     quiet: false,
     showHelp: false,
     rules: {},
+    rulesDir: [],
+    plugins: [],
     checkNetwork: false,
     followLinks: false,
     verifySep10: false,
@@ -2709,10 +2525,23 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--error':
       case '--warn': {
         const id = requireValue(argv, ++i, arg);
-        assertKnownRule(id);
-        cli.rules[id] = arg === '--off' ? 'off' : (arg.slice(2) as Severity);
+        // A plugin id is only known once its module is loaded, which is async and
+        // happens in `main`. When plugin flags are present the check runs there
+        // instead, against the built-ins *plus* the ids that actually loaded.
+        if (!usesPluginSources(argv)) assertKnownRule(id);
+        // The flag says `--warn`; the severity token is `warning`. Storing the
+        // flag's spelling made every summary count read NaN.
+        cli.rules[id] = arg === '--off' ? 'off' : arg === '--warn' ? 'warning' : 'error';
         break;
       }
+
+      case '--rules-dir':
+        cli.rulesDir.push(requireValue(argv, ++i, arg));
+        break;
+
+      case '--plugin':
+        cli.plugins.push(requireValue(argv, ++i, arg));
+        break;
 
       case '--preset': {
         const value = requireValue(argv, ++i, arg);

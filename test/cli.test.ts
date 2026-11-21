@@ -196,6 +196,24 @@ describe('cli', () => {
     expect(rules).not.toContain('general/version');
   });
 
+  it('honours --warn', async () => {
+    const { stdout } = await cli([
+      fixture('broken.toml'),
+      '-f',
+      'json',
+      '--warn',
+      'general/version',
+    ]);
+    const result = JSON.parse(stdout);
+    const lowered = result.diagnostics.find((d: { rule: string }) => d.rule === 'general/version');
+
+    // The flag says `--warn`; the severity it sets is `warning`. Storing the flag's
+    // own spelling filed the finding under a key no reporter counted, so `--strict`
+    // passed a file whose errors had merely been lowered and the summary lost one.
+    expect(lowered.severity).toBe('warning');
+    expect(Object.keys(result.counts).sort()).toEqual(['error', 'info', 'warning']);
+  });
+
   it('fails a warning-only file under --strict', async () => {
     const clean = await cli([fixture('valid.toml'), '--strict']);
     expect(clean.code).toBe(0);

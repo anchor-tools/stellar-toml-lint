@@ -9,6 +9,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Rule plugins, so a team can write the check SEP-1 does not define
+  (`src/engine/semanticRuleEngine.ts`, `src/engine/ruleLoader.ts`, `--rules-dir <dir>`,
+  `--plugin <spec>`). A module exports one rule as its `default` or a list as `rules`, and the rule
+  subscribes to node hooks — `visitDocument`, `visitTable`, `visitCurrency`, `visitKeyValue` and a
+  `leave` counterpart for each — over one traversal the whole rule set shares, and each node kind
+  keeps the list of rules that asked for it, so a rule costs a function call per node it listens for
+  and nothing for the rest. 120 rules measure a median 2.2ms over a file with a hundred assets and a
+  hundred validators, against the 10ms `npm run bench` gates them at. A plugin's findings answer to
+  `--off`, `--warn`, `--error` and `.stellartomlrc.json` exactly as a built-in's do, which is what
+  makes a third-party rule operable; `--lsp` still runs the catalog alone, so plugin rules do not
+  appear in editor diagnostics. A source that cannot be read, or a module exporting a rule that is
+  missing a field or takes an id already in use, is a usage error and exits `2`; a rule that throws
+  while running collapses into one `internal/plugin-error` warning naming it and the number of nodes
+  it failed on, and the rest of the run is unaffected. Nothing is autoloaded — a rule runs because it
+  was named on the command line.
+
 - `verify-rate-headers` (`src/telemetry/rateLimitHeaderVerifier.ts`): Anchor API rate-limit header standard
   RFC 6585 compliance verifier checking IETF headers (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`),
   legacy `X-RateLimit-*` headers, and `Retry-After` delta-seconds and HTTP-date formats under 429 status codes (#534).
@@ -63,6 +79,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the browser-ignored `X-Frame-Options: ALLOW-FROM` are warnings
   (`clickjacking/missing-frame-protection`, `clickjacking/deprecated-allow-from`). CSP decides over
   `X-Frame-Options`, as it does in a browser, and a report-only policy counts as nothing sent.
+
+- `stellar-toml-lint diff <source> <target> [--json]` (`src/cst/semanticDiffer.ts`): compares two
+  documents by what they configure rather than by how they are typed, so an anchor's revised
+  `stellar.toml` reads as a changelog instead of a line diff. Both sides parse to value trees and
+  `[[CURRENCIES]]` / `[[VALIDATORS]]` entries pair on `code` and `PUBLIC_KEY`, which makes a
+  re-sort, a re-indent, a reordered key inside an entry and two spellings of the same instant all
+  invisible — the output of `--sort-keys` diffs as nothing. Either side can be a path, an `http(s)`
+  URL or `-` for stdin, and the report is markdown on a terminal or a JSON changelog with `path`,
+  `kind`, `section`, `category`, `breaking`, `reason`, `before` and `after`. Changes that stop a
+  client that read the source are tagged `BREAKING` with the reason in SEP-1 terms: a rotated
+  `SIGNING_KEY`, a currency whose `issuer` or `contract` moved, an endpoint that disappears instead
+  of moving, and an asset or validator that is no longer advertised. Additions are never breaking,
+  neither is dropping a field SEP-1 already deprecated, and fields outside SEP-1 are reported rather
+  than graded. Exit 0 with no breaking changes, 1 when there are, and 2 when a side cannot be parsed
+  or read.
 
 - `verify-archive-gpg --url <archive> --pubkey <key-file>` (`src/overlay/archiveGpgVerifier.ts`):
   downloads the latest checkpoint ledger XDR gzip file described by `.well-known/stellar-history.json`
@@ -247,6 +278,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `--warn <rule>` stored the flag's own spelling as the severity instead of the token `warning`, so
+  the lowered finding was counted under a `warn` key no reporter reads. It stayed in the diagnostic
+  list but left the summary — and an error lowered with `--warn` left `counts.error` too, so
+  `--strict` passed and the run exited `0` on a file with an unaddressed error. The flag now maps to
+  `warning`, which is what `--max-warnings` and the exit code count.
+
 - `--lsp` actually serves the protocol now. `main()` called the line-based `lspMain()`, which
   registered a stdin listener and then fell through to `process.exit`, so the process printed
   nothing and exited before a client could send a message. The CLI runs the framed stdio server
@@ -280,6 +317,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unaffected, and both rules can be tuned with `--off`, `--warn`, and `--error` like any other.
 - `lintDomain` accepts an optional `tlsProbe` so embedders and tests can supply the session instead of
   having one opened for them. `probeTls` is exported for callers that need to measure it themselves.
+- The `textDocument/documentSymbol` outline expands values written on the right of an `=`. An inline
+  table (`SUPPORT = { EMAIL = "…" }`) is an `Object` with a child per entry, an array of them
+  (`TYPES = [{asset = …}, {asset = …}]`) is an `Array` with one `Object` per element, and a nested list
+  nests further — previously all three were a single leaf, so the detail an anchor puts in `TYPES` and
+  `collateral_addresses` had no outline at all. Elements are numbered by source position, and a list of
+  scalars stays a leaf because `ACCOUNTS = ["GA…", "GB…"]` gains nothing from two more nodes.
+  `[[CURRENCIES]]` entries now report `SymbolKind.Interface` (11) rather than `Array` (18), which is
+  what issue #544 asks for and what an asset a client has to conform to is; entries of any other array
+  table are unchanged. `test/lsp/document-symbols.test.ts` covers the tree, the ranges (every selection
+  inside its range, every child inside its parent), and the request over the LSP wire.
 
 ## [0.1.0]
 

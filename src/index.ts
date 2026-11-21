@@ -772,3 +772,28 @@ export type {
   TlsRawCertInfo,
   TlsWatchdogOptions,
 } from './telemetry/tlsWatchdog.js';
+export {
+  KNOWN_CATEGORIES,
+  PluginRuleError,
+  SemanticRuleEngine,
+  assertSemanticRule,
+  isCurrencyNode,
+  ruleProblems,
+} from './engine/semanticRuleEngine.js';
+export type {
+  AstAnyTableNode,
+  AstContainerNode,
+  AstCurrencyNode,
+  AstDocumentNode,
+  AstKeyValueNode,
+  AstNode,
+  AstNodeKind,
+  AstTableNode,
+  AstVisitor,
+  EngineInput,
+  PluginContext,
+  PluginReport,
+  SemanticRule,
+} from './engine/semanticRuleEngine.js';
+export { PluginLoadError, loadPluginRules } from './engine/ruleLoader.js';
+export type { PluginSources } from './engine/ruleLoader.js';
