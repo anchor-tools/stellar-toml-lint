@@ -36,6 +36,7 @@ import { checkSep38 } from './rules/sep38-endpoints.js';
 import { checkRegulatedIssuerFlags } from './rules/currencies.js';
 import { checkContracts } from './rules/soroban.js';
 import { auditTomlAuthTree } from './soroban/auth-tree-simulator.js';
+import { auditTomlEvents } from './soroban/eventVerifier.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkSep10ClientDomain } from './protocols/sep10-client-domain.js';
@@ -227,6 +228,7 @@ interface Cli {
   webhookDiscord?: string;
   interactive?: boolean;
   checkContracts: boolean;
+  auditEvents: boolean;
   sorobanRpc?: string;
   graph?: GraphFormat;
   graphIncludeContracts?: boolean;
@@ -437,7 +439,11 @@ OPTIONS
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
                           (implied by --domain)
       --check-contracts   Verify Soroban contract and WASM TTL liveliness
+      --audit-events      Verify the event schema and indexing topics of every
+                          contract the file advertises, via its WASM spec and
+                          simulated emissions
       --soroban-rpc <url> Soroban RPC endpoint to use with --check-contracts
+                          and --audit-events
       --mock-fixtures <dir>
                           Serve network checks from recorded JSON responses under
                           <dir> instead of the network. A URL with no fixture
@@ -1772,6 +1778,19 @@ async function main(argv: string[]): Promise<number> {
             );
           }
         }
+        if (domainResult.parsed && cli.auditEvents) {
+          const eventDiagnostics = await auditTomlEvents(domainResult.parsed, fetchImpl, {
+            rules,
+            ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+          });
+          if (eventDiagnostics.length > 0) {
+            domainResult = finalize(
+              [...domainResult.diagnostics, ...eventDiagnostics],
+              { strict },
+              domainResult.parsed,
+            );
+          }
+        }
         if (domainResult.parsed) {
           const extra = await runExtraAudits(
             cli,
@@ -1839,7 +1858,11 @@ async function main(argv: string[]): Promise<number> {
 
           if (
             fileResult.parsed &&
-            (cli.checkNetwork || cli.checkContracts || cli.followLinks || cli.domain !== undefined)
+            (cli.checkNetwork ||
+              cli.checkContracts ||
+              cli.auditEvents ||
+              cli.followLinks ||
+              cli.domain !== undefined)
           ) {
             const networkDiagnostics: Diagnostic[] = [];
 
@@ -1931,6 +1954,15 @@ async function main(argv: string[]): Promise<number> {
             if (cli.checkContracts) {
               networkDiagnostics.push(
                 ...(await checkContracts(fileResult.parsed, fetchImpl, {
+                  rules,
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })),
+              );
+            }
+
+            if (cli.auditEvents) {
+              networkDiagnostics.push(
+                ...(await auditTomlEvents(fileResult.parsed, fetchImpl, {
                   rules,
                   ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                 })),
@@ -2362,6 +2394,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditSsrf: false,
     auditVaultSecrets: false,
     checkContracts: false,
+    auditEvents: false,
     graphIncludeContracts: false,
     graphIncludeValidators: false,
     graphColorByProtocol: false,
@@ -2574,6 +2607,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--check-contracts':
         cli.checkContracts = true;
+        break;
+
+      case '--audit-events':
+        cli.auditEvents = true;
         break;
 
       case '--soroban-rpc':

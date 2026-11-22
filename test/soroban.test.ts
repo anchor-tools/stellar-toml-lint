@@ -248,6 +248,14 @@ describe('Soroban contract TTL audit', () => {
       { id: 'soroban/supply-invariant-violation', severity: 'error' },
       { id: 'soroban/excessive-static-memory-pages', severity: 'warning' },
       { id: 'soroban/high-cyclomatic-complexity', severity: 'warning' },
+      { id: 'soroban/event-missing-topics', severity: 'error' },
+      { id: 'soroban/event-topic-not-symbol', severity: 'error' },
+      { id: 'soroban/event-unindexed-address', severity: 'error' },
+      { id: 'soroban/event-secondary-topic-invalid', severity: 'warning' },
+      { id: 'soroban/event-unexpected-nested-data', severity: 'warning' },
+      { id: 'soroban/event-spec-missing-name-topic', severity: 'warning' },
+      { id: 'soroban/event-spec-unindexed-address', severity: 'warning' },
+      { id: 'soroban/event-undeclared', severity: 'warning' },
     ]);
   });
 });
