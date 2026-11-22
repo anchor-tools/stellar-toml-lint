@@ -1,13 +1,20 @@
-; SEP-1 table and array-of-table headers.
+; Captures: @comment @constant.builtin @namespace @number @operator @property @punctuation.bracket @punctuation.delimiter @string @string.escape @string.special @type.builtin
+;
+; Every capture here is one the file already used: Neovim's `nvim-treesitter`
+; and Helix both render these names natively, and an unfamiliar capture is
+; silently dropped rather than warned about, so the vocabulary is closed.
+
+; SEP-1 table and array-of-table headers. These are nodes now (`sep_table`,
+; `currency_entry`), so no `#match?` against `bare_key` is needed — and the
+; nodes are what `queries/tags.scm` and the symbol lists bind to.
 (table
   name: (bare_key) @namespace)
 
 (array_table
   name: (bare_key) @namespace)
 
-; The tables a stellar.toml is built from.
-((bare_key) @type.builtin
-  (#match? @type.builtin "^(DOCUMENTATION|PRINCIPALS|CURRENCIES|VALIDATORS|SERVERS)$"))
+(sep_table) @type.builtin
+(currency_entry) @type.builtin
 
 ; Global SEP-1 keys and the fields that identify an anchor's assets, accounts,
 ; and validators. Everything else remains a normal TOML property.
@@ -19,6 +26,12 @@
 
 (pair
   key: (quoted_key) @property)
+
+; Stellar identifiers. Recognised by the parser, so a mistyped checksum still
+; gets this highlight — the linter is what checks the value.
+(public_key) @string.special
+(contract_id) @string.special
+(asset_code) @string.special
 
 (string) @string
 (escape_sequence) @string.escape

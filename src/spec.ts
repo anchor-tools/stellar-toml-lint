@@ -159,6 +159,25 @@ export const KNOWN_VALIDATOR_FIELDS = new Set<string>([
 ]);
 
 /**
+ * Fields used in a `[SERVERS]` / `[[SERVERS]]` block.
+ *
+ * SEP-1 does not define this table; the anchor-platform tooling this linter
+ * serves does, and `src/types.ts` already models it as `StellarToml.SERVERS`.
+ * The catalog lives here so the schema generator, the orphan scanner, and the
+ * editor autocompletion all read the same list rather than three copies of it.
+ */
+export const KNOWN_SERVER_FIELDS = new Set<string>([
+  'WEB_AUTH_ENDPOINT',
+  'TRANSFER_SERVER',
+  'TRANSFER_SERVER_SEP0024',
+  'KYC_SERVER',
+  'ANCHOR_QUOTE_SERVER',
+  'DIRECT_PAYMENT_SERVER',
+  'WEB_AUTH_CONTRACT_ID',
+  'TLS_CERT',
+]);
+
+/**
  * stellar-core config keywords that cannot be reused as a `[[VALIDATORS]]` alias.
  *
  * Other operators import a validator's ALIAS into the quorum slices of their own

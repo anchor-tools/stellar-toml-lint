@@ -21,7 +21,7 @@ import type { RuleOverrides } from './types.js';
 export const CONFIG_FILENAME = '.stellartomlrc.json';
 
 /** The only top-level keys the file may carry; anything else is a typo. */
-const KNOWN_KEYS: readonly string[] = ['rules', 'strict', 'maxWarnings'];
+const KNOWN_KEYS: readonly string[] = ['rules', 'strict', 'maxWarnings', 'knownKeys'];
 
 /** Severities a `rules` entry may take. */
 const SEVERITIES: readonly string[] = ['off', 'error', 'warning', 'info'];
@@ -34,6 +34,13 @@ export interface ProjectConfig {
   strict: boolean;
   /** Fail when warnings exceed this count, like `--max-warnings`. */
   maxWarnings?: number;
+  /**
+   * Names accepted by `--detect-orphans` / `--prune-orphaned` as intentional,
+   * like a repeated `--allow-key`. A project's vendor section is known to the
+   * team, so the blessing belongs in the file next to the config rather than in
+   * every CI invocation.
+   */
+  knownKeys?: string[];
 }
 
 /** One config file's parse result. Failures are cached too, so they are stable. */
@@ -211,13 +218,24 @@ function validate(path: string, content: string, pluginRuleIds: readonly string[
     maxWarnings = value;
   }
 
+  let knownKeys: string[] | undefined;
+  if (source.knownKeys !== undefined) {
+    const value = source.knownKeys;
+    if (!Array.isArray(value) || value.some((name) => typeof name !== 'string')) {
+      throw new Error(`${path}: "knownKeys" must be an array of key names.`);
+    }
+    knownKeys = [...(value as string[])];
+  }
+
   const config: ProjectConfig = {
     rules,
     strict,
     ...(maxWarnings === undefined ? {} : { maxWarnings }),
+    ...(knownKeys === undefined ? {} : { knownKeys }),
   };
   // Callers merge into fresh objects; freezing catches accidental mutation of
   // the cached instance that every file in a multi-file run shares.
   Object.freeze(config.rules);
+  if (config.knownKeys !== undefined) Object.freeze(config.knownKeys);
   return Object.freeze(config);
 }

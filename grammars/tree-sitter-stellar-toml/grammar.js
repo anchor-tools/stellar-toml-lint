@@ -3,9 +3,21 @@
  *
  * The grammar is a TOML 1.0 grammar with concrete nodes for the structures an
  * anchor file is made of: table headers, array-of-table headers, dotted keys,
- * scalar values, arrays, inline tables, and comments. SEP-1 table and key
- * names are highlighted by `queries/highlights.scm` rather than baked into the
- * parser, so an anchor that adds a vendor extension still parses.
+ * scalar values, arrays, inline tables, and comments.
+ *
+ * The five SEP-1 names an editor or a symbol index actually asks for —
+ * `public_key`, `asset_code`, `contract_id`, `sep_table` and `currency_entry` —
+ * are nodes, not regex `#match?` filters bolted onto `bare_key` and `string`.
+ * Recognising them in the parser is what makes `queries/tags.scm` possible
+ * (`tree-sitter tags` cannot emit a symbol for a node it cannot name), and it
+ * keeps highlighting identical across every consumer that reads
+ * `node-types.json` instead of this repository's queries.
+ *
+ * That is a deliberate reversal of the first draft, which left SEP-1 names to
+ * `queries/highlights.scm` so vendor extensions would still parse. Vendor
+ * extensions still parse: each new node matches a *shape* (a StrKey, an asset
+ * code, a known header name), and anything that does not match falls back to
+ * the plain `string` / `bare_key` path untouched.
  */
 
 const decimal_integer = /[+-]?(0|[1-9](_?[0-9])*)/;
@@ -29,6 +41,20 @@ const MULTILINE_BASIC_STRING_CONTENT = /[^\x00-\x08\x0b\x0c\x0e-\x1f\x7f"\\]+/;
 const LITERAL_STRING_CONTENT = /[^\x00-\x08\x0a-\x1f\x7f']+/;
 const MULTILINE_LITERAL_STRING_CONTENT = /[^\x00-\x08\x0b\x0c\x0e-\x1f\x7f']+/;
 
+// Stellar `StrKey`s are a version byte, a payload and a CRC16 checksum, all
+// base32 (RFC 4648, no padding), so the version byte shows up as the first
+// character: `G` for an ed25519 account (1 + 32 + 2 = 35 bytes, 56 characters),
+// `C` for a contract (same 32-byte payload), and `M` for a muxed account,
+// whose med25519 preimage is the key plus a 64-bit id (1 + 32 + 8 + 2 = 43
+// bytes, 69 characters). Matching the shape is enough for a syntax node;
+// checksum validity is the linter's job (`src/predicates.ts`).
+const STRKEY_ACCOUNT = /G[A-Z2-7]{55}/;
+const STRKEY_MUXED_ACCOUNT = /M[A-Z2-7]{68}/;
+const STRKEY_CONTRACT = /C[A-Z2-7]{55}/;
+
+// SEP-1 asset codes: 1 to 12 alphanumeric characters, uppercase by convention.
+const ASSET_CODE = /[A-Z0-9]{1,12}/;
+
 module.exports = grammar({
   name: 'stellar_toml',
 
@@ -38,6 +64,12 @@ module.exports = grammar({
     $._multiline_basic_string_end,
     $._multiline_literal_string_content,
     $._multiline_literal_string_end,
+    // The reserved SEP-1 header names, matched by the external scanner rather
+    // than by a token rule: the key token is at least as long as a reserved
+    // name, and token precedence outranks length in the lexer, so a `token`
+    // rule for `DOCUMENTATION` would also win inside `[DOCUMENTATIONX]`.
+    $.sep_table,
+    $.currency_entry,
   ],
 
   extras: ($) => [$.comment, /[ \t\r]/],
@@ -52,20 +84,30 @@ module.exports = grammar({
     table: ($) =>
       seq(
         '[',
-        field('name', choice($.dotted_key, $._key)),
+        field('name', choice($.sep_table, $.dotted_key, $._key)),
         ']',
         $._line_ending_or_eof,
         repeat(choice($.pair, $.newline)),
       ),
 
+    // `[[CURRENCIES]]` gets its own node because currency entries repeat: a
+    // symbol list wants one row per asset, not one row per table. Every other
+    // array-of-table header keeps its plain `bare_key`.
     array_table: ($) =>
       seq(
         '[[',
-        field('name', choice($.dotted_key, $._key)),
+        field('name', choice($.currency_entry, $.dotted_key, $._key)),
         ']]',
         $._line_ending_or_eof,
         repeat(choice($.pair, $.newline)),
       ),
+
+    // Both reserved-name tokens are legal only in header states, which is not
+    // the set of states a `pair` key is lexed in: `[DOCUMENTATION]` names a
+    // table, while `DOCUMENTATION = "x"` is an ordinary key and must stay a
+    // `bare_key` to keep being highlighted as a property. Dotted headers
+    // (`[FIELDS.expiration]`) also stay plain, because the scanner rejects a
+    // reserved name that is not the whole header.
 
     pair: ($) => seq($._inline_pair, $._line_ending_or_eof),
 
@@ -80,6 +122,9 @@ module.exports = grammar({
     _inline_value: ($) =>
       choice(
         $.string,
+        $.public_key,
+        $.contract_id,
+        $.asset_code,
         $.integer,
         $.float,
         $.boolean,
@@ -98,6 +143,18 @@ module.exports = grammar({
         $._literal_string,
         $._multiline_literal_string,
       ),
+
+    // The three Stellar scalar shapes. Each one is a single token that
+    // includes its quotes, so it is strictly longer than the one-character `"`
+    // that opens `_basic_string` and the lexer's longest-match rule picks it.
+    // A value whose content does not fit the shape is therefore still an
+    // ordinary `string`, and none of these tokens is valid in a key position,
+    // so a 56-character `"G…K" = 1` stays a `quoted_key`.
+    public_key: (_) => token(prec(1, seq('"', choice(STRKEY_ACCOUNT, STRKEY_MUXED_ACCOUNT), '"'))),
+
+    contract_id: (_) => token(prec(1, seq('"', STRKEY_CONTRACT, '"'))),
+
+    asset_code: (_) => token(prec(1, seq('"', ASSET_CODE, '"'))),
 
     _basic_string: ($) =>
       seq(

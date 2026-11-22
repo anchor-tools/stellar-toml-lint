@@ -62,6 +62,11 @@ import {
   renderSemanticDiffJson,
   SemanticTomlDiffer,
 } from './cst/semanticDiffer.js';
+import { SchemaMigrationCodemod } from './cst/migrationCodemod.js';
+import type { MigrationOptions } from './cst/migrationCodemod.js';
+import { MIGRATION_RULES } from './cst/codemodRules/index.js';
+import { OrphanedKeyScanner, pruneOrphans } from './cst/orphanedKeyScanner.js';
+import type { OrphanFinding, OrphanScanOptions, PruneAction } from './cst/orphanedKeyScanner.js';
 import { formatUnifiedDiff } from './line-diff.js';
 import {
   auditConsumerProtection,
@@ -70,6 +75,7 @@ import {
 import { auditSep30Recovery } from './protocols/sep30Verifier.js';
 import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { verifySep38Volatility } from './protocols/sep38CircuitBreaker.js';
+import { auditSep38QuoteDiscrepancies } from './protocols/sep38Discrepancy.js';
 import { auditSep6Polling } from './protocols/sep6Polling.js';
 import { auditSep10Jwt } from './protocols/sep10JwtAuditor.js';
 import { testSep12FileUploads } from './protocols/sep12FileUpload.js';
@@ -99,7 +105,20 @@ import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
 import { RangeProofVerifier } from './zk/rangeProofVerifier.js';
 import { Secp256k1BridgeVerifier } from './crypto/secp256k1Verifier.js';
 import { KzgCommitmentVerifier } from './crypto/kzgVerifier.js';
-import { OverlayHandshakeTester } from './overlay/handshakeTester.js';
+import { OverlayHandshakeTester, parseValidatorEndpoints } from './overlay/handshakeTester.js';
+import {
+  ValidatorKeyRotationVerifier,
+  renderKeyRotationReport,
+  type KeyRotationAttestation,
+  type QuorumPeerConfig,
+} from './overlay/keyRotationVerifier.js';
+import {
+  HEARTBEAT_ERRATIC,
+  HEARTBEAT_SUDDEN_CLOSURE,
+  HEARTBEAT_UNRESPONSIVE,
+  OverlayHeartbeatWatchdog,
+  renderHeartbeatReport,
+} from './overlay/heartbeatWatchdog.js';
 import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
@@ -210,6 +229,7 @@ interface Cli {
   auditClickjacking: boolean;
   verifyPromotions: boolean;
   auditSep38Volatility: boolean;
+  auditSep38Spreads: boolean;
   auditSep6Polling: boolean;
   auditSep10Jwt: boolean;
   testSep12Upload: boolean;
@@ -221,6 +241,8 @@ interface Cli {
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
+  monitorHeartbeat: boolean;
+  heartbeatTimeoutSeconds?: number;
   verifyDnssec: boolean;
   auditDnsTakeover: boolean;
   auditSecrets: boolean;
@@ -245,6 +267,9 @@ interface Cli {
   lsp?: boolean;
   sortKeys?: boolean;
   dryRun?: boolean;
+  detectOrphans?: boolean;
+  pruneOrphaned?: boolean;
+  allowKeys?: string[];
   runSandboxedPlugin?: string;
   sandboxFuel?: number;
   verifyWasmStreaming?: string;
@@ -274,6 +299,13 @@ USAGE
                                          Reorder table keys into canonical order
                                          in place; --dry-run prints the diff
                                          instead of writing
+  stellar-toml-lint migrate [file...]    Rewrite deprecated SEP-1 fields into
+                                         their current form in place; --dry-run
+                                         prints the diff instead of writing, and
+                                         exits 1 when a file still needs work
+  stellar-toml-lint --detect-orphans [file...]
+                                         Report keys and table headers that
+                                         configure nothing, and exit 1 if any
   stellar-toml-lint profile-wasm-heap --wasm <plugin.wasm> --iterations <n>
                                          Run a plugin repeatedly and report heap growth
   stellar-toml-lint sync-directory --feed <url|file> [--format text|json]
@@ -331,6 +363,12 @@ USAGE
                                          Map every public key in the file to its roles
                                          and report reused signing, issuer, account and
                                          validator keys
+  stellar-toml-lint audit-validator-rotation --domain <domain>
+                                         [--previous-signature <sig>]
+                                         [--replacement-signature <sig>]
+                                         [--peers <quorum.json>] [--format text|json]
+                                         Verify a coordinated validator key rotation:
+                                         markers, cross-signatures and peer quorum adoption
   stellar-toml-lint diff <a> <b> [--json]
                                          Compare two stellar.toml files, URLs or
                                          - (stdin) by value rather than by line;
@@ -362,9 +400,25 @@ OPTIONS
                           code, [[VALIDATORS]] by public_key, and keys this tool
                           does not know pushed to the end of their table. Leading
                           comments travel with the key they describe.
-      --dry-run           With --sort-keys, print a unified diff and change
-                          nothing. Exits 1 when a file is not already canonical,
-                          so CI can check ordering without writing to the tree.
+      --dry-run           With --sort-keys, --prune-orphaned, or the migrate
+                          subcommand, print a unified diff and change nothing.
+                          Exits 1 when a file is not already in the shape asked
+                          for, so CI can check ordering, orphaned keys, and
+                          deprecated fields without writing to the tree.
+      --detect-orphans    Report every key and table header that matches no
+                          field any SEP defines, with a "did you mean" spelling
+                          when the name is a near-miss. Exits 1 when a file has
+                          any. A near-miss in the wrong table is reported as a
+                          move for migrate, not a deletion.
+      --prune-orphaned    Apply those findings: rename the near-miss spellings,
+                          delete what nothing defines (with the comments
+                          attached to it), and leave anything that needs a
+                          schema move in place with a warning.
+      --allow-key <name>  Accept a name as intentional (repeatable): a bare key
+                          (X_ACME_ID), a dotted path (DOCUMENTATION.ORG_NAME),
+                          a table name, or a PREFIX_* glob that blesses a whole
+                          vendor section. Also read from "knownKeys" in
+                          .stellartomlrc.json.
   -q, --quiet             Report errors only
       --show-help-urls    Print the spec link for each finding
       --no-suggestions    Hide diagnostic suggestions in the output
@@ -397,6 +451,12 @@ OPTIONS
                           SDEX shocks; flag quote windows over the 60s volatility
                           buffer, stale rates and missing circuit breakers; also
                           available as 'sep38-volatility --domain <domain>'
+      --audit-sep38-spreads
+                          Price small, medium and large trades through both
+                          GET /prices and POST /quote, flag firm spreads beyond
+                          the configured tolerance or disclosed fees, and verify
+                          expired quotes are refused; also available as
+                          'sep38-spreads --domain <domain>'
       --audit-sep6-polling
                           Repeat GET /transaction at 2s/5s/10s cadences to check
                           idempotency, cache headers and rate-limit signals (use
@@ -442,6 +502,9 @@ OPTIONS
                           Probe interactive endpoints for Content-Security-Policy
                           frame-ancestors and X-Frame-Options framing defenses
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
+      --monitor-heartbeat  Establish an overlay session with every advertised validator
+                          and report ping/pong latency, jitter and keepalive state
+      --timeout <seconds> Monitoring window for --monitor-heartbeat (default: 10)
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
        --audit-dns-takeover
                            Query CNAME/NS records for every referenced domain and
@@ -523,7 +586,8 @@ CONFIG
   .stellartomlrc.json    Project defaults, discovered upward from the linted
                          file's directory (from the current directory for stdin
                          and --domain), stopping at the filesystem root.
-                         Recognises "rules", "strict", and "maxWarnings".
+                         Recognises "rules", "strict", "maxWarnings", and
+                         "knownKeys" (the same names as --allow-key).
                          CLI flags always override the file; a malformed config
                          or an unknown rule id exits with code 2.
 
@@ -631,6 +695,10 @@ async function runExtraAudits(
     const result = await verifySep38Volatility(parsed, fetchImpl, { rules });
     out.push(...result.diagnostics);
   }
+  if (cli.auditSep38Spreads && (cli.checkNetwork || domain !== undefined)) {
+    const result = await auditSep38QuoteDiscrepancies(parsed, fetchImpl, { rules });
+    out.push(...result.diagnostics);
+  }
   if (cli.auditSep6Polling) {
     const result = await auditSep6Polling(parsed, fetchImpl, {
       rules,
@@ -689,6 +757,58 @@ async function runExtraAudits(
     const result = await verifier.verify(parsed, rules);
     out.push(...result.diagnostics);
     process.stderr.write(renderTraceAuditReport(result));
+  }
+  if (cli.monitorHeartbeat) {
+    const endpoints = parseValidatorEndpoints(parsed);
+    const timeoutMs = (cli.heartbeatTimeoutSeconds ?? 10) * 1000;
+    if (endpoints.length === 0) {
+      process.stderr.write(
+        '--monitor-heartbeat: no [[VALIDATORS]] endpoints with HOST/PORT were advertised.\n',
+      );
+    }
+    for (const endpoint of endpoints) {
+      const report = await new OverlayHeartbeatWatchdog({ timeoutMs }).watch({
+        host: endpoint.host,
+        port: endpoint.port,
+        ...(endpoint.publicKey === '' ? {} : { publicKey: endpoint.publicKey }),
+      });
+      // Monitoring output goes to stderr so --format json stays parseable.
+      process.stderr.write(renderHeartbeatReport(report));
+      if (report.ok) continue;
+
+      const where = endpoint.path === undefined ? 'VALIDATORS' : `${endpoint.path}.HOST`;
+      if (report.suddenClosure !== undefined) {
+        out.push({
+          rule: HEARTBEAT_SUDDEN_CLOSURE,
+          severity: 'error',
+          category: 'network',
+          message: `Overlay session with ${endpoint.rawEndpoint} closed before a heartbeat was acknowledged: ${report.suddenClosure}`,
+          path: where,
+          suggestion:
+            'Check middlebox idle timeouts and the peer logs, then reconnect and verify the peer is still in the validator set before routing consensus traffic through it.',
+        });
+      } else if (report.metrics.probesAcknowledged === 0) {
+        out.push({
+          rule: HEARTBEAT_UNRESPONSIVE,
+          severity: 'error',
+          category: 'network',
+          message: `Advertised validator ${endpoint.rawEndpoint} did not acknowledge a single heartbeat within ${timeoutMs}ms`,
+          path: where,
+          suggestion:
+            'Confirm the overlay port is reachable from your network and that the peer accepts heartbeat probes; remove it from rotation until it answers.',
+        });
+      } else if (report.metrics.erratic) {
+        out.push({
+          rule: HEARTBEAT_ERRATIC,
+          severity: 'warning',
+          category: 'network',
+          message: `Validator ${endpoint.rawEndpoint} returned erratic heartbeat responses (${report.metrics.probesMissed} missed, jitter ${report.metrics.jitterMs?.toFixed(1) ?? 'n/a'}ms)`,
+          path: where,
+          suggestion:
+            'Check the network path for packet loss before relying on this peer for quorum; stable latency matters more than the absolute value.',
+        });
+      }
+    }
   }
   return out;
 }
@@ -1371,9 +1491,7 @@ async function verifySep31Sep12Command(args: string[]): Promise<number> {
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
     }).verify({ directPaymentServer: direct, kycServer: kyc });
     process.stdout.write(
-      format === 'json'
-        ? `${JSON.stringify(report, null, 2)}\n`
-        : renderSep31Sep12Report(report),
+      format === 'json' ? `${JSON.stringify(report, null, 2)}\n` : renderSep31Sep12Report(report),
     );
     return report.ok ? 0 : 1;
   } catch (error) {
@@ -1422,6 +1540,108 @@ async function auditKeySeparationCommand(args: string[]): Promise<number> {
         : renderKeySeparationReport(result.report),
     );
     return result.report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+function parseQuorumPeers(value: unknown): QuorumPeerConfig[] {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === 'object' &&
+        value !== null &&
+        Array.isArray((value as { peers?: unknown }).peers)
+      ? (value as { peers: unknown[] }).peers
+      : undefined;
+  if (raw === undefined) {
+    throw new Error('Quorum file must be a JSON array or an object with a "peers" array');
+  }
+
+  return raw.map((entry, index) => {
+    if (typeof entry !== 'object' || entry === null) {
+      throw new Error(`Quorum entry ${index} must be an object with name and validatorKeys`);
+    }
+    const peer = entry as Record<string, unknown>;
+    const name = typeof peer.name === 'string' ? peer.name : undefined;
+    const keys = Array.isArray(peer.validatorKeys)
+      ? peer.validatorKeys.filter((key): key is string => typeof key === 'string')
+      : undefined;
+    if (name === undefined || keys === undefined) {
+      throw new Error(`Quorum entry ${index} must have a string name and a validatorKeys array`);
+    }
+    const kind = peer.kind === 'anchor' ? 'anchor' : 'peer';
+    return { name, validatorKeys: keys, kind };
+  });
+}
+
+/** `stellar-toml-lint audit-validator-rotation --domain <domain> [--format text|json]` */
+async function auditValidatorRotationCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let format = 'text';
+  let peersPath: string | undefined;
+  let previousSignature: string | undefined;
+  let replacementSignature: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else if (arg === '--peers') peersPath = requireValue(args, ++i, arg);
+    else if (arg === '--previous-signature') previousSignature = requireValue(args, ++i, arg);
+    else if (arg === '--replacement-signature') replacementSignature = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-validator-rotation\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-validator-rotation --domain <domain> ' +
+        '[--previous-signature <sig>] [--replacement-signature <sig>] ' +
+        '[--peers <quorum.json>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const host = domain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const url = `https://${host}/.well-known/stellar.toml`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      process.stderr.write(`Could not fetch ${url}: HTTP ${response.status}\n`);
+      return 2;
+    }
+    const doc = parseToml(await response.text()) as Record<string, unknown>;
+
+    const peers =
+      peersPath === undefined
+        ? []
+        : parseQuorumPeers(JSON.parse(await readFile(resolve(peersPath), 'utf8')) as unknown);
+    const attestation: KeyRotationAttestation = {};
+    if (previousSignature !== undefined) attestation.previousKeySignature = previousSignature;
+    if (replacementSignature !== undefined) {
+      attestation.replacementKeySignature = replacementSignature;
+    }
+    const declaredValidatorKeys = Array.isArray(doc.VALIDATORS)
+      ? doc.VALIDATORS.flatMap((entry) => {
+          if (typeof entry !== 'object' || entry === null) return [];
+          const key = (entry as Record<string, unknown>).PUBLIC_KEY;
+          return typeof key === 'string' ? [key] : [];
+        })
+      : [];
+
+    const verifier = new ValidatorKeyRotationVerifier({
+      domain: host,
+      attestation,
+      peers,
+      declaredValidatorKeys,
+    });
+    const report = verifier.audit(doc);
+    process.stdout.write(
+      format === 'json' ? `${JSON.stringify(report, null, 2)}\n` : renderKeyRotationReport(report),
+    );
+    return report.ok ? 0 : 1;
   } catch (error) {
     process.stderr.write(`${message(error)}\n`);
     return 2;
@@ -1763,6 +1983,302 @@ async function auditVaultSecretsOrHalt(path: string, source: string): Promise<nu
   return 1;
 }
 
+const MIGRATE_USAGE = `stellar-toml-lint migrate [file...] [options]
+
+Rewrite deprecated SEP-1 fields into the form the spec uses today, in place.
+
+USAGE
+  stellar-toml-lint migrate                  Migrate ./stellar.toml
+  stellar-toml-lint migrate "cfg/*.toml"     Migrate a glob (quote it)
+  stellar-toml-lint migrate --dry-run        Show the diff, change nothing
+  cat stellar.toml | stellar-toml-lint migrate -
+                                             Migrate stdin to stdout
+
+OPTIONS
+  -h, --help             Show this help
+      --dry-run          Print a unified diff instead of writing, and exit 1
+                         when a file still needs migrating
+      --json             Report the plan as JSON
+      --skip-rule <id>   Leave one migration undone (repeatable)
+      --domain <domain>  Validate the result as if it were served from this
+                         domain. Nothing is fetched — the files on disk are
+                         what gets migrated.
+
+MIGRATIONS
+${migrationList()}
+`;
+
+/**
+ * The migrations on offer, read from the registry.
+ *
+ * The list is generated rather than written out so `--help` cannot advertise a
+ * rule that was renamed, or hide one that was added.
+ */
+function migrationList(): string {
+  return MIGRATION_RULES.map((rule) => `  ${rule.id}\n    ${rule.reason}`).join('\n');
+}
+
+/**
+ * `migrate` rewrites files through the migration codemod.
+ *
+ * The rewrite is refused, per file, whenever the result would be worse than the
+ * input; the exit code says so instead of leaving a half-migrated tree behind a
+ * green run. As with `--sort-keys`, `--dry-run` runs the identical pass so a
+ * preview cannot disagree with what the write would have done.
+ */
+async function migrateCommand(argv: string[], color: boolean): Promise<number> {
+  const paths: string[] = [];
+  const skipRules: string[] = [];
+  let dryRun = false;
+  let json = false;
+  let domain: string | undefined;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    switch (arg) {
+      case '-h':
+      case '--help':
+        process.stdout.write(MIGRATE_USAGE);
+        return 0;
+      case '--dry-run':
+        dryRun = true;
+        break;
+      case '--json':
+        json = true;
+        break;
+      case '--skip-rule': {
+        const value = argv[++i];
+        if (value === undefined) {
+          process.stderr.write(`--skip-rule needs a rule id.\n\n${MIGRATE_USAGE}`);
+          return 2;
+        }
+        skipRules.push(value);
+        break;
+      }
+      case '--domain': {
+        const value = argv[++i];
+        if (value === undefined) {
+          process.stderr.write(`--domain needs a value.\n\n${MIGRATE_USAGE}`);
+          return 2;
+        }
+        domain = value;
+        break;
+      }
+      default:
+        // `-` is stdin, not an option, and the usage block promises it.
+        if (arg.startsWith('--')) {
+          process.stderr.write(`Unknown option "${arg}".\n\n${MIGRATE_USAGE}`);
+          return 2;
+        }
+        paths.push(arg);
+    }
+  }
+
+  const known = new Set(MIGRATION_RULES.map((rule) => rule.id));
+  const unknown = skipRules.filter((id) => !known.has(id));
+  if (unknown.length > 0) {
+    process.stderr.write(
+      `Unknown migration rule${unknown.length > 1 ? 's' : ''}: ${unknown.join(', ')}.\n\n${MIGRATE_USAGE}`,
+    );
+    return 2;
+  }
+
+  const codemod = new SchemaMigrationCodemod();
+  const options: MigrationOptions = {
+    ...(skipRules.length > 0 ? { skipRules } : {}),
+    ...(domain === undefined ? {} : { domain }),
+  };
+
+  const files: {
+    name: string;
+    parsed: boolean;
+    changed: boolean;
+    steps: { rule: string; path: string; action: string; description: string }[];
+    notes: string[];
+    refusal?: string;
+  }[] = [];
+  let pending = 0;
+  let refused = 0;
+  let unparseable = 0;
+
+  try {
+    const inputs = await expandInputs(paths.length > 0 ? paths : [DEFAULT_PATH]);
+    for (const path of inputs) {
+      const name = path === '-' ? 'stdin' : path;
+      const source = path === '-' ? await readStdin() : await readFile(resolve(path), 'utf8');
+      const result = codemod.run(source, options);
+      const report = {
+        name,
+        parsed: result.parsed,
+        changed: result.changed,
+        steps: result.steps.map((step) => ({
+          rule: step.rule,
+          path: step.path,
+          action: step.action,
+          description: step.description,
+        })),
+        notes: result.notes,
+        ...(result.refusal === undefined ? {} : { refusal: result.refusal }),
+      };
+      files.push(report);
+
+      if (!result.parsed) {
+        unparseable++;
+        continue;
+      }
+      // A plan that was thrown away is the one outcome a caller must not miss:
+      // the file still holds the deprecated field.
+      if (!result.validated) refused++;
+      if (!result.changed) continue;
+      pending++;
+
+      if (json) continue;
+      if (dryRun) {
+        process.stdout.write(formatUnifiedDiff(name, source, result.output, { color }));
+      } else if (path === '-') {
+        process.stdout.write(result.output);
+      } else {
+        await writeFile(resolve(path), result.output);
+      }
+      for (const step of result.steps) process.stdout.write(`${name}: ${step.description}\n`);
+      if (!dryRun && path !== '-') process.stdout.write(`${name}: migrated\n`);
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  if (json) {
+    process.stdout.write(`${JSON.stringify({ files, pending, refused, unparseable }, null, 2)}\n`);
+  } else {
+    for (const file of files) {
+      for (const note of file.notes) process.stderr.write(`${file.name}: ${note}\n`);
+      if (file.refusal !== undefined) process.stderr.write(`${file.name}: ${file.refusal}\n`);
+    }
+    if (pending === 0 && refused === 0 && unparseable === 0) {
+      process.stdout.write('No deprecated fields to migrate.\n');
+    }
+  }
+
+  // Only a dry run fails on work still to do — that is what makes it usable as
+  // a CI gate. In apply mode the migration *is* the success; a file the codemod
+  // refused to rewrite, or could not read at all, is the non-zero exit.
+  if (refused > 0 || unparseable > 0) return 1;
+  return dryRun && pending > 0 ? 1 : 0;
+}
+
+/**
+ * `--detect-orphans` reports keys and table headers that configure nothing;
+ * `--prune-orphaned` applies the findings that are safe to apply.
+ *
+ * Both read the same scan, so what the preview says is exactly what the rewrite
+ * would do — and a finding `migrate` owns is reported as a move, never deleted.
+ */
+async function orphanCommand(cli: Cli, color: boolean): Promise<number> {
+  if (cli.domain !== undefined) {
+    process.stderr.write(
+      '--detect-orphans and --prune-orphaned read files on disk, so they cannot be combined with --domain.\n\nRun with --help for usage.\n',
+    );
+    return 2;
+  }
+
+  const prune = cli.pruneOrphaned === true;
+  let findings = 0;
+  let unparseable = 0;
+
+  try {
+    const paths = await expandInputs(cli.paths.length > 0 ? cli.paths : [DEFAULT_PATH]);
+    for (const path of paths) {
+      const name = path === '-' ? 'stdin' : path;
+      const source = path === '-' ? await readStdin() : await readFile(resolve(path), 'utf8');
+      const allowKeys = await allowKeysFor(cli, path);
+      const options: OrphanScanOptions = allowKeys.length > 0 ? { allowKeys } : {};
+      const scan = new OrphanedKeyScanner().scan(source, options);
+      findings += scan.findings.length;
+      if (!scan.parsed) unparseable++;
+      if (scan.allowed > 0) {
+        process.stderr.write(`${name}: ${scan.allowed} key(s) matched the allow-list\n`);
+      }
+
+      if (!prune) {
+        const result = finalize(
+          scan.findings.map(orphanDiagnostic),
+          { strict: cli.strict },
+          undefined,
+        );
+        process.stdout.write(render(result, name, cli, color, source));
+        continue;
+      }
+
+      const result = pruneOrphans(source, options);
+      for (const warning of result.warnings) process.stderr.write(`${name}: ${warning}\n`);
+
+      if (cli.dryRun) {
+        process.stdout.write(formatUnifiedDiff(name, source, result.output, { color }));
+      } else if (path === '-') {
+        process.stdout.write(result.output);
+      } else if (result.changed) {
+        await writeFile(resolve(path), result.output);
+      }
+      for (const action of result.actions) {
+        process.stdout.write(`${name}: ${describeAction(action)}\n`);
+      }
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  // No summary line of its own: the text reporter already answers "nothing
+  // found", and prose appended after a machine format would break the parser
+  // reading it.
+
+  // Detecting and dry-running are gates: a finding is the failure the caller is
+  // asking about. Applying is not — the file has been fixed, so only a file that
+  // could not be read is a non-zero exit.
+  if (cli.dryRun || !prune) return findings > 0 || unparseable > 0 ? 1 : 0;
+  return unparseable > 0 ? 1 : 0;
+}
+
+/**
+ * An orphan as a diagnostic, so `--detect-orphans` answers in whatever format
+ * `--format` asks for instead of inventing a second report shape.
+ *
+ * The rule id is deliberately not in the rule registry: a key that configures
+ * nothing is not a SEP-1 violation, so it is a warning and only `--strict`, or
+ * the exit code above, turns it into a failure.
+ */
+function orphanDiagnostic(finding: OrphanFinding): Diagnostic {
+  return {
+    rule: `general/${finding.kind}`,
+    severity: 'warning',
+    category: 'general',
+    message: finding.message,
+    path: finding.path,
+    position: { line: finding.line, column: finding.column },
+  };
+}
+
+/** What a prune did, in the words a reviewer reads in `--dry-run`. */
+function describeAction(action: PruneAction): string {
+  const where = action.section === '' ? action.written : `${action.section}.${action.written}`;
+  if (action.kind === 'removed') return `removed ${where} (no SEP defines it)`;
+  return `renamed ${where} to ${action.suggestion}`;
+}
+
+/**
+ * Names the orphan scan is told to accept: `--allow-key`, plus the project's
+ * `knownKeys` from the config file nearest the file being scanned.
+ *
+ * A vendor section belongs to the team that owns the repo, so it is blessed
+ * once in the config; a one-off run overrides that with flags, which join on
+ * top rather than replace it.
+ */
+async function allowKeysFor(cli: Cli, path: string): Promise<string[]> {
+  const config = await loadConfig(path === '-' ? process.cwd() : dirname(resolve(path)));
+  return [...(config.knownKeys ?? []), ...(cli.allowKeys ?? [])];
+}
+
 async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'test-kms-signer') {
     try {
@@ -1782,6 +2298,10 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'sep38-volatility') {
     argv = ['--audit-sep38-volatility', '--check-network', ...argv.slice(1)];
   }
+  // `sep38-spreads --domain <domain>` requests live indicative and firm quotes.
+  if (argv[0] === 'sep38-spreads') {
+    argv = ['--audit-sep38-spreads', '--check-network', ...argv.slice(1)];
+  }
   if (argv[0] === 'refactor') return refactorCommand(argv.slice(1));
   if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
@@ -1799,12 +2319,14 @@ async function main(argv: string[]): Promise<number> {
     return auditSignatureReplayCommand(argv.slice(1));
   }
   if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
+  if (argv[0] === 'migrate') return migrateCommand(argv.slice(1), shouldUseColor());
   if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
   if (argv[0] === 'probe-sla') return probeSlaCommand(argv.slice(1));
   if (argv[0] === 'calculate-uptime') return calculateUptimeCommand(argv.slice(1));
   if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
+  if (argv[0] === 'audit-validator-rotation') return auditValidatorRotationCommand(argv.slice(1));
   if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
   if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
   if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
@@ -1831,9 +2353,9 @@ async function main(argv: string[]): Promise<number> {
     return verifyWasmStreaming(cli.verifyWasmStreaming);
   }
 
-  if (cli.dryRun && !cli.sortKeys) {
+  if (cli.dryRun && !cli.sortKeys && !cli.pruneOrphaned) {
     process.stderr.write(
-      '--dry-run has nothing to preview without --sort-keys.\n\nRun with --help for usage.\n',
+      '--dry-run has nothing to preview without --sort-keys or --prune-orphaned.\n\nRun with --help for usage.\n',
     );
     return 2;
   }
@@ -1841,6 +2363,7 @@ async function main(argv: string[]): Promise<number> {
   const color = cli.color ?? shouldUseColor();
 
   if (cli.sortKeys) return sortKeysCommand(cli, color);
+  if (cli.detectOrphans || cli.pruneOrphaned) return orphanCommand(cli, color);
 
   // Plugins load once, here, before the first file: `lint()` stays synchronous and
   // keeps the filesystem out of the core, and a broken plugin is a usage error
@@ -2564,6 +3087,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditClickjacking: false,
     verifyPromotions: false,
     auditSep38Volatility: false,
+    auditSep38Spreads: false,
     auditSep6Polling: false,
     auditSep10Jwt: false,
     testSep12Upload: false,
@@ -2572,6 +3096,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditEsgDisclosures: false,
     auditOpenTelemetry: false,
     crawlPeers: false,
+    monitorHeartbeat: false,
     verifyDnssec: false,
     auditDnsTakeover: false,
     auditSecrets: false,
@@ -2625,6 +3150,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--dry-run':
         cli.dryRun = true;
+        break;
+
+      case '--detect-orphans':
+        cli.detectOrphans = true;
+        break;
+
+      case '--prune-orphaned':
+        cli.pruneOrphaned = true;
+        break;
+
+      case '--allow-key':
+        (cli.allowKeys ??= []).push(requireValue(argv, ++i, arg));
         break;
 
       case '-d':
@@ -2718,6 +3255,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.auditSep38Volatility = true;
         break;
 
+      case '--audit-sep38-spreads':
+        cli.auditSep38Spreads = true;
+        break;
+
       case '--audit-sep6-polling':
         cli.auditSep6Polling = true;
         break;
@@ -2765,6 +3306,20 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--crawl-peers':
         cli.crawlPeers = true;
         break;
+
+      case '--monitor-heartbeat':
+        cli.monitorHeartbeat = true;
+        break;
+
+      case '--timeout': {
+        const raw = requireValue(argv, ++i, arg);
+        const seconds = Number(raw);
+        if (!Number.isFinite(seconds) || seconds <= 0) {
+          throw new Error(`--timeout expects a positive number of seconds, got "${raw}".`);
+        }
+        cli.heartbeatTimeoutSeconds = seconds;
+        break;
+      }
 
       case '--verify-dnssec':
         cli.verifyDnssec = true;
