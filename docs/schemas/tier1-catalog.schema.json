@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/anchor-tools/stellar-toml-lint/docs/schemas/tier1-catalog.schema.json",
+  "title": "Stellar Tier-1 validator catalog",
+  "description": "Catalog consumed by `stellar-toml-lint --verify-tier1-alignment --tier1-catalog <file.json>`. Add or remove organizations and validators here when Tier-1 membership changes; confirm against https://developers.stellar.org/docs/validators/tier-1-orgs.",
+  "type": "object",
+  "required": ["version", "updated", "organizations"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "updated": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO-8601 date the catalog was last reviewed."
+    },
+    "source": { "type": "string", "minLength": 1, "description": "Where the list came from." },
+    "organizations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": ["name", "homeDomain", "validators"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "homeDomain": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Domain that publishes the organization's stellar.toml."
+          },
+          "validators": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["name", "publicKey"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "publicKey": {
+                  "type": "string",
+                  "pattern": "^G[A-Z2-7]{55}$",
+                  "description": "StrKey-encoded Ed25519 node id; must be unique across the catalog."
+                },
+                "since": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Date the node joined Tier 1 (informational)."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
