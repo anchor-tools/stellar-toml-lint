@@ -94,6 +94,8 @@ const FLAGS: readonly FlagSpec[] = [
     description: 'Audit interactive endpoints for frame-ancestors framing defenses',
   },
   { long: '--crawl-peers', description: 'Discover and audit overlay peers' },
+  { long: '--monitor-heartbeat', description: 'Monitor overlay heartbeat latency and jitter' },
+  { long: '--timeout', description: 'Heartbeat monitoring window in seconds', takesValue: true },
   { long: '--verify-dnssec', description: 'Compare DNSSEC-validating DNS resolvers' },
   { long: '--check-contracts', description: 'Verify Soroban contract TTL liveliness' },
   {

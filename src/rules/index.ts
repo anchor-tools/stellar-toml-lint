@@ -49,6 +49,8 @@ import { zkRules } from '../zk/rangeProofVerifier.js';
 import { secp256k1BridgeRules } from '../crypto/secp256k1Verifier.js';
 import { kzgRules } from '../crypto/kzgVerifier.js';
 import { overlayHandshakeRules } from '../overlay/handshakeTester.js';
+import { validatorKeyRotationRules } from '../overlay/keyRotationVerifier.js';
+import { overlayHeartbeatRules } from '../overlay/heartbeat-rules.js';
 import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
 
 /** Every rule, in report order. */
@@ -105,6 +107,8 @@ export const allRules: Rule[] = [
   ...secp256k1BridgeRules,
   ...kzgRules,
   ...overlayHandshakeRules,
+  ...validatorKeyRotationRules,
+  ...overlayHeartbeatRules,
   ...sep31Sep12Rules,
 ];
 
@@ -160,5 +164,7 @@ export {
   secp256k1BridgeRules,
   kzgRules,
   overlayHandshakeRules,
+  validatorKeyRotationRules,
+  overlayHeartbeatRules,
   sep31Sep12Rules,
 };
