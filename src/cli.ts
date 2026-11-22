@@ -37,6 +37,12 @@ import { checkRegulatedIssuerFlags } from './rules/currencies.js';
 import { checkContracts } from './rules/soroban.js';
 import { auditTomlAuthTree } from './soroban/auth-tree-simulator.js';
 import { auditTomlEvents } from './soroban/eventVerifier.js';
+import { AuthTreeSimulator, renderAuthTreeReport } from './soroban/authTreeSimulator.js';
+import { analyzeWasmMemory, renderMemoryHazardReport } from './soroban/wasmMemoryAnalyzer.js';
+import {
+  auditSignatureReplay,
+  renderSignatureReplayReport,
+} from './soroban/signatureReplayAuditor.js';
 import { checkSep6 } from './cross-sep/sep6.js';
 import { checkSep10Replay } from './protocols/sep10-replay.js';
 import { checkSep10ClientDomain } from './protocols/sep10-client-domain.js';
@@ -282,6 +288,17 @@ USAGE
   stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]
                                          Audit a WASM binary for SIMD opcodes and
                                          unbounded memory growth
+  stellar-toml-lint audit-wasm-memory --file <path.wasm> [--format text|json]
+                                         Audit a Soroban contract WASM for memory
+                                         growth, recursion, unbounded loops and
+                                         large stack frames
+  stellar-toml-lint auth-tree --xdr <txEnvelopeXdr> [--network <passphrase>]
+                              [--rpc-url <url>] [--format text|json]
+                                         Parse a Soroban transaction envelope and
+                                         render its authorization call tree
+  stellar-toml-lint audit-signature-replay --file <path.wasm> [--format text|json]
+                                         Detect signature verification that lacks
+                                         nonce, domain separation or expiration
   stellar-toml-lint verify-metrics --url <metrics_url> [--format text|json]
                                          Scrape a Prometheus/OpenMetrics endpoint and
                                          validate names, TYPE/HELP and anchor gauges
@@ -1062,6 +1079,168 @@ async function auditWasmSimd(args: string[]): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint audit-wasm-memory --file <path.wasm> [--json]` */
+async function auditWasmMemory(args: string[]): Promise<number> {
+  let file: string | undefined;
+  let json = false;
+  let maxInitialPages: number | undefined;
+  let maxStackSlots: number | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--json' || arg === '--format') {
+      if (arg === '--json') json = true;
+      else {
+        const format = requireValue(args, ++i, arg);
+        if (format !== 'text' && format !== 'json') {
+          process.stderr.write(`Unknown format ${format} for audit-wasm-memory\n`);
+          return 2;
+        }
+        json = format === 'json';
+      }
+    } else if (arg === '--max-initial-pages') {
+      maxInitialPages = Number(requireValue(args, ++i, arg));
+    } else if (arg === '--max-stack-slots') {
+      maxStackSlots = Number(requireValue(args, ++i, arg));
+    } else {
+      process.stderr.write(`Unknown option ${arg} for audit-wasm-memory\n`);
+      return 2;
+    }
+  }
+
+  if (file === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-wasm-memory --file <path.wasm> [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const bytes = new Uint8Array(await readFile(resolve(file)));
+    const report = analyzeWasmMemory(bytes, {
+      file,
+      ...(maxInitialPages !== undefined ? { maxInitialPages } : {}),
+      ...(maxStackSlots !== undefined ? { maxStackSlots } : {}),
+    });
+    process.stdout.write(
+      json ? `${JSON.stringify(report, null, 2)}\n` : renderMemoryHazardReport(report),
+    );
+    return report.findings.some((finding) => finding.severity === 'error') ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint auth-tree --xdr <txEnvelopeXdr> [--format text|json]` */
+async function authTreeCommand(args: string[]): Promise<number> {
+  let envelope: string | undefined;
+  let file: string | undefined;
+  let networkPassphrase: string | undefined;
+  let rpcUrl: string | undefined;
+  let latestLedger: number | undefined;
+  let json = false;
+  const authorizedIdentities: string[] = [];
+  const allowedContracts: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--xdr') envelope = requireValue(args, ++i, arg);
+    else if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--network') networkPassphrase = requireValue(args, ++i, arg);
+    else if (arg === '--rpc-url') rpcUrl = requireValue(args, ++i, arg);
+    else if (arg === '--latest-ledger') latestLedger = Number(requireValue(args, ++i, arg));
+    else if (arg === '--signing-key' || arg === '--authorized-identity') {
+      authorizedIdentities.push(requireValue(args, ++i, arg));
+    } else if (arg === '--allow-contract') allowedContracts.push(requireValue(args, ++i, arg));
+    else if (arg === '--json' || arg === '--format') {
+      if (arg === '--json') json = true;
+      else {
+        const format = requireValue(args, ++i, arg);
+        if (format !== 'text' && format !== 'json') {
+          process.stderr.write(`Unknown format ${format} for auth-tree\n`);
+          return 2;
+        }
+        json = format === 'json';
+      }
+    } else {
+      process.stderr.write(`Unknown option ${arg} for auth-tree\n`);
+      return 2;
+    }
+  }
+
+  if (envelope === undefined && file === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint auth-tree --xdr <txEnvelopeXdr> [--network <passphrase>] [--rpc-url <url>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const source = envelope ?? (await readFile(resolve(file as string), 'utf8')).trim();
+    const simulator = new AuthTreeSimulator({
+      ...(networkPassphrase !== undefined ? { networkPassphrase } : {}),
+      ...(rpcUrl !== undefined ? { rpcUrl } : {}),
+      ...(latestLedger !== undefined ? { latestLedger } : {}),
+      authorizedIdentities,
+      allowedContracts,
+    });
+    const report = await simulator.simulate(source);
+    process.stdout.write(
+      json ? `${JSON.stringify(report, null, 2)}\n` : renderAuthTreeReport(report),
+    );
+    return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint audit-signature-replay --file <path.wasm> [--json]` */
+async function auditSignatureReplayCommand(args: string[]): Promise<number> {
+  let file: string | undefined;
+  let json = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--json' || arg === '--format') {
+      if (arg === '--json') json = true;
+      else {
+        const format = requireValue(args, ++i, arg);
+        if (format !== 'text' && format !== 'json') {
+          process.stderr.write(`Unknown format ${format} for audit-signature-replay\n`);
+          return 2;
+        }
+        json = format === 'json';
+      }
+    } else {
+      process.stderr.write(`Unknown option ${arg} for audit-signature-replay\n`);
+      return 2;
+    }
+  }
+
+  if (file === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-signature-replay --file <path.wasm> [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const bytes = new Uint8Array(await readFile(resolve(file)));
+    const report = auditSignatureReplay(bytes, { file });
+    process.stdout.write(
+      json ? `${JSON.stringify(report, null, 2)}\n` : renderSignatureReplayReport(report),
+    );
+    return report.findings.some((finding) => finding.severity === 'error') ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 /** `stellar-toml-lint --verify-wasm-streaming <url>` */
 async function verifyWasmStreaming(url: string): Promise<number> {
   try {
@@ -1614,6 +1793,11 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'verify-archive-gpg') return verifyArchiveGpgCommand(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
+  if (argv[0] === 'audit-wasm-memory') return auditWasmMemory(argv.slice(1));
+  if (argv[0] === 'auth-tree') return authTreeCommand(argv.slice(1));
+  if (argv[0] === 'audit-signature-replay' || argv[0] === '--audit-signature-replay') {
+    return auditSignatureReplayCommand(argv.slice(1));
+  }
   if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
   if (argv[0] === 'probe-sla') return probeSlaCommand(argv.slice(1));

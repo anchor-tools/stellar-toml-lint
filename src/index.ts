@@ -386,6 +386,87 @@ export {
   UNAUTHORIZED_CROSS_CONTRACT_RULE,
   UNBOUNDED_AUTH_GRANT_RULE,
 } from './soroban/auth-tree-simulator.js';
+export {
+  AuthTreeSimulator,
+  renderAuthTreeDiagram,
+  renderAuthTreeReport,
+  authTreeCredentialRules,
+  authTreeRules,
+  authTreeRuleIds,
+  AUTH_CREDENTIAL_UNBOUND_RULE,
+  AUTH_NONCE_REUSED_RULE,
+  AUTH_SIGNATURE_MISSING_RULE,
+  AUTH_SIGNATURE_EXPIRED_RULE,
+  AUTH_EXPIRATION_UNBOUNDED_RULE,
+  DEFAULT_MAX_AUTH_LIFETIME_LEDGERS,
+} from './soroban/authTreeSimulator.js';
+export type {
+  AuthTreeOperation as AuthTreeEnvelopeOperation,
+  AuthTreeEnvelope,
+  AuthTreeSimulatorOptions,
+  AuthTreeSimulationReport,
+} from './soroban/authTreeSimulator.js';
+export {
+  analyzeWasmMemory,
+  renderMemoryHazardReport,
+  recursionCycles,
+  wasmMemoryRules,
+  wasmMemoryRuleIds,
+  WasmMemoryHazardAnalyzer,
+  DEFAULT_MAX_INITIAL_PAGES,
+  DEFAULT_MAX_STACK_SLOTS,
+  WASM_PAGE_BYTES as WASM_MEMORY_PAGE_BYTES,
+} from './soroban/wasmMemoryAnalyzer.js';
+export type {
+  MemoryHazardCode,
+  MemoryHazardFinding,
+  MemoryHazardOptions,
+  MemoryHazardReport,
+  MemoryLimitsReport,
+  FunctionHazardReport,
+  RecursionCycle,
+} from './soroban/wasmMemoryAnalyzer.js';
+export {
+  auditSignatureReplay,
+  renderSignatureReplayReport,
+  signatureReplayRules,
+  signatureReplayRuleIds,
+  SignatureReplayAuditor,
+  CRYPTO_VERIFIERS,
+  SIGNATURE_WITHOUT_NONCE_RULE,
+  SIGNATURE_WITHOUT_DOMAIN_RULE,
+  SIGNATURE_WITHOUT_EXPIRATION_RULE,
+} from './soroban/signatureReplayAuditor.js';
+export type {
+  SignatureReplayCode,
+  SignatureReplayFinding,
+  SignatureReplayOptions,
+  SignatureReplayReport,
+  SignatureVerificationRoutine,
+} from './soroban/signatureReplayAuditor.js';
+export {
+  parseWasmModule,
+  importedFunction,
+  importedFunctionNames,
+  functionByIndex,
+  printableStrings,
+  WasmModuleError,
+} from './soroban/wasmModule.js';
+export type {
+  WasmModule,
+  WasmFunction,
+  WasmFuncType,
+  WasmLimits,
+  WasmImport,
+  WasmExport,
+  WasmInstruction,
+  WasmCall,
+  WasmLoop,
+  WasmDataSegment,
+  WasmImportKind,
+  WasmExportKind,
+  WasmValueType,
+} from './soroban/wasmModule.js';
 export { WasiSandboxRunner, SANDBOX_SYSCALLS, WASI_ERRNO } from './wasm/wasiRunner.js';
 export type {
   SandboxFileSnapshot,

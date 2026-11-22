@@ -14,6 +14,9 @@ import { orgUrlRules } from './org-url-check.js';
 import { sep38Rules } from './sep38-endpoints.js';
 import { sorobanRules } from './soroban.js';
 import { authTreeSimulatorRules } from '../soroban/auth-tree-simulator.js';
+import { authTreeCredentialRules } from '../soroban/authTreeSimulator.js';
+import { wasmMemoryRules } from '../soroban/wasmMemoryAnalyzer.js';
+import { signatureReplayRules } from '../soroban/signatureReplayAuditor.js';
 import { sep12Rules } from './sep12-schema.js';
 import { sep6Rules } from '../cross-sep/sep6.js';
 import { corsPreflightRules } from '../network/cors-preflight.js';
@@ -69,6 +72,9 @@ export const allRules: Rule[] = [
   ...sep38Rules,
   ...sorobanRules,
   ...authTreeSimulatorRules,
+  ...authTreeCredentialRules,
+  ...wasmMemoryRules,
+  ...signatureReplayRules,
   ...sep12Rules,
   ...sep6Rules,
   ...corsPreflightRules,
@@ -123,6 +129,9 @@ export {
   sep38Rules,
   sorobanRules,
   authTreeSimulatorRules,
+  authTreeCredentialRules,
+  wasmMemoryRules,
+  signatureReplayRules,
   sep12Rules,
   sep6Rules,
   corsPreflightRules,
