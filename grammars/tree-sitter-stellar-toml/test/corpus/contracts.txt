@@ -1,0 +1,118 @@
+==================
+Contracts and muxed accounts
+==================
+
+# SEP-1 for an anchor whose assets live in Soroban contracts. Contract ids
+# (`C`) and muxed account addresses (`M`, 69 characters) both get their own
+# nodes; a muxed address is longer than an account id, not merely prefixed
+# differently.
+VERSION = "2.7.0"
+NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
+
+WEB_AUTH_ENDPOINT = "https://api.example.com/auth"
+WEB_AUTH_CONTRACT_ID = "CA32UWEBA6HNQTOHALV2LAX6DMUQFSRL7XH4U7QFBPRKE5KPWJU7LWKS"
+DIRECT_PAYMENT_SERVER = "https://api.example.com/sep31"
+ANCHOR_QUOTE_SERVER = "https://api.example.com/sep38"
+ACCOUNTS = [
+  "GCZIFP2JXLPL7FI26L3B27OKZJO7C6UWEXKHBVL52AYMS3JEDD7CGO3Q",
+  "MCGZSP4K4SG7CU2L2ANFGFY7XQLK2LD333DBYE6TYL7FQPAAZ4QE4ABAAAAAAAAAAG6X2",
+]
+URI_REQUEST_SIGNING_KEY = "GCBS4OSRDMZOEJP332S3HBF2JX3WJTXNGMQ4I4T7EF4DE42J2QSUKUUW"
+
+[[CURRENCIES]]
+code = "ABCD"
+contract = "CAN6UPHJRNXGJTLLQL3425ROX5EVNWUHEXBTUOWNW4VH5LNT6I253BGQ"
+issuer = "GC73VAU5BOVEMJLXNKO27KA6VVJ7AQQ5Y7GXJAV3PX4FF54FCRCVT53Q"
+distribution_account = "MCGZSP4K4SG7CU2L2ANFGFY7XQLK2LD333DBYE6TYL7FQPAAZ4QE4ABAAAAAAAAAAG6X2"
+status = "live"
+
+[[CURRENCIES]]
+code = "SEP31"
+contract = "CDUIEJIBRBLBLHKYFIWJLW7OSRQ6GUTMNUJGZE6BBLEPXZJCWSUFPWST"
+
+---
+
+(document
+  (newline)
+  (comment)
+  (newline)
+  (comment)
+  (newline)
+  (comment)
+  (newline)
+  (comment)
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (contract_id))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (array
+      (newline)
+      (public_key)
+      (newline)
+      (public_key)
+      (newline)))
+  (newline)
+  (pair
+    (bare_key)
+    (public_key))
+  (newline)
+  (newline)
+  (array_table
+    (currency_entry)
+    (newline)
+    (pair
+      (bare_key)
+      (asset_code))
+    (newline)
+    (pair
+      (bare_key)
+      (contract_id))
+    (newline)
+    (pair
+      (bare_key)
+      (public_key))
+    (newline)
+    (pair
+      (bare_key)
+      (public_key))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (array_table
+    (currency_entry)
+    (newline)
+    (pair
+      (bare_key)
+      (asset_code))
+    (newline)
+    (pair
+      (bare_key)
+      (contract_id))
+    (newline)))

@@ -325,6 +325,63 @@ export type {
   DiscordIncidentPayload,
   PagerDutyIncidentPayload,
 } from './gitops/incidentDispatcher.js';
+export {
+  ContainerSecurityAuditor,
+  auditDockerfile,
+  analyzeDockerignore,
+  classifyBaseImage,
+  parseDockerfile,
+  parseDockerStages,
+  parseFrom,
+  renderContainerReport,
+  resolveUserStage,
+  DEFAULT_IMAGE_SIZE_BUDGET,
+} from './gitops/containerAuditor.js';
+export type {
+  BaseImageFamily,
+  ContainerAuditOptions,
+  ContainerAuditReport,
+  ContainerFinding,
+  ContainerFindingCode,
+  ContainerSeverity,
+  DockerInstruction,
+  DockerfileAnalysis,
+  DockerfileStage,
+  DockerignoreAnalysis,
+} from './gitops/containerAuditor.js';
+export {
+  HOSTED_BUILDER_PATTERNS,
+  SlsaProvenanceError,
+  SlsaProvenanceVerifier,
+  certificateChainTrusted,
+  dssePae,
+  normalizeProvenance,
+  parseAttestationDocument,
+  parseProvenanceDocuments,
+  predicateTypeOf,
+  renderProvenanceReport,
+  subjectsOf,
+  verifyEnvelopeSignature,
+  verifySlsaProvenance,
+} from './gitops/slsaVerifier.js';
+export type {
+  AttestationFormat,
+  DsseEnvelope,
+  DsseSignature,
+  NormalizedProvenance,
+  ParsedAttestation,
+  ProvenanceMaterial,
+  ProvenanceSubject,
+  SigstoreBundle,
+  SignatureVerification,
+  SlsaFinding,
+  SlsaFindingCode,
+  SlsaLevel,
+  SlsaSecurityAttestation,
+  SlsaSeverity,
+  SlsaVerificationOptions,
+  SlsaVerificationReport,
+} from './gitops/slsaVerifier.js';
 export { SPEC_URL } from './spec.js';
 export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
@@ -607,6 +664,101 @@ export type {
   PromotionalPricingResult,
 } from './protocols/promotionalPricingVerifier.js';
 export {
+  DEFAULT_MAX_QUOTE_DURATION_SECONDS,
+  DEFAULT_MIN_QUOTE_DURATION_SECONDS,
+  Sep38CircuitBreakerVerifier,
+  applyShock,
+  isVolatilePair,
+  percentDelta,
+  pickPair as pickSep38Pair,
+  priceFromPricesBody,
+  quoteDurationSeconds,
+  sep38CircuitBreakerRuleIds,
+  sep38CircuitBreakerRules,
+  systemClock,
+  verifySep38Volatility,
+} from './protocols/sep38CircuitBreaker.js';
+export type {
+  CircuitBreakerResult,
+  MarketPhase,
+  MonotonicClock,
+  QuoteSample,
+  Sep38CircuitBreakerOptions,
+  Sep38Pair,
+} from './protocols/sep38CircuitBreaker.js';
+export {
+  DEFAULT_MAX_QUOTE_LIFETIME_SECONDS,
+  DEFAULT_QUOTE_TIERS,
+  DEFAULT_SPREAD_TOLERANCE_BPS,
+  RATE_SCALE,
+  Sep38QuoteDiscrepancyAuditor,
+  advertisedFeeBps,
+  auditSep38QuoteDiscrepancies,
+  feeBps,
+  formatScaledDecimal,
+  indicativePriceFrom,
+  parseScaledDecimal,
+  quoteFeeTotal,
+  rateSpreadBps,
+  sep38DiscrepancyRuleIds,
+  sep38DiscrepancyRules,
+  systemSleep,
+  systemWallClock,
+} from './protocols/sep38Discrepancy.js';
+export type {
+  ExpiredQuoteVerdict,
+  MonotonicWallClock,
+  QuoteTier,
+  QuoteTierObservation,
+  Sep38DiscrepancyResult,
+  Sep38QuoteDiscrepancyOptions,
+} from './protocols/sep38Discrepancy.js';
+export {
+  DEFAULT_POLLING_INTERVALS_MS,
+  SEP6_TRANSACTION_STATUSES,
+  Sep6PollingIdempotencyVerifier,
+  auditSep6Polling,
+  isUncacheable,
+  sep6PollingRuleIds,
+  sep6PollingRules,
+  stableChecksum,
+  systemPollingClock,
+} from './protocols/sep6Polling.js';
+export type {
+  PollRecord,
+  PollingClock,
+  Sep6PollingOptions,
+  Sep6PollingResult,
+} from './protocols/sep6Polling.js';
+export {
+  DEFAULT_MAX_JWT_LIFETIME_SECONDS,
+  SEP10_ALLOWED_ALGORITHMS,
+  Sep10JwtAuditor,
+  auditSep10Jwt,
+  decodeJwt,
+  isValidSep10Subject,
+  sep10JwtRuleIds,
+  sep10JwtRules,
+} from './protocols/sep10JwtAuditor.js';
+export type {
+  DecodedJwt,
+  Sep10JwtAuditResult,
+  Sep10JwtOptions,
+} from './protocols/sep10JwtAuditor.js';
+export {
+  DEFAULT_OVERSIZED_BYTES,
+  FALLBACK_BINARY_FIELDS,
+  Sep12FileUploadValidator,
+  sep12FileUploadRuleIds,
+  sep12FileUploadRules,
+  testSep12FileUploads,
+} from './protocols/sep12FileUpload.js';
+export type {
+  Sep12FileUploadOptions,
+  Sep12FileUploadResult,
+  UploadProbe,
+} from './protocols/sep12FileUpload.js';
+export {
   FederationSrvRecordVerifier,
   federationSrvRuleIds,
   federationSrvRules,
@@ -795,7 +947,6 @@ export type {
   GeoLookupResolver,
   GeographicDiversityScorerOptions,
 } from './overlay/diversityScorer.js';
-
 // DID & Verifiable Credentials (Issue #507)
 export { DidResolutionVerifier, decodeBase58, encodeBase58 } from './crypto/didVerifier.js';
 export type {
@@ -840,3 +991,154 @@ export type {
   HashFieldInspection,
   HashAgilityReport,
 } from './crypto/hashAgilityAuditor.js';
+
+// ZK Range Proof Verifier (Issue #511)
+export {
+  RangeProofVerifier,
+  zkRules,
+  zkRuleIds,
+  ZK_INVALID_RANGE_PROOF,
+  ZK_COMMITMENT_MISMATCH,
+  ZK_UNSUPPORTED_CURVE,
+  ZK_MALFORMED_COMMITMENT,
+} from './zk/rangeProofVerifier.js';
+export type {
+  SupportedCurve,
+  BulletproofRangeProof,
+  CommitmentEntry,
+  AnchorReserveDeclaration,
+  RangeProofVerificationResult,
+  ReserveReconciliationResult,
+  RangeProofVerifierOptions,
+} from './zk/rangeProofVerifier.js';
+
+// Secp256k1 EVM-Stellar Bridge Verifier (Issue #512)
+export {
+  Secp256k1BridgeVerifier,
+  secp256k1BridgeRules,
+  secp256k1BridgeRuleIds,
+  toChecksumAddress,
+  CRYPTO_INVALID_SECP256K1_SIGNATURE,
+  CRYPTO_BRIDGE_SIGNER_UNMATCHED,
+  CRYPTO_MALFORMED_SIGNATURE,
+} from './crypto/secp256k1Verifier.js';
+export type {
+  ParsedSignature,
+  RecoveredKeys,
+  BridgeSignatureVerificationResult,
+  Secp256k1BridgeVerifierOptions,
+  MessageHashAlgorithm,
+} from './crypto/secp256k1Verifier.js';
+
+// KZG Commitment Verifier (Issue #513)
+export {
+  KzgCommitmentVerifier,
+  kzgRules,
+  kzgRuleIds,
+  parseG1Point,
+  parseG2Point,
+  KZG_INVALID_PROOF,
+  KZG_SRS_UNLOADED,
+  KZG_MALFORMED_COMMITMENT,
+} from './crypto/kzgVerifier.js';
+export type {
+  SrsData,
+  KzgOpeningProof,
+  KzgVerificationResult,
+  KzgCommitmentVerifierOptions,
+} from './crypto/kzgVerifier.js';
+
+// Overlay Handshake Tester (Issue #514)
+export {
+  OverlayHandshakeTester,
+  overlayHandshakeRules,
+  overlayHandshakeRuleIds,
+  parseValidatorEndpoints,
+  unframeOverlayMessage,
+  OVERLAY_HANDSHAKE_FAILED,
+  OVERLAY_NETWORK_ID_MISMATCH,
+  OVERLAY_VERSION_MISMATCH,
+  OVERLAY_VALIDATOR_KEY_MISMATCH,
+  OVERLAY_CERT_INVALID,
+  OVERLAY_AUTH_MAC_INVALID,
+  DEFAULT_OVERLAY_PORT,
+  DEFAULT_OVERLAY_VERSION,
+  DEFAULT_OVERLAY_MIN_VERSION,
+  DEFAULT_LEDGER_VERSION,
+  DEFAULT_CORE_VERSION,
+} from './overlay/handshakeTester.js';
+export type {
+  ValidatorEndpoint,
+  HelloSummary,
+  HandshakeResult,
+  OverlayTransport,
+  HandshakeTesterOptions,
+} from './overlay/handshakeTester.js';
+
+// Validator Key Rotation Verifier (Issue #522)
+export {
+  ValidatorKeyRotationVerifier,
+  detectRotationMarkers,
+  hasRotationMarkers,
+  keyRotationPayload,
+  signKeyRotationPayload,
+  verifyCrossSignatures,
+  renderKeyRotationReport,
+  validatorKeyRotationRules,
+  validatorKeyRotationRuleIds,
+  DEFAULT_ROTATION_GRACE_PERIOD_MS,
+  KEY_ROTATION_MARKERS_INCOMPLETE,
+  KEY_ROTATION_KEY_INVALID,
+  KEY_ROTATION_SAME_KEY,
+  KEY_ROTATION_TRANSITION_DATE_INVALID,
+  KEY_ROTATION_CROSS_SIGNATURE_MISSING,
+  KEY_ROTATION_CROSS_SIGNATURE_INVALID,
+  KEY_ROTATION_QUORUM_NOT_ADOPTED,
+  KEY_ROTATION_RETIRED_KEY_TRUSTED,
+  KEY_ROTATION_RETIRED_KEY_ADVERTISED,
+  KEY_ROTATION_TRANSITION_ACTIVE,
+} from './overlay/keyRotationVerifier.js';
+export type {
+  KeyRotationMarkers,
+  KeyRotationAttestation,
+  QuorumPeerConfig,
+  KeyRotationVerifierOptions,
+  CrossSignatureVerification,
+  QuorumRecognition,
+  KeyRotationCheck,
+  RotationPhase,
+  KeyRotationReport,
+} from './overlay/keyRotationVerifier.js';
+
+// Overlay Heartbeat Watchdog (Issue #523)
+export {
+  OverlayHeartbeatWatchdog,
+  TcpHeartbeatChannel,
+  evaluateKeepalive,
+  encodeHeartbeatProbe,
+  decodeHeartbeatPong,
+  heartbeatProbeId,
+  renderHeartbeatReport,
+  overlayHeartbeatRules,
+  overlayHeartbeatRuleIds,
+  HeartbeatConnectionClosedError,
+  DEFAULT_HEARTBEAT_TIMEOUT_MS,
+  DEFAULT_HEARTBEAT_INTERVAL_MS,
+  DEFAULT_KEEPALIVE_INITIAL_DELAY_MS,
+  HEARTBEAT_UNRESPONSIVE,
+  HEARTBEAT_ERRATIC,
+  HEARTBEAT_KEEPALIVE_DISABLED,
+  HEARTBEAT_KEEPALIVE_DELAY,
+  HEARTBEAT_UNACKNOWLEDGED_SOCKET,
+  HEARTBEAT_SUDDEN_CLOSURE,
+} from './overlay/heartbeatWatchdog.js';
+export type {
+  HeartbeatEndpoint,
+  HeartbeatChannel,
+  SocketKeepaliveSnapshot,
+  HeartbeatProbe,
+  HeartbeatMetrics,
+  KeepaliveCheck,
+  HeartbeatReport,
+  HeartbeatWatchdogOptions,
+} from './overlay/heartbeatWatchdog.js';

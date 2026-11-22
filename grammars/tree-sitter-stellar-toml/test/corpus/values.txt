@@ -4,7 +4,7 @@ Value forms
 
 # Comments are concrete nodes so highlight and fold queries can bind to them.
 ACCOUNTS = [
-  "GAC2CQ7JBSRCCNZRCSJNZK5SMH4R4N5XQVQZQZQZQZQZQZQZQZQZQZ",
+  "GCX3MNFJJ4RHYXJPZYHWKCVGVMKU5VTP3VT34SWR34ZOFRIXO2KTT3G3",
   "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
 ]
 MAX = 100
@@ -28,9 +28,9 @@ INLINE = { code = "USD", status = "live" }
     (bare_key)
     (array
       (newline)
-      (string)
+      (public_key)
       (newline)
-      (string)
+      (public_key)
       (newline)))
   (newline)
   (pair
@@ -64,7 +64,7 @@ INLINE = { code = "USD", status = "live" }
     (inline_table
       (pair
         (bare_key)
-        (string))
+        (asset_code))
       (pair
         (bare_key)
         (string))))
