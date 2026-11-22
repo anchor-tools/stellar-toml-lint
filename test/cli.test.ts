@@ -65,6 +65,7 @@ describe('cli', () => {
     expect(stdout).toContain('USAGE');
     expect(stdout).toContain('EXIT CODES');
     expect(stdout).toContain('--check-contracts');
+    expect(stdout).toContain('--audit-events');
     expect(stdout).toContain('--audit-opentelemetry');
     expect(stdout).toContain('--soroban-rpc');
     expect(stdout).toContain('checkstyle');

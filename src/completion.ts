@@ -92,6 +92,10 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--crawl-peers', description: 'Discover and audit overlay peers' },
   { long: '--verify-dnssec', description: 'Compare DNSSEC-validating DNS resolvers' },
   { long: '--check-contracts', description: 'Verify Soroban contract TTL liveliness' },
+  {
+    long: '--audit-events',
+    description: 'Audit Soroban contract event schemas and indexing topics',
+  },
   { long: '--soroban-rpc', description: 'Soroban RPC endpoint', takesValue: true },
   { long: '--mock-fixtures', description: 'Serve network checks from fixtures', takesValue: true },
   { long: '--webhook-slack', description: 'Slack webhook URL', takesValue: true },
