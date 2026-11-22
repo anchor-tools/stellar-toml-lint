@@ -98,7 +98,20 @@ import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
 import { RangeProofVerifier } from './zk/rangeProofVerifier.js';
 import { Secp256k1BridgeVerifier } from './crypto/secp256k1Verifier.js';
 import { KzgCommitmentVerifier } from './crypto/kzgVerifier.js';
-import { OverlayHandshakeTester } from './overlay/handshakeTester.js';
+import { OverlayHandshakeTester, parseValidatorEndpoints } from './overlay/handshakeTester.js';
+import {
+  ValidatorKeyRotationVerifier,
+  renderKeyRotationReport,
+  type KeyRotationAttestation,
+  type QuorumPeerConfig,
+} from './overlay/keyRotationVerifier.js';
+import {
+  HEARTBEAT_ERRATIC,
+  HEARTBEAT_SUDDEN_CLOSURE,
+  HEARTBEAT_UNRESPONSIVE,
+  OverlayHeartbeatWatchdog,
+  renderHeartbeatReport,
+} from './overlay/heartbeatWatchdog.js';
 import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
@@ -220,6 +233,8 @@ interface Cli {
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
+  monitorHeartbeat: boolean;
+  heartbeatTimeoutSeconds?: number;
   verifyDnssec: boolean;
   auditDnsTakeover: boolean;
   auditSecrets: boolean;
@@ -329,6 +344,12 @@ USAGE
                                          Map every public key in the file to its roles
                                          and report reused signing, issuer, account and
                                          validator keys
+  stellar-toml-lint audit-validator-rotation --domain <domain>
+                                         [--previous-signature <sig>]
+                                         [--replacement-signature <sig>]
+                                         [--peers <quorum.json>] [--format text|json]
+                                         Verify a coordinated validator key rotation:
+                                         markers, cross-signatures and peer quorum adoption
   stellar-toml-lint diff <a> <b> [--json]
                                          Compare two stellar.toml files, URLs or
                                          - (stdin) by value rather than by line;
@@ -456,6 +477,9 @@ OPTIONS
                           Probe interactive endpoints for Content-Security-Policy
                           frame-ancestors and X-Frame-Options framing defenses
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
+      --monitor-heartbeat  Establish an overlay session with every advertised validator
+                          and report ping/pong latency, jitter and keepalive state
+      --timeout <seconds> Monitoring window for --monitor-heartbeat (default: 10)
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
        --audit-dns-takeover
                            Query CNAME/NS records for every referenced domain and
@@ -704,6 +728,58 @@ async function runExtraAudits(
     const result = await verifier.verify(parsed, rules);
     out.push(...result.diagnostics);
     process.stderr.write(renderTraceAuditReport(result));
+  }
+  if (cli.monitorHeartbeat) {
+    const endpoints = parseValidatorEndpoints(parsed);
+    const timeoutMs = (cli.heartbeatTimeoutSeconds ?? 10) * 1000;
+    if (endpoints.length === 0) {
+      process.stderr.write(
+        '--monitor-heartbeat: no [[VALIDATORS]] endpoints with HOST/PORT were advertised.\n',
+      );
+    }
+    for (const endpoint of endpoints) {
+      const report = await new OverlayHeartbeatWatchdog({ timeoutMs }).watch({
+        host: endpoint.host,
+        port: endpoint.port,
+        ...(endpoint.publicKey === '' ? {} : { publicKey: endpoint.publicKey }),
+      });
+      // Monitoring output goes to stderr so --format json stays parseable.
+      process.stderr.write(renderHeartbeatReport(report));
+      if (report.ok) continue;
+
+      const where = endpoint.path === undefined ? 'VALIDATORS' : `${endpoint.path}.HOST`;
+      if (report.suddenClosure !== undefined) {
+        out.push({
+          rule: HEARTBEAT_SUDDEN_CLOSURE,
+          severity: 'error',
+          category: 'network',
+          message: `Overlay session with ${endpoint.rawEndpoint} closed before a heartbeat was acknowledged: ${report.suddenClosure}`,
+          path: where,
+          suggestion:
+            'Check middlebox idle timeouts and the peer logs, then reconnect and verify the peer is still in the validator set before routing consensus traffic through it.',
+        });
+      } else if (report.metrics.probesAcknowledged === 0) {
+        out.push({
+          rule: HEARTBEAT_UNRESPONSIVE,
+          severity: 'error',
+          category: 'network',
+          message: `Advertised validator ${endpoint.rawEndpoint} did not acknowledge a single heartbeat within ${timeoutMs}ms`,
+          path: where,
+          suggestion:
+            'Confirm the overlay port is reachable from your network and that the peer accepts heartbeat probes; remove it from rotation until it answers.',
+        });
+      } else if (report.metrics.erratic) {
+        out.push({
+          rule: HEARTBEAT_ERRATIC,
+          severity: 'warning',
+          category: 'network',
+          message: `Validator ${endpoint.rawEndpoint} returned erratic heartbeat responses (${report.metrics.probesMissed} missed, jitter ${report.metrics.jitterMs?.toFixed(1) ?? 'n/a'}ms)`,
+          path: where,
+          suggestion:
+            'Check the network path for packet loss before relying on this peer for quorum; stable latency matters more than the absolute value.',
+        });
+      }
+    }
   }
   return out;
 }
@@ -1224,9 +1300,7 @@ async function verifySep31Sep12Command(args: string[]): Promise<number> {
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
     }).verify({ directPaymentServer: direct, kycServer: kyc });
     process.stdout.write(
-      format === 'json'
-        ? `${JSON.stringify(report, null, 2)}\n`
-        : renderSep31Sep12Report(report),
+      format === 'json' ? `${JSON.stringify(report, null, 2)}\n` : renderSep31Sep12Report(report),
     );
     return report.ok ? 0 : 1;
   } catch (error) {
@@ -1275,6 +1349,108 @@ async function auditKeySeparationCommand(args: string[]): Promise<number> {
         : renderKeySeparationReport(result.report),
     );
     return result.report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+function parseQuorumPeers(value: unknown): QuorumPeerConfig[] {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === 'object' &&
+        value !== null &&
+        Array.isArray((value as { peers?: unknown }).peers)
+      ? (value as { peers: unknown[] }).peers
+      : undefined;
+  if (raw === undefined) {
+    throw new Error('Quorum file must be a JSON array or an object with a "peers" array');
+  }
+
+  return raw.map((entry, index) => {
+    if (typeof entry !== 'object' || entry === null) {
+      throw new Error(`Quorum entry ${index} must be an object with name and validatorKeys`);
+    }
+    const peer = entry as Record<string, unknown>;
+    const name = typeof peer.name === 'string' ? peer.name : undefined;
+    const keys = Array.isArray(peer.validatorKeys)
+      ? peer.validatorKeys.filter((key): key is string => typeof key === 'string')
+      : undefined;
+    if (name === undefined || keys === undefined) {
+      throw new Error(`Quorum entry ${index} must have a string name and a validatorKeys array`);
+    }
+    const kind = peer.kind === 'anchor' ? 'anchor' : 'peer';
+    return { name, validatorKeys: keys, kind };
+  });
+}
+
+/** `stellar-toml-lint audit-validator-rotation --domain <domain> [--format text|json]` */
+async function auditValidatorRotationCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let format = 'text';
+  let peersPath: string | undefined;
+  let previousSignature: string | undefined;
+  let replacementSignature: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else if (arg === '--peers') peersPath = requireValue(args, ++i, arg);
+    else if (arg === '--previous-signature') previousSignature = requireValue(args, ++i, arg);
+    else if (arg === '--replacement-signature') replacementSignature = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-validator-rotation\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-validator-rotation --domain <domain> ' +
+        '[--previous-signature <sig>] [--replacement-signature <sig>] ' +
+        '[--peers <quorum.json>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const host = domain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const url = `https://${host}/.well-known/stellar.toml`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      process.stderr.write(`Could not fetch ${url}: HTTP ${response.status}\n`);
+      return 2;
+    }
+    const doc = parseToml(await response.text()) as Record<string, unknown>;
+
+    const peers =
+      peersPath === undefined
+        ? []
+        : parseQuorumPeers(JSON.parse(await readFile(resolve(peersPath), 'utf8')) as unknown);
+    const attestation: KeyRotationAttestation = {};
+    if (previousSignature !== undefined) attestation.previousKeySignature = previousSignature;
+    if (replacementSignature !== undefined) {
+      attestation.replacementKeySignature = replacementSignature;
+    }
+    const declaredValidatorKeys = Array.isArray(doc.VALIDATORS)
+      ? doc.VALIDATORS.flatMap((entry) => {
+          if (typeof entry !== 'object' || entry === null) return [];
+          const key = (entry as Record<string, unknown>).PUBLIC_KEY;
+          return typeof key === 'string' ? [key] : [];
+        })
+      : [];
+
+    const verifier = new ValidatorKeyRotationVerifier({
+      domain: host,
+      attestation,
+      peers,
+      declaredValidatorKeys,
+    });
+    const report = verifier.audit(doc);
+    process.stdout.write(
+      format === 'json' ? `${JSON.stringify(report, null, 2)}\n` : renderKeyRotationReport(report),
+    );
+    return report.ok ? 0 : 1;
   } catch (error) {
     process.stderr.write(`${message(error)}\n`);
     return 2;
@@ -1950,6 +2126,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
+  if (argv[0] === 'audit-validator-rotation') return auditValidatorRotationCommand(argv.slice(1));
   if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
   if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
   if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
@@ -2718,6 +2895,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditEsgDisclosures: false,
     auditOpenTelemetry: false,
     crawlPeers: false,
+    monitorHeartbeat: false,
     verifyDnssec: false,
     auditDnsTakeover: false,
     auditSecrets: false,
@@ -2923,6 +3101,20 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--crawl-peers':
         cli.crawlPeers = true;
         break;
+
+      case '--monitor-heartbeat':
+        cli.monitorHeartbeat = true;
+        break;
+
+      case '--timeout': {
+        const raw = requireValue(argv, ++i, arg);
+        const seconds = Number(raw);
+        if (!Number.isFinite(seconds) || seconds <= 0) {
+          throw new Error(`--timeout expects a positive number of seconds, got "${raw}".`);
+        }
+        cli.heartbeatTimeoutSeconds = seconds;
+        break;
+      }
 
       case '--verify-dnssec':
         cli.verifyDnssec = true;
