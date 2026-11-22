@@ -30,6 +30,10 @@ import { federationSecurityRules } from '../protocols/federationSecurityTester.j
 import { reverseFederationRules } from '../protocols/reverseFederationVerifier.js';
 import { sep30Rules } from '../protocols/sep30Verifier.js';
 import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier.js';
+import { sep38CircuitBreakerRules } from '../protocols/sep38CircuitBreaker.js';
+import { sep6PollingRules } from '../protocols/sep6Polling.js';
+import { sep10JwtRules } from '../protocols/sep10JwtAuditor.js';
+import { sep12FileUploadRules } from '../protocols/sep12FileUpload.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
 import { subdomainTakeoverRules } from '../security/subdomainScanner.js';
@@ -44,6 +48,7 @@ import { zkRules } from '../zk/rangeProofVerifier.js';
 import { secp256k1BridgeRules } from '../crypto/secp256k1Verifier.js';
 import { kzgRules } from '../crypto/kzgVerifier.js';
 import { overlayHandshakeRules } from '../overlay/handshakeTester.js';
+import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -80,6 +85,10 @@ export const allRules: Rule[] = [
   ...reverseFederationRules,
   ...sep30Rules,
   ...promotionalPricingRules,
+  ...sep38CircuitBreakerRules,
+  ...sep6PollingRules,
+  ...sep10JwtRules,
+  ...sep12FileUploadRules,
   ...federationSrvRules,
   ...esgRules,
   ...subdomainTakeoverRules,
@@ -94,6 +103,7 @@ export const allRules: Rule[] = [
   ...secp256k1BridgeRules,
   ...kzgRules,
   ...overlayHandshakeRules,
+  ...sep31Sep12Rules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -129,6 +139,10 @@ export {
   reverseFederationRules,
   sep30Rules,
   promotionalPricingRules,
+  sep38CircuitBreakerRules,
+  sep6PollingRules,
+  sep10JwtRules,
+  sep12FileUploadRules,
   federationSrvRules,
   esgRules,
   subdomainTakeoverRules,
@@ -143,4 +157,5 @@ export {
   secp256k1BridgeRules,
   kzgRules,
   overlayHandshakeRules,
+  sep31Sep12Rules,
 };

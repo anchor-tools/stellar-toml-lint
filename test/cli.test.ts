@@ -65,6 +65,7 @@ describe('cli', () => {
     expect(stdout).toContain('USAGE');
     expect(stdout).toContain('EXIT CODES');
     expect(stdout).toContain('--check-contracts');
+    expect(stdout).toContain('--audit-events');
     expect(stdout).toContain('--audit-opentelemetry');
     expect(stdout).toContain('--soroban-rpc');
     expect(stdout).toContain('checkstyle');
@@ -423,6 +424,20 @@ describe('cli security audits', () => {
     const unknown = await cli(['audit-key-separation', '--nope']);
     expect(unknown.code).toBe(2);
     expect(unknown.stderr).toContain('Unknown option --nope');
+  });
+
+  it('requires a domain for the SEP-31/SEP-12 consistency subcommand', async () => {
+    const missing = await cli(['verify-sep31-sep12']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('verify-sep31-sep12 --domain <domain>');
+
+    const unknown = await cli(['verify-sep31-sep12', '--nope']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option --nope');
+
+    const { stdout } = await cli(['--list-rules']);
+    expect(stdout).toContain('sep31/field-orphaned');
+    expect(stdout).toContain('sep12/field-type-incompatible');
   });
 });
 
