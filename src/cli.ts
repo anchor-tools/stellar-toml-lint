@@ -63,6 +63,10 @@ import {
 import { auditSep30Recovery } from './protocols/sep30Verifier.js';
 import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { verifyFederationSrv } from './protocols/federationSrvVerifier.js';
+import {
+  renderSep31Sep12Report,
+  Sep31Sep12ConsistencyEngine,
+} from './protocols/sep31Sep12Consistency.js';
 import { auditEsgDisclosures, renderEsgReport } from './protocols/esgComplianceVerifier.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { auditCors, renderCorsReport } from './security/corsAuditor.js';
@@ -356,6 +360,9 @@ OPTIONS
       --verify-promotions Compare promotional fee claims against SEP-38 quote
                           fees (with --check-network); also available as
                           'verify-promotions --domain <domain>'
+  stellar-toml-lint verify-sep31-sep12 --domain <domain> [--format text|json]
+                                         Cross-check the fields advertised by SEP-31
+                                         /info against the SEP-12 customer schemas
       --verify-federation-srv
                           Check _stellar-federation._tcp.<domain> SRV records
                           against FEDERATION_SERVER (use with --domain)
@@ -1065,6 +1072,76 @@ async function verifyFederationSyncCommand(args: string[]): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint verify-sep31-sep12 --domain <domain> [--format text|json] [--timeout <ms>]` */
+async function verifySep31Sep12Command(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let format: 'text' | 'json' = 'text';
+  let timeoutMs: number | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--format') {
+      const value = requireValue(args, ++i, arg);
+      if (value !== 'text' && value !== 'json') {
+        process.stderr.write(`Unknown format "${value}". Expected text or json.\n`);
+        return 2;
+      }
+      format = value;
+    } else if (arg === '--timeout') {
+      const value = Number(requireValue(args, ++i, arg));
+      if (!Number.isInteger(value) || value < 1 || value > 120_000) {
+        process.stderr.write('--timeout expects an integer from 1 to 120000 milliseconds.\n');
+        return 2;
+      }
+      timeoutMs = value;
+    } else {
+      process.stderr.write(`Unknown option ${arg} for verify-sep31-sep12\n`);
+      return 2;
+    }
+  }
+
+  if (domain === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint verify-sep31-sep12 --domain <domain> [--format text|json] ' +
+        '[--timeout <ms>]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const host = domain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const url = `https://${host}/.well-known/stellar.toml`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      process.stderr.write(`Could not fetch ${url}: HTTP ${response.status}\n`);
+      return 2;
+    }
+    const doc = parseToml(await response.text()) as Record<string, unknown>;
+    const direct = doc.DIRECT_PAYMENT_SERVER;
+    const kyc = doc.KYC_SERVER;
+    if (typeof direct !== 'string' || typeof kyc !== 'string') {
+      process.stderr.write(
+        'stellar.toml must declare both DIRECT_PAYMENT_SERVER (SEP-31) and KYC_SERVER (SEP-12)\n',
+      );
+      return 1;
+    }
+
+    const report = await new Sep31Sep12ConsistencyEngine({
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    }).verify({ directPaymentServer: direct, kycServer: kyc });
+    process.stdout.write(
+      format === 'json'
+        ? `${JSON.stringify(report, null, 2)}\n`
+        : renderSep31Sep12Report(report),
+    );
+    return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 /** `stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>] [--format text|json]` */
 async function auditKeySeparationCommand(args: string[]): Promise<number> {
   let domain: string | undefined;
@@ -1467,6 +1544,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'dispatch-alert') return dispatchAlert(argv.slice(1));
   if (argv[0] === 'audit-coop-coep') return auditCoopCoep(argv.slice(1));
   if (argv[0] === 'verify-federation-sync') return verifyFederationSyncCommand(argv.slice(1));
+  if (argv[0] === 'verify-sep31-sep12') return verifySep31Sep12Command(argv.slice(1));
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'verify-archive-gpg') return verifyArchiveGpgCommand(argv.slice(1));
