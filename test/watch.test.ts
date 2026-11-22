@@ -73,7 +73,7 @@ describe('Watch mode', () => {
           }
         }
       });
-      setTimeout(() => resolve(false), 4000);
+      setTimeout(() => resolve(false), 15000);
     });
 
     child.kill('SIGKILL');

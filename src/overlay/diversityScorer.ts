@@ -90,7 +90,7 @@ export function parseHostPort(rawHost: string): { hostname: string; port?: numbe
 function inferDefaultGeoMetadata(ip: string, hostname: string): Partial<ValidatorLocation> {
   const h = hostname.toLowerCase();
 
-  if (h.includes('aws') || h.includes('amazon') || h.includes('compute.amazonaws.com')) {
+  if (h.includes('aws') || h.includes('amazon') || /(^|\.)compute\.amazonaws\.com$/.test(h) || h.endsWith('.amazonaws.com')) {
     return {
       asn: 'AS16509',
       asOrg: 'Amazon.com, Inc.',
@@ -104,7 +104,7 @@ function inferDefaultGeoMetadata(ip: string, hostname: string): Partial<Validato
       countryCode: 'US',
     };
   }
-  if (h.includes('gcp') || h.includes('google') || h.includes('googleusercontent.com')) {
+  if (h.includes('gcp') || h.includes('google') || /(^|\.)googleusercontent\.com$/.test(h) || h.endsWith('.googleusercontent.com')) {
     return {
       asn: 'AS15169',
       asOrg: 'Google LLC',
