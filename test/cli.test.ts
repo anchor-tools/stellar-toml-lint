@@ -65,6 +65,7 @@ describe('cli', () => {
     expect(stdout).toContain('USAGE');
     expect(stdout).toContain('EXIT CODES');
     expect(stdout).toContain('--check-contracts');
+    expect(stdout).toContain('--audit-events');
     expect(stdout).toContain('--audit-opentelemetry');
     expect(stdout).toContain('--soroban-rpc');
     expect(stdout).toContain('checkstyle');
@@ -121,6 +122,15 @@ describe('cli', () => {
 
     const { code } = await cli([fixture('valid.toml'), '--audit-quotes']);
     expect(code).toBe(0);
+  });
+
+  it('documents --audit-sep38-spreads and accepts it without a network run', async () => {
+    const { stdout } = await cli(['--help']);
+    expect(stdout).toContain('--audit-sep38-spreads');
+
+    const { code, stdout: runOut } = await cli([fixture('valid.toml'), '--audit-sep38-spreads']);
+    expect(code).toBe(0);
+    expect(runOut).not.toContain('sep38/spread-exceeds-tolerance');
   });
 
   it('runs the OpenTelemetry trace audit with hermetic fixtures', async () => {
@@ -423,6 +433,20 @@ describe('cli security audits', () => {
     const unknown = await cli(['audit-key-separation', '--nope']);
     expect(unknown.code).toBe(2);
     expect(unknown.stderr).toContain('Unknown option --nope');
+  });
+
+  it('requires a domain for the SEP-31/SEP-12 consistency subcommand', async () => {
+    const missing = await cli(['verify-sep31-sep12']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('verify-sep31-sep12 --domain <domain>');
+
+    const unknown = await cli(['verify-sep31-sep12', '--nope']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option --nope');
+
+    const { stdout } = await cli(['--list-rules']);
+    expect(stdout).toContain('sep31/field-orphaned');
+    expect(stdout).toContain('sep12/field-type-incompatible');
   });
 });
 

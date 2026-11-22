@@ -20,6 +20,7 @@ import { auditUpgradeSecurity, upgradeAuditorRules } from './soroban/upgrade-aud
 import { auditSupplyInvariant, supplyInvariantRules } from './soroban/supply-invariant.js';
 import { auditWasmBudget, budgetEstimatorRules } from './soroban/budget-estimator.js';
 import type { BudgetOptions } from './soroban/budget-estimator.js';
+import { eventVerifierRules } from './soroban/eventVerifier.js';
 
 /** Roughly a day of ledgers at ~5 seconds per ledger. */
 const EXPIRING_WINDOW_LEDGERS = 17_280;
@@ -507,6 +508,7 @@ export const sorobanRules: Rule[] = [
   ...upgradeAuditorRules,
   ...supplyInvariantRules,
   ...budgetEstimatorRules,
+  ...eventVerifierRules,
 ];
 
 export const sorobanRuleIds: readonly string[] = sorobanRules.map((rule) => rule.id);
@@ -514,3 +516,5 @@ export const sorobanRuleIds: readonly string[] = sorobanRules.map((rule) => rule
 export { auditUpgradeSecurity, upgradeAuditorRules };
 export { auditSupplyInvariant, supplyInvariantRules };
 export { budgetEstimatorRules };
+export { eventVerifierRules };
+export { auditTomlEvents, EventSchemaVerifier } from './soroban/eventVerifier.js';

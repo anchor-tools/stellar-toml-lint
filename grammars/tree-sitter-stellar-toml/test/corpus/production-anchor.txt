@@ -1,0 +1,305 @@
+==================
+Production anchor
+==================
+
+# A full SEP-1 info file for an anchor that lists fiat, asset-backed and
+# contract-based currencies, runs validators, and publishes every protocol
+# endpoint.
+VERSION = "2.7.0"
+NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"
+
+FEDERATION_SERVER = "https://api.example.com/federation"
+AUTH_SERVER = "https://api.example.com/auth"
+TRANSFER_SERVER = "https://api.example.com/sep6"
+TRANSFER_SERVER_SEP0024 = "https://api.example.com/sep24"
+KYC_SERVER = "https://api.example.com/kyc"
+DIRECT_PAYMENT_SERVER = "https://api.example.com/sep31"
+ANCHOR_QUOTE_SERVER = "https://api.example.com/sep38"
+HORIZON_URL = "https://horizon-live.stellar.org:1337"
+ACCOUNTS = [
+  "GCZIFP2JXLPL7FI26L3B27OKZJO7C6UWEXKHBVL52AYMS3JEDD7CGO3Q",
+  "GCBS4OSRDMZOEJP332S3HBF2JX3WJTXNGMQ4I4T7EF4DE42J2QSUKUUW",
+]
+SIGNING_KEY = "GC5MEN6ZAK7IPVMSMKXH2FKKGL6UTKW66V6ORPJNPCULDDIMYALEHB5K"
+
+[DOCUMENTATION]
+ORG_NAME = "Example Anchor Ltd"
+ORG_DBA = "Example Anchor"
+ORG_URL = "https://example.com"
+ORG_LOGO = "https://example.com/logo.png"
+ORG_OFFICIAL_EMAIL = "legal@example.com"
+ORG_SUPPORT_EMAIL = "support@example.com"
+
+[[PRINCIPALS]]
+name = "Jane Jedidiah Johnson"
+email = "jane@example.com"
+keybase = "crypto_jane"
+id_photo_hash = "be688838ca8686e5c90689bf2ab585cef1137c999b48c70b92f67a5c34dc1569"
+
+[[CURRENCIES]]
+code = "USD"
+issuer = "GCX3MNFJJ4RHYXJPZYHWKCVGVMKU5VTP3VT34SWR34ZOFRIXO2KTT3G3"
+display_decimals = 2
+name = "US Dollar"
+desc = "One for one against the US dollar."
+is_asset_anchored = true
+anchor_asset_type = "fiat"
+status = "live"
+regulated = true
+
+[[CURRENCIES]]
+code = "BTC"
+issuer = "GAJ4U7UFT4ZAFRNL5KQWPRB6GFFUYEVBZ7UQJ5WLWHQK5LZBSQEYCV4V"
+distribution_account = "GCBS4OSRDMZOEJP332S3HBF2JX3WJTXNGMQ4I4T7EF4DE42J2QSUKUUW"
+fixed_number = 21000000
+max_number = 21000000
+status = "live"
+
+[[CURRENCIES]]
+code = "native"
+name = "Stellar Lumens"
+
+[[VALIDATORS]]
+ALIAS = "example-us"
+DISPLAY_NAME = "Example United States"
+HOST = "validator-us.example.com:11625"
+PUBLIC_KEY = "GBXOVY3F3JZOPFJGNKZA2UM2CZK6KIUS2W4JJAOVASCL3BIQYSBIXTEA"
+HISTORY = "https://history.example.com/prd/core-live/core_live_001/"
+
+[[VALIDATORS]]
+ALIAS = "example-eu"
+HOST = "validator-eu.example.com:11625"
+PUBLIC_KEY = "GA7WVWU5TMBHMFNHPJS4PEBGUW52AQTV75S5ZYWD7UEAFL3N5RK2TV6B"
+
+---
+
+(document
+  (newline)
+  (comment)
+  (newline)
+  (comment)
+  (newline)
+  (comment)
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (array
+      (newline)
+      (public_key)
+      (newline)
+      (public_key)
+      (newline)))
+  (newline)
+  (pair
+    (bare_key)
+    (public_key))
+  (newline)
+  (newline)
+  (table
+    (sep_table)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (array_table
+    (bare_key)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (array_table
+    (currency_entry)
+    (newline)
+    (pair
+      (bare_key)
+      (asset_code))
+    (newline)
+    (pair
+      (bare_key)
+      (public_key))
+    (newline)
+    (pair
+      (bare_key)
+      (integer))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (boolean))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (boolean))
+    (newline)
+    (newline))
+  (array_table
+    (currency_entry)
+    (newline)
+    (pair
+      (bare_key)
+      (asset_code))
+    (newline)
+    (pair
+      (bare_key)
+      (public_key))
+    (newline)
+    (pair
+      (bare_key)
+      (public_key))
+    (newline)
+    (pair
+      (bare_key)
+      (integer))
+    (newline)
+    (pair
+      (bare_key)
+      (integer))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (array_table
+    (currency_entry)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (array_table
+    (bare_key)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (public_key))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (array_table
+    (bare_key)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (public_key))
+    (newline)))

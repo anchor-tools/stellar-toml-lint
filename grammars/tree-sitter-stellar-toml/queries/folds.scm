@@ -1,3 +1,8 @@
+; Captures: @fold
+;
+; Fold regions, not highlights: `@fold` is the only capture the folding
+; consumers read.
+
 ; Fold a whole table, including its key/value pairs.
 (table) @fold
 (array_table) @fold
