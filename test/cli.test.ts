@@ -425,6 +425,20 @@ describe('cli security audits', () => {
     expect(unknown.code).toBe(2);
     expect(unknown.stderr).toContain('Unknown option --nope');
   });
+
+  it('requires a domain for the SEP-31/SEP-12 consistency subcommand', async () => {
+    const missing = await cli(['verify-sep31-sep12']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('verify-sep31-sep12 --domain <domain>');
+
+    const unknown = await cli(['verify-sep31-sep12', '--nope']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option --nope');
+
+    const { stdout } = await cli(['--list-rules']);
+    expect(stdout).toContain('sep31/field-orphaned');
+    expect(stdout).toContain('sep12/field-type-incompatible');
+  });
 });
 
 describe('cli -f markdown', () => {
