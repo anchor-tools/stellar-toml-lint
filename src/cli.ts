@@ -69,6 +69,7 @@ import {
 import { auditSep30Recovery } from './protocols/sep30Verifier.js';
 import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { verifySep38Volatility } from './protocols/sep38CircuitBreaker.js';
+import { auditSep38QuoteDiscrepancies } from './protocols/sep38Discrepancy.js';
 import { auditSep6Polling } from './protocols/sep6Polling.js';
 import { auditSep10Jwt } from './protocols/sep10JwtAuditor.js';
 import { testSep12FileUploads } from './protocols/sep12FileUpload.js';
@@ -209,6 +210,7 @@ interface Cli {
   auditClickjacking: boolean;
   verifyPromotions: boolean;
   auditSep38Volatility: boolean;
+  auditSep38Spreads: boolean;
   auditSep6Polling: boolean;
   auditSep10Jwt: boolean;
   testSep12Upload: boolean;
@@ -411,6 +413,12 @@ OPTIONS
                           SDEX shocks; flag quote windows over the 60s volatility
                           buffer, stale rates and missing circuit breakers; also
                           available as 'sep38-volatility --domain <domain>'
+      --audit-sep38-spreads
+                          Price small, medium and large trades through both
+                          GET /prices and POST /quote, flag firm spreads beyond
+                          the configured tolerance or disclosed fees, and verify
+                          expired quotes are refused; also available as
+                          'sep38-spreads --domain <domain>'
       --audit-sep6-polling
                           Repeat GET /transaction at 2s/5s/10s cadences to check
                           idempotency, cache headers and rate-limit signals (use
@@ -644,6 +652,10 @@ async function runExtraAudits(
   }
   if (cli.auditSep38Volatility) {
     const result = await verifySep38Volatility(parsed, fetchImpl, { rules });
+    out.push(...result.diagnostics);
+  }
+  if (cli.auditSep38Spreads && (cli.checkNetwork || domain !== undefined)) {
+    const result = await auditSep38QuoteDiscrepancies(parsed, fetchImpl, { rules });
     out.push(...result.diagnostics);
   }
   if (cli.auditSep6Polling) {
@@ -1931,6 +1943,10 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'sep38-volatility') {
     argv = ['--audit-sep38-volatility', '--check-network', ...argv.slice(1)];
   }
+  // `sep38-spreads --domain <domain>` requests live indicative and firm quotes.
+  if (argv[0] === 'sep38-spreads') {
+    argv = ['--audit-sep38-spreads', '--check-network', ...argv.slice(1)];
+  }
   if (argv[0] === 'refactor') return refactorCommand(argv.slice(1));
   if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
@@ -2710,6 +2726,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditClickjacking: false,
     verifyPromotions: false,
     auditSep38Volatility: false,
+    auditSep38Spreads: false,
     auditSep6Polling: false,
     auditSep10Jwt: false,
     testSep12Upload: false,
@@ -2874,6 +2891,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-sep38-volatility':
         cli.auditSep38Volatility = true;
+        break;
+
+      case '--audit-sep38-spreads':
+        cli.auditSep38Spreads = true;
         break;
 
       case '--audit-sep6-polling':

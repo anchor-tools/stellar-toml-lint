@@ -78,6 +78,10 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--verify-sep10', description: 'Verify SEP-10 nonce replay resistance' },
   { long: '--audit-quotes', description: 'Verify SEP-38 quote execution through SEP-6' },
   {
+    long: '--audit-sep38-spreads',
+    description: 'Compare SEP-38 indicative and firm quote spreads across trade tiers',
+  },
+  {
     long: '--audit-cors',
     description: 'Audit endpoint CORS policies for wildcard and credential exposure',
   },

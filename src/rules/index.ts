@@ -31,6 +31,7 @@ import { reverseFederationRules } from '../protocols/reverseFederationVerifier.j
 import { sep30Rules } from '../protocols/sep30Verifier.js';
 import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier.js';
 import { sep38CircuitBreakerRules } from '../protocols/sep38CircuitBreaker.js';
+import { sep38DiscrepancyRules } from '../protocols/sep38Discrepancy.js';
 import { sep6PollingRules } from '../protocols/sep6Polling.js';
 import { sep10JwtRules } from '../protocols/sep10JwtAuditor.js';
 import { sep12FileUploadRules } from '../protocols/sep12FileUpload.js';
@@ -86,6 +87,7 @@ export const allRules: Rule[] = [
   ...sep30Rules,
   ...promotionalPricingRules,
   ...sep38CircuitBreakerRules,
+  ...sep38DiscrepancyRules,
   ...sep6PollingRules,
   ...sep10JwtRules,
   ...sep12FileUploadRules,
@@ -140,6 +142,7 @@ export {
   sep30Rules,
   promotionalPricingRules,
   sep38CircuitBreakerRules,
+  sep38DiscrepancyRules,
   sep6PollingRules,
   sep10JwtRules,
   sep12FileUploadRules,
