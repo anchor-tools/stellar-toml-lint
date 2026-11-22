@@ -49,6 +49,10 @@ import { secp256k1BridgeRules } from '../crypto/secp256k1Verifier.js';
 import { kzgRules } from '../crypto/kzgVerifier.js';
 import { overlayHandshakeRules } from '../overlay/handshakeTester.js';
 import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
+import { sep10IsolationRules } from '../protocols/sep10Isolation.js';
+import { sep24SecurityRules } from '../protocols/sep24Security.js';
+import { sep24RefundRules } from '../protocols/sep24RefundAuditor.js';
+import { sep38DeliveryRules } from '../protocols/sep38Delivery.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -104,6 +108,10 @@ export const allRules: Rule[] = [
   ...kzgRules,
   ...overlayHandshakeRules,
   ...sep31Sep12Rules,
+  ...sep10IsolationRules,
+  ...sep24SecurityRules,
+  ...sep24RefundRules,
+  ...sep38DeliveryRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -158,4 +166,8 @@ export {
   kzgRules,
   overlayHandshakeRules,
   sep31Sep12Rules,
+  sep10IsolationRules,
+  sep24SecurityRules,
+  sep24RefundRules,
+  sep38DeliveryRules,
 };

@@ -159,6 +159,7 @@ and only `--write` changes the file. `--split` instead emits modular partials gr
 | `--verify-promotions`         | Compare promotional fee claims with SEP-38 `/price` fees (also `verify-promotions --domain <domain>`)                               |
 | `--verify-federation-srv`     | Check `_stellar-federation._tcp.<domain>` SRV records against `FEDERATION_SERVER` (use with `--domain`)                             |
 | `--audit-esg-disclosures`     | Verify `DOCUMENTATION.ORG_ESG` disclosures and attestation signature, and print a sustainability rating                             |
+| `--audit-sep24-security`      | Validate CSP, framing, HSTS, referrer policy, mixed content and SRI on SEP-24 interactive webviews (also a subcommand)              |
 | `--audit-opentelemetry`       | Probe SEP-6, SEP-24, SEP-31 and SEP-38 `/info` endpoints with W3C Trace Context headers and inspect response correlation evidence   |
 | `--audit-kyc-fsm`             | Audit SEP-12 customer status state machines for stuck or circular onboarding (use with `--domain`)                                  |
 | `--audit-cors`                | Probe every declared endpoint for wildcard-plus-credentials and unvalidated `Origin` CORS policies (OWASP)                          |
@@ -1492,6 +1493,40 @@ cannot: a root key held by one signer at one threshold emits `keys/single-signer
 `keys/issuer-operational-activity` (warning). Issuer administration (`allow_trust`, `set_options`) is
 not counted as operational traffic. Accounts Horizon cannot serve stay silent. The report prints the
 role graph as a tree, and `--format json` adds the diagnostics.
+
+**Network isolation** (`stellar-toml-lint audit-sep10-isolation --domain <domain>`,
+`src/protocols/sep10Isolation.ts`) — fetches the SEP-10 challenge, parses it under the passphrase the
+file declares, and checks the signature against that network. A challenge that verifies under the
+other network emits `sep10/isolation-challenge-network-mismatch` (error). The auditor then re-signs the
+same challenge with a throwaway client key under the _other_ passphrase and POSTs it back: an accepted
+probe emits `sep10/isolation-cross-network-accepted` (error), a rejection that is not HTTP 400 emits
+`sep10/isolation-cross-network-bad-status` (error), and a rejection without a descriptive `error` or
+`code` emits `sep10/isolation-missing-error-code` (warning). Only public keys and XDR appear in the
+report; no client seed is ever logged.
+
+**Webview security** (`stellar-toml-lint audit-sep24-security --domain <domain> --sep10-token <jwt>`,
+`src/protocols/sep24Security.ts`) — requests each SEP-24 `/transactions/{deposit,withdraw}/interactive`
+endpoint with the session token and inspects the response. A missing CSP
+(`sep24/webview-missing-csp`), an absent or wildcard `frame-ancestors`
+(`sep24/webview-missing-frame-ancestors`, `sep24/webview-wildcard-frame-ancestors`), an
+`X-Frame-Options` value browsers no longer honour (`sep24/webview-weak-frame-options`), HSTS missing
+or shorter than one year, a permissive `Referrer-Policy`, `http://` subresources on an HTTPS page,
+and a `<script>` without `integrity` all produce findings.
+
+**Refund audit** (`stellar-toml-lint verify-refund --domain <domain> --tx-id <id> --sep10-token <jwt>`,
+`src/protocols/sep24RefundAuditor.ts`) — reads the transaction's `refunds` object from the anchor and
+checks every entry against the SEP-24 schema: `id`, `amount`, `asset`, `fee`, `status`, and a memo
+the deposit can be matched on (`sep24/refund-schema-invalid`). Each refund is then matched against
+Horizon payments on the destination account, so a refund paid in the wrong asset, to the wrong
+account, or with a mismatched memo is reported (`sep24/refund-asset-mismatch`,
+`sep24/refund-destination-mismatch`, `sep24/refund-memo-mismatch`) instead of silently passing.
+
+**Delivery methods** (`stellar-toml-lint verify-delivery-methods --domain <domain>`,
+`src/protocols/sep38Delivery.ts`) — validates the `sell_delivery_methods` and `buy_delivery_methods`
+declared for each SEP-38 asset: every method needs a lowercase identifier and a human description
+(`sep38/delivery-method-invalid`), duplicates are flagged, and a booked `/quote` must itemise the
+selected delivery method in `fee.details` (`sep38/delivery-fee-breakdown-missing`). A quote the server
+refuses to book emits `sep38/delivery-fee-missing` (warning).
 
 **Frame embedding** (with `--audit-clickjacking`, `src/security/clickjackingAuditor.ts`) — the URLs a
 wallet opens in an iframe (SEP-24 interactive endpoints, `KYC_SERVER`, `DIRECT_PAYMENT_SERVER`,
