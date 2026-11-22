@@ -595,10 +595,10 @@ export class OverlayHeartbeatWatchdog {
         const sequence = probes.length + 1;
         const sentAt = Date.now();
         try {
-          const acknowledgedAt = await withProbeTimeout(
-            channel.probe(sequence),
-            Math.min(probeTimeoutMs, Math.max(1, deadline - Date.now())),
-          );
+          // The window bounds when probes start, not how long a started probe
+          // may take: truncating the last probe's timeout to the time left in
+          // the window would count a healthy peer's final pong as missed.
+          const acknowledgedAt = await withProbeTimeout(channel.probe(sequence), probeTimeoutMs);
           probes.push({
             sequence,
             sentAt,
