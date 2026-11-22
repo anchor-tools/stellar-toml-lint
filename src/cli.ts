@@ -263,6 +263,7 @@ interface Cli {
   interactive?: boolean;
   checkContracts: boolean;
   auditEvents: boolean;
+  auditReentrancy: boolean;
   sorobanRpc?: string;
   graph?: GraphFormat;
   graphIncludeContracts?: boolean;
@@ -519,6 +520,9 @@ OPTIONS
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
                           (implied by --domain)
       --check-contracts   Verify Soroban contract and WASM TTL liveliness
+      --audit-reentrancy  Statically audit each contract's WASM for missing
+                          reentrancy guards, non-atomic cross-contract writes,
+                          and recursive call graphs
       --audit-events      Verify the event schema and indexing topics of every
                           contract the file advertises, via its WASM spec and
                           simulated emissions
@@ -2722,6 +2726,7 @@ async function main(argv: string[]): Promise<number> {
             fileResult.parsed &&
             (cli.checkNetwork ||
               cli.checkContracts ||
+              cli.auditReentrancy ||
               cli.auditEvents ||
               cli.followLinks ||
               cli.domain !== undefined)
@@ -2794,6 +2799,7 @@ async function main(argv: string[]): Promise<number> {
                 })),
                 ...(await checkContracts(fileResult.parsed, fetchImpl, {
                   rules,
+                  ...(cli.auditReentrancy ? { auditReentrancy: true } : {}),
                   ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                 })),
                 ...(await auditTomlAuthTree(fileResult.parsed, fetchImpl, {
@@ -2817,6 +2823,17 @@ async function main(argv: string[]): Promise<number> {
               networkDiagnostics.push(
                 ...(await checkContracts(fileResult.parsed, fetchImpl, {
                   rules,
+                  ...(cli.auditReentrancy ? { auditReentrancy: true } : {}),
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })),
+              );
+            }
+
+            if (cli.auditReentrancy && !cli.checkNetwork && !cli.checkContracts) {
+              networkDiagnostics.push(
+                ...(await checkContracts(fileResult.parsed, fetchImpl, {
+                  rules,
+                  auditReentrancy: true,
                   ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                 })),
               );
@@ -3259,6 +3276,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditVaultSecrets: false,
     checkContracts: false,
     auditEvents: false,
+    auditReentrancy: false,
     graphIncludeContracts: false,
     graphIncludeValidators: false,
     graphColorByProtocol: false,
@@ -3505,6 +3523,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-events':
         cli.auditEvents = true;
+        break;
+
+      case '--audit-reentrancy':
+        cli.auditReentrancy = true;
         break;
 
       case '--soroban-rpc':

@@ -1,10 +1,15 @@
 import { Networks } from '@stellar/stellar-base';
 import type { Diagnostic, RuleOverrides } from '../types.js';
-import { auditContractBudget, checkContracts as checkContractsBase } from '../soroban.js';
+import {
+  auditContractBudget,
+  checkContracts as checkContractsBase,
+  fetchContractWasm,
+} from '../soroban.js';
 import { auditUpgradeSecurity } from '../soroban/upgrade-auditor.js';
 import { auditSupplyInvariant } from '../soroban/supply-invariant.js';
 import { auditTomlStorageTtl } from '../soroban/ttlAuditor.js';
 import type { TtlAuditorOptions } from '../soroban/ttlAuditor.js';
+import { auditWasmReentrancy } from '../soroban/reentrancyValidator.js';
 import { rpcUrlFor } from './display-decimals-audit.js';
 import { contractIdsOf } from './currencies.js';
 import { webAuthContractIdOf } from './general.js';
@@ -19,6 +24,8 @@ export interface SorobanAuditOptions {
    * the day-scale expiry check above remains the only TTL finding.
    */
   storageTtl?: TtlAuditorOptions;
+  /** Opt-in static reentrancy and atomicity analysis of each contract's WASM. */
+  auditReentrancy?: boolean;
 }
 
 /**
@@ -66,6 +73,13 @@ export async function checkContracts(
     diagnostics.push(
       ...(await auditContractBudget(target.id, rpcUrl, fetchImpl, { rules: options.rules })),
     );
+
+    if (options.auditReentrancy) {
+      const wasm = await fetchContractWasm(target.id, rpcUrl, fetchImpl);
+      if (wasm !== undefined) {
+        diagnostics.push(...auditWasmReentrancy(target.id, wasm, { rules: options.rules }));
+      }
+    }
   }
 
   // Audit supply invariants for assets declared under [[CURRENCIES]]
