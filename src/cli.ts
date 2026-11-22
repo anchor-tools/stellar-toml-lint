@@ -96,10 +96,7 @@ import { scanSsrf, renderSsrfReport, ssrfDiagnostics } from './security/ssrfScan
 import { StructuralRefactoringEngine, renderRefactorSummary } from './cst/structuralRefactoring.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
-import { RangeProofVerifier } from './zk/rangeProofVerifier.js';
-import { Secp256k1BridgeVerifier } from './crypto/secp256k1Verifier.js';
-import { KzgCommitmentVerifier } from './crypto/kzgVerifier.js';
-import { OverlayHandshakeTester, parseValidatorEndpoints } from './overlay/handshakeTester.js';
+import { parseValidatorEndpoints } from './overlay/handshakeTester.js';
 import {
   ValidatorKeyRotationVerifier,
   renderKeyRotationReport,
@@ -2311,6 +2308,8 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'verify-archive-gpg') return verifyArchiveGpgCommand(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
+  if (argv[0] === 'verify-provenance') return verifyProvenance(argv.slice(1));
+  if (argv[0] === 'audit-dockerfile') return auditContainer(argv.slice(1));
   if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   if (argv[0] === 'migrate') return migrateCommand(argv.slice(1), shouldUseColor());
   if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
