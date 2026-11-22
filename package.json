@@ -91,7 +91,7 @@
     "fake-indexeddb": "^6.2.8",
     "fast-xml-parser": "^5.12.1",
     "prettier": "^3.10.0",
-    "semantic-release": "^25.0.9",
+    "semantic-release": "^26.0.1",
     "typescript": "~7.0.2",
     "typescript-eslint": "^8.72.2",
     "vitest": "^5.1.1",
