@@ -325,6 +325,63 @@ export type {
   DiscordIncidentPayload,
   PagerDutyIncidentPayload,
 } from './gitops/incidentDispatcher.js';
+export {
+  ContainerSecurityAuditor,
+  auditDockerfile,
+  analyzeDockerignore,
+  classifyBaseImage,
+  parseDockerfile,
+  parseDockerStages,
+  parseFrom,
+  renderContainerReport,
+  resolveUserStage,
+  DEFAULT_IMAGE_SIZE_BUDGET,
+} from './gitops/containerAuditor.js';
+export type {
+  BaseImageFamily,
+  ContainerAuditOptions,
+  ContainerAuditReport,
+  ContainerFinding,
+  ContainerFindingCode,
+  ContainerSeverity,
+  DockerInstruction,
+  DockerfileAnalysis,
+  DockerfileStage,
+  DockerignoreAnalysis,
+} from './gitops/containerAuditor.js';
+export {
+  HOSTED_BUILDER_PATTERNS,
+  SlsaProvenanceError,
+  SlsaProvenanceVerifier,
+  certificateChainTrusted,
+  dssePae,
+  normalizeProvenance,
+  parseAttestationDocument,
+  parseProvenanceDocuments,
+  predicateTypeOf,
+  renderProvenanceReport,
+  subjectsOf,
+  verifyEnvelopeSignature,
+  verifySlsaProvenance,
+} from './gitops/slsaVerifier.js';
+export type {
+  AttestationFormat,
+  DsseEnvelope,
+  DsseSignature,
+  NormalizedProvenance,
+  ParsedAttestation,
+  ProvenanceMaterial,
+  ProvenanceSubject,
+  SigstoreBundle,
+  SignatureVerification,
+  SlsaFinding,
+  SlsaFindingCode,
+  SlsaLevel,
+  SlsaSecurityAttestation,
+  SlsaSeverity,
+  SlsaVerificationOptions,
+  SlsaVerificationReport,
+} from './gitops/slsaVerifier.js';
 export { SPEC_URL } from './spec.js';
 export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
@@ -630,6 +687,33 @@ export type {
   Sep38Pair,
 } from './protocols/sep38CircuitBreaker.js';
 export {
+  DEFAULT_MAX_QUOTE_LIFETIME_SECONDS,
+  DEFAULT_QUOTE_TIERS,
+  DEFAULT_SPREAD_TOLERANCE_BPS,
+  RATE_SCALE,
+  Sep38QuoteDiscrepancyAuditor,
+  advertisedFeeBps,
+  auditSep38QuoteDiscrepancies,
+  feeBps,
+  formatScaledDecimal,
+  indicativePriceFrom,
+  parseScaledDecimal,
+  quoteFeeTotal,
+  rateSpreadBps,
+  sep38DiscrepancyRuleIds,
+  sep38DiscrepancyRules,
+  systemSleep,
+  systemWallClock,
+} from './protocols/sep38Discrepancy.js';
+export type {
+  ExpiredQuoteVerdict,
+  MonotonicWallClock,
+  QuoteTier,
+  QuoteTierObservation,
+  Sep38DiscrepancyResult,
+  Sep38QuoteDiscrepancyOptions,
+} from './protocols/sep38Discrepancy.js';
+export {
   DEFAULT_POLLING_INTERVALS_MS,
   SEP6_TRANSACTION_STATUSES,
   Sep6PollingIdempotencyVerifier,
@@ -824,11 +908,7 @@ export { PluginLoadError, loadPluginRules } from './engine/ruleLoader.js';
 export type { PluginSources } from './engine/ruleLoader.js';
 
 // DID & Verifiable Credentials (Issue #507)
-export {
-  DidResolutionVerifier,
-  decodeBase58,
-  encodeBase58,
-} from './crypto/didVerifier.js';
+export { DidResolutionVerifier, decodeBase58, encodeBase58 } from './crypto/didVerifier.js';
 export type {
   DidDocument,
   VerificationMethod,
@@ -843,11 +923,7 @@ export type {
 } from './crypto/didVerifier.js';
 
 // BLS12-381 Multi-Signature & Pairing (Issue #508)
-export {
-  BlsSignatureVerifier,
-  BLS12_381_R,
-  BLS12_381_P,
-} from './crypto/blsVerifier.js';
+export { BlsSignatureVerifier, BLS12_381_R, BLS12_381_P } from './crypto/blsVerifier.js';
 export type {
   BlsGroup,
   SerializationFormat,
@@ -859,10 +935,7 @@ export type {
 } from './crypto/blsVerifier.js';
 
 // Post-Quantum Readiness (Issue #509)
-export {
-  PostQuantumReadinessAuditor,
-  ML_DSA_SPECS,
-} from './crypto/postQuantumAuditor.js';
+export { PostQuantumReadinessAuditor, ML_DSA_SPECS } from './crypto/postQuantumAuditor.js';
 export type {
   MlDsaParameterSet,
   MlDsaSpec,
@@ -872,9 +945,7 @@ export type {
 } from './crypto/postQuantumAuditor.js';
 
 // Hash Agility & Collision Resistance (Issue #510)
-export {
-  HashAgilityAuditor,
-} from './crypto/hashAgilityAuditor.js';
+export { HashAgilityAuditor } from './crypto/hashAgilityAuditor.js';
 export type {
   HashAlgorithm,
   HashFieldInspection,
@@ -964,3 +1035,70 @@ export type {
   HandshakeTesterOptions,
 } from './overlay/handshakeTester.js';
 
+// Validator Key Rotation Verifier (Issue #522)
+export {
+  ValidatorKeyRotationVerifier,
+  detectRotationMarkers,
+  hasRotationMarkers,
+  keyRotationPayload,
+  signKeyRotationPayload,
+  verifyCrossSignatures,
+  renderKeyRotationReport,
+  validatorKeyRotationRules,
+  validatorKeyRotationRuleIds,
+  DEFAULT_ROTATION_GRACE_PERIOD_MS,
+  KEY_ROTATION_MARKERS_INCOMPLETE,
+  KEY_ROTATION_KEY_INVALID,
+  KEY_ROTATION_SAME_KEY,
+  KEY_ROTATION_TRANSITION_DATE_INVALID,
+  KEY_ROTATION_CROSS_SIGNATURE_MISSING,
+  KEY_ROTATION_CROSS_SIGNATURE_INVALID,
+  KEY_ROTATION_QUORUM_NOT_ADOPTED,
+  KEY_ROTATION_RETIRED_KEY_TRUSTED,
+  KEY_ROTATION_RETIRED_KEY_ADVERTISED,
+  KEY_ROTATION_TRANSITION_ACTIVE,
+} from './overlay/keyRotationVerifier.js';
+export type {
+  KeyRotationMarkers,
+  KeyRotationAttestation,
+  QuorumPeerConfig,
+  KeyRotationVerifierOptions,
+  CrossSignatureVerification,
+  QuorumRecognition,
+  KeyRotationCheck,
+  RotationPhase,
+  KeyRotationReport,
+} from './overlay/keyRotationVerifier.js';
+
+// Overlay Heartbeat Watchdog (Issue #523)
+export {
+  OverlayHeartbeatWatchdog,
+  TcpHeartbeatChannel,
+  evaluateKeepalive,
+  encodeHeartbeatProbe,
+  decodeHeartbeatPong,
+  heartbeatProbeId,
+  renderHeartbeatReport,
+  overlayHeartbeatRules,
+  overlayHeartbeatRuleIds,
+  HeartbeatConnectionClosedError,
+  DEFAULT_HEARTBEAT_TIMEOUT_MS,
+  DEFAULT_HEARTBEAT_INTERVAL_MS,
+  DEFAULT_KEEPALIVE_INITIAL_DELAY_MS,
+  HEARTBEAT_UNRESPONSIVE,
+  HEARTBEAT_ERRATIC,
+  HEARTBEAT_KEEPALIVE_DISABLED,
+  HEARTBEAT_KEEPALIVE_DELAY,
+  HEARTBEAT_UNACKNOWLEDGED_SOCKET,
+  HEARTBEAT_SUDDEN_CLOSURE,
+} from './overlay/heartbeatWatchdog.js';
+export type {
+  HeartbeatEndpoint,
+  HeartbeatChannel,
+  SocketKeepaliveSnapshot,
+  HeartbeatProbe,
+  HeartbeatMetrics,
+  KeepaliveCheck,
+  HeartbeatReport,
+  HeartbeatWatchdogOptions,
+} from './overlay/heartbeatWatchdog.js';

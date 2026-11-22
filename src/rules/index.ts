@@ -31,6 +31,7 @@ import { reverseFederationRules } from '../protocols/reverseFederationVerifier.j
 import { sep30Rules } from '../protocols/sep30Verifier.js';
 import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier.js';
 import { sep38CircuitBreakerRules } from '../protocols/sep38CircuitBreaker.js';
+import { sep38DiscrepancyRules } from '../protocols/sep38Discrepancy.js';
 import { sep6PollingRules } from '../protocols/sep6Polling.js';
 import { sep10JwtRules } from '../protocols/sep10JwtAuditor.js';
 import { sep12FileUploadRules } from '../protocols/sep12FileUpload.js';
@@ -48,6 +49,8 @@ import { zkRules } from '../zk/rangeProofVerifier.js';
 import { secp256k1BridgeRules } from '../crypto/secp256k1Verifier.js';
 import { kzgRules } from '../crypto/kzgVerifier.js';
 import { overlayHandshakeRules } from '../overlay/handshakeTester.js';
+import { validatorKeyRotationRules } from '../overlay/keyRotationVerifier.js';
+import { overlayHeartbeatRules } from '../overlay/heartbeat-rules.js';
 import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
 import { sep10IsolationRules } from '../protocols/sep10Isolation.js';
 import { sep24SecurityRules } from '../protocols/sep24Security.js';
@@ -90,6 +93,7 @@ export const allRules: Rule[] = [
   ...sep30Rules,
   ...promotionalPricingRules,
   ...sep38CircuitBreakerRules,
+  ...sep38DiscrepancyRules,
   ...sep6PollingRules,
   ...sep10JwtRules,
   ...sep12FileUploadRules,
@@ -107,6 +111,8 @@ export const allRules: Rule[] = [
   ...secp256k1BridgeRules,
   ...kzgRules,
   ...overlayHandshakeRules,
+  ...validatorKeyRotationRules,
+  ...overlayHeartbeatRules,
   ...sep31Sep12Rules,
   ...sep10IsolationRules,
   ...sep24SecurityRules,
@@ -148,6 +154,7 @@ export {
   sep30Rules,
   promotionalPricingRules,
   sep38CircuitBreakerRules,
+  sep38DiscrepancyRules,
   sep6PollingRules,
   sep10JwtRules,
   sep12FileUploadRules,
@@ -165,6 +172,8 @@ export {
   secp256k1BridgeRules,
   kzgRules,
   overlayHandshakeRules,
+  validatorKeyRotationRules,
+  overlayHeartbeatRules,
   sep31Sep12Rules,
   sep10IsolationRules,
   sep24SecurityRules,

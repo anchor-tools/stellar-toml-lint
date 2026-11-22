@@ -69,6 +69,7 @@ import {
 import { auditSep30Recovery } from './protocols/sep30Verifier.js';
 import { verifyPromotions } from './protocols/promotionalPricingVerifier.js';
 import { verifySep38Volatility } from './protocols/sep38CircuitBreaker.js';
+import { auditSep38QuoteDiscrepancies } from './protocols/sep38Discrepancy.js';
 import { auditSep6Polling } from './protocols/sep6Polling.js';
 import { auditSep10Jwt } from './protocols/sep10JwtAuditor.js';
 import { testSep12FileUploads } from './protocols/sep12FileUpload.js';
@@ -109,7 +110,20 @@ import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
 import { RangeProofVerifier } from './zk/rangeProofVerifier.js';
 import { Secp256k1BridgeVerifier } from './crypto/secp256k1Verifier.js';
 import { KzgCommitmentVerifier } from './crypto/kzgVerifier.js';
-import { OverlayHandshakeTester } from './overlay/handshakeTester.js';
+import { OverlayHandshakeTester, parseValidatorEndpoints } from './overlay/handshakeTester.js';
+import {
+  ValidatorKeyRotationVerifier,
+  renderKeyRotationReport,
+  type KeyRotationAttestation,
+  type QuorumPeerConfig,
+} from './overlay/keyRotationVerifier.js';
+import {
+  HEARTBEAT_ERRATIC,
+  HEARTBEAT_SUDDEN_CLOSURE,
+  HEARTBEAT_UNRESPONSIVE,
+  OverlayHeartbeatWatchdog,
+  renderHeartbeatReport,
+} from './overlay/heartbeatWatchdog.js';
 import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
@@ -141,6 +155,12 @@ import {
   type IncidentChannel,
   type IncidentSeverity,
 } from './gitops/incidentDispatcher.js';
+import { auditDockerfile, renderContainerReport } from './gitops/containerAuditor.js';
+import {
+  renderProvenanceReport,
+  verifySlsaProvenance,
+  type SlsaLevel,
+} from './gitops/slsaVerifier.js';
 import { allRules } from './rules/index.js';
 import { PRESETS, resolvePreset, type PresetName } from './presets.js';
 import { generateBadgeSvg, generateShieldsEndpoint } from './generators/badge.js';
@@ -220,6 +240,7 @@ interface Cli {
   auditClickjacking: boolean;
   verifyPromotions: boolean;
   auditSep38Volatility: boolean;
+  auditSep38Spreads: boolean;
   auditSep6Polling: boolean;
   auditSep10Jwt: boolean;
   testSep12Upload: boolean;
@@ -231,6 +252,8 @@ interface Cli {
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
+  monitorHeartbeat: boolean;
+  heartbeatTimeoutSeconds?: number;
   verifyDnssec: boolean;
   auditDnsTakeover: boolean;
   auditSecrets: boolean;
@@ -354,6 +377,12 @@ USAGE
   stellar-toml-lint verify-delivery-methods --domain <domain> [--format text|json]
                                          Validate SEP-38 buy/sell delivery methods and
                                          check quotes itemise delivery fees
+  stellar-toml-lint audit-validator-rotation --domain <domain>
+                                         [--previous-signature <sig>]
+                                         [--replacement-signature <sig>]
+                                         [--peers <quorum.json>] [--format text|json]
+                                         Verify a coordinated validator key rotation:
+                                         markers, cross-signatures and peer quorum adoption
   stellar-toml-lint diff <a> <b> [--json]
                                          Compare two stellar.toml files, URLs or
                                          - (stdin) by value rather than by line;
@@ -436,6 +465,12 @@ OPTIONS
                           SDEX shocks; flag quote windows over the 60s volatility
                           buffer, stale rates and missing circuit breakers; also
                           available as 'sep38-volatility --domain <domain>'
+      --audit-sep38-spreads
+                          Price small, medium and large trades through both
+                          GET /prices and POST /quote, flag firm spreads beyond
+                          the configured tolerance or disclosed fees, and verify
+                          expired quotes are refused; also available as
+                          'sep38-spreads --domain <domain>'
       --audit-sep6-polling
                           Repeat GET /transaction at 2s/5s/10s cadences to check
                           idempotency, cache headers and rate-limit signals (use
@@ -481,6 +516,9 @@ OPTIONS
                           Probe interactive endpoints for Content-Security-Policy
                           frame-ancestors and X-Frame-Options framing defenses
       --crawl-peers       Discover overlay peers with GET_PEERS and check connectivity
+      --monitor-heartbeat  Establish an overlay session with every advertised validator
+                          and report ping/pong latency, jitter and keepalive state
+      --timeout <seconds> Monitoring window for --monitor-heartbeat (default: 10)
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
        --audit-dns-takeover
                            Query CNAME/NS records for every referenced domain and
@@ -671,6 +709,10 @@ async function runExtraAudits(
     const result = await verifySep38Volatility(parsed, fetchImpl, { rules });
     out.push(...result.diagnostics);
   }
+  if (cli.auditSep38Spreads && (cli.checkNetwork || domain !== undefined)) {
+    const result = await auditSep38QuoteDiscrepancies(parsed, fetchImpl, { rules });
+    out.push(...result.diagnostics);
+  }
   if (cli.auditSep6Polling) {
     const result = await auditSep6Polling(parsed, fetchImpl, {
       rules,
@@ -729,6 +771,58 @@ async function runExtraAudits(
     const result = await verifier.verify(parsed, rules);
     out.push(...result.diagnostics);
     process.stderr.write(renderTraceAuditReport(result));
+  }
+  if (cli.monitorHeartbeat) {
+    const endpoints = parseValidatorEndpoints(parsed);
+    const timeoutMs = (cli.heartbeatTimeoutSeconds ?? 10) * 1000;
+    if (endpoints.length === 0) {
+      process.stderr.write(
+        '--monitor-heartbeat: no [[VALIDATORS]] endpoints with HOST/PORT were advertised.\n',
+      );
+    }
+    for (const endpoint of endpoints) {
+      const report = await new OverlayHeartbeatWatchdog({ timeoutMs }).watch({
+        host: endpoint.host,
+        port: endpoint.port,
+        ...(endpoint.publicKey === '' ? {} : { publicKey: endpoint.publicKey }),
+      });
+      // Monitoring output goes to stderr so --format json stays parseable.
+      process.stderr.write(renderHeartbeatReport(report));
+      if (report.ok) continue;
+
+      const where = endpoint.path === undefined ? 'VALIDATORS' : `${endpoint.path}.HOST`;
+      if (report.suddenClosure !== undefined) {
+        out.push({
+          rule: HEARTBEAT_SUDDEN_CLOSURE,
+          severity: 'error',
+          category: 'network',
+          message: `Overlay session with ${endpoint.rawEndpoint} closed before a heartbeat was acknowledged: ${report.suddenClosure}`,
+          path: where,
+          suggestion:
+            'Check middlebox idle timeouts and the peer logs, then reconnect and verify the peer is still in the validator set before routing consensus traffic through it.',
+        });
+      } else if (report.metrics.probesAcknowledged === 0) {
+        out.push({
+          rule: HEARTBEAT_UNRESPONSIVE,
+          severity: 'error',
+          category: 'network',
+          message: `Advertised validator ${endpoint.rawEndpoint} did not acknowledge a single heartbeat within ${timeoutMs}ms`,
+          path: where,
+          suggestion:
+            'Confirm the overlay port is reachable from your network and that the peer accepts heartbeat probes; remove it from rotation until it answers.',
+        });
+      } else if (report.metrics.erratic) {
+        out.push({
+          rule: HEARTBEAT_ERRATIC,
+          severity: 'warning',
+          category: 'network',
+          message: `Validator ${endpoint.rawEndpoint} returned erratic heartbeat responses (${report.metrics.probesMissed} missed, jitter ${report.metrics.jitterMs?.toFixed(1) ?? 'n/a'}ms)`,
+          path: where,
+          suggestion:
+            'Check the network path for packet loss before relying on this peer for quorum; stable latency matters more than the absolute value.',
+        });
+      }
+    }
   }
   return out;
 }
@@ -1113,6 +1207,177 @@ async function auditWasmSimd(args: string[]): Promise<number> {
     const report = auditWasmBinary(bytes, { file });
     process.stdout.write(json ? `${JSON.stringify(report, null, 2)}\n` : renderSimdReport(report));
     return report.findings.some((finding) => finding.severity === 'error') ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+const VERIFY_PROVENANCE_USAGE = `stellar-toml-lint verify-provenance --artifact <file> --provenance <file> [options]
+
+Verify an in-toto / Sigstore provenance document against an artifact and grade
+its SLSA build level.
+
+OPTIONS
+      --artifact <file>              Artifact the attestation describes (required)
+      --provenance <file>            DSSE envelope, Sigstore bundle, or *.intoto.jsonl (required)
+      --expected-builder <id>        Require this builder identity
+      --expected-repository <repo>   Require this source repository
+      --expected-commit <sha>        Require this source commit
+      --expected-trigger <event>     Require this workflow trigger (push, release, …)
+      --trusted-key <pem|file>       Public key allowed to sign provenance (repeatable)
+      --trusted-certificate <sha256> Allowed signing certificate fingerprint (repeatable)
+      --trusted-root <pem|file>      Root CA the bundle chain must terminate in (repeatable)
+      --require-level <0|1|2|3>      Minimum SLSA level (default 1)
+      --json                         Print the structured report as JSON
+`;
+
+/** `stellar-toml-lint verify-provenance --artifact <file> --provenance <file>` */
+async function verifyProvenance(args: string[]): Promise<number> {
+  let artifactPath: string | undefined;
+  let provenancePath: string | undefined;
+  let json = false;
+  let requiredLevel: SlsaLevel | undefined;
+  let expectedBuilderId: string | undefined;
+  let expectedSourceRepository: string | undefined;
+  let expectedCommitSha: string | undefined;
+  let expectedWorkflowTrigger: string | undefined;
+  const trustedPublicKeys: string[] = [];
+  const trustedCertificateSha256: string[] = [];
+  const trustedRootCertificates: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '-h' || arg === '--help') {
+      process.stdout.write(VERIFY_PROVENANCE_USAGE);
+      return 0;
+    } else if (arg === '--artifact') artifactPath = requireValue(args, ++i, arg);
+    else if (arg === '--provenance') provenancePath = requireValue(args, ++i, arg);
+    else if (arg === '--json') json = true;
+    else if (arg === '--expected-builder') expectedBuilderId = requireValue(args, ++i, arg);
+    else if (arg === '--expected-repository') {
+      expectedSourceRepository = requireValue(args, ++i, arg);
+    } else if (arg === '--expected-commit') expectedCommitSha = requireValue(args, ++i, arg);
+    else if (arg === '--expected-trigger') {
+      expectedWorkflowTrigger = requireValue(args, ++i, arg);
+    } else if (arg === '--trusted-key') {
+      const value = requireValue(args, ++i, arg);
+      trustedPublicKeys.push(
+        value.includes('BEGIN PUBLIC KEY') ? value : await readFile(resolve(value), 'utf8'),
+      );
+    } else if (arg === '--trusted-certificate') {
+      trustedCertificateSha256.push(requireValue(args, ++i, arg));
+    } else if (arg === '--trusted-root') {
+      const value = requireValue(args, ++i, arg);
+      trustedRootCertificates.push(
+        value.includes('BEGIN CERTIFICATE') ? value : await readFile(resolve(value), 'utf8'),
+      );
+    } else if (arg === '--require-level') {
+      const value = Number(requireValue(args, ++i, arg));
+      if (value !== 0 && value !== 1 && value !== 2 && value !== 3) {
+        process.stderr.write('--require-level expects 0, 1, 2, or 3.\n');
+        return 2;
+      }
+      requiredLevel = value;
+    } else {
+      process.stderr.write(`Unknown option ${arg} for verify-provenance\n`);
+      return 2;
+    }
+  }
+
+  if (artifactPath === undefined || provenancePath === undefined) {
+    process.stderr.write(VERIFY_PROVENANCE_USAGE);
+    return 2;
+  }
+
+  try {
+    const artifact = new Uint8Array(await readFile(resolve(artifactPath)));
+    const provenance = await readFile(resolve(provenancePath), 'utf8');
+    const report = verifySlsaProvenance(artifact, provenance, {
+      artifactName: basename(artifactPath),
+      ...(requiredLevel !== undefined ? { requiredLevel } : {}),
+      ...(expectedBuilderId !== undefined ? { expectedBuilderId } : {}),
+      ...(expectedSourceRepository !== undefined ? { expectedSourceRepository } : {}),
+      ...(expectedCommitSha !== undefined ? { expectedCommitSha } : {}),
+      ...(expectedWorkflowTrigger !== undefined ? { expectedWorkflowTrigger } : {}),
+      ...(trustedPublicKeys.length > 0 ? { trustedPublicKeys } : {}),
+      ...(trustedCertificateSha256.length > 0 ? { trustedCertificateSha256 } : {}),
+      ...(trustedRootCertificates.length > 0 ? { trustedRootCertificates } : {}),
+    });
+    process.stdout.write(
+      json ? `${JSON.stringify(report, null, 2)}\n` : renderProvenanceReport(report),
+    );
+    return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+const AUDIT_DOCKERFILE_USAGE = `stellar-toml-lint audit-dockerfile [options]
+
+Audit the runtime stage of a Dockerfile and its .dockerignore against CKV/CIS
+Docker Benchmark hardening rules.
+
+OPTIONS
+      --dockerfile <path>      Dockerfile to audit (default: ./Dockerfile)
+      --dockerignore <path>    .dockerignore to use (default: next to the Dockerfile)
+      --image-size <megabytes> Measured image size, checked against the 100 MB budget
+      --json                   Print the report as JSON
+`;
+
+/** `stellar-toml-lint audit-dockerfile [--dockerfile <path>]` */
+async function auditContainer(args: string[]): Promise<number> {
+  let dockerfilePath = 'Dockerfile';
+  let dockerignorePath: string | undefined;
+  let imageSizeBytes: number | undefined;
+  let json = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '-h' || arg === '--help') {
+      process.stdout.write(AUDIT_DOCKERFILE_USAGE);
+      return 0;
+    } else if (arg === '--dockerfile') dockerfilePath = requireValue(args, ++i, arg);
+    else if (arg === '--dockerignore') dockerignorePath = requireValue(args, ++i, arg);
+    else if (arg === '--image-size') {
+      const megabytes = Number(requireValue(args, ++i, arg));
+      if (!Number.isFinite(megabytes) || megabytes <= 0) {
+        process.stderr.write('--image-size expects a positive number of megabytes.\n');
+        return 2;
+      }
+      imageSizeBytes = Math.round(megabytes * 1024 * 1024);
+    } else if (arg === '--json') json = true;
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-dockerfile\n`);
+      return 2;
+    }
+  }
+
+  const resolvedDockerfile = resolve(dockerfilePath);
+  const readOptional = async (candidate: string): Promise<string | undefined> => {
+    try {
+      return await readFile(candidate, 'utf8');
+    } catch {
+      return undefined;
+    }
+  };
+
+  try {
+    const source = await readFile(resolvedDockerfile, 'utf8');
+    const dockerignore =
+      dockerignorePath !== undefined
+        ? await readFile(resolve(dockerignorePath), 'utf8')
+        : await readOptional(resolve(dirname(resolvedDockerfile), '.dockerignore'));
+    const report = auditDockerfile(source, {
+      dockerfilePath,
+      ...(dockerignore !== undefined ? { dockerignore } : {}),
+      ...(imageSizeBytes !== undefined ? { imageSizeBytes } : {}),
+    });
+    process.stdout.write(
+      json ? `${JSON.stringify(report, null, 2)}\n` : renderContainerReport(report),
+    );
+    return report.ok ? 0 : 1;
   } catch (error) {
     process.stderr.write(`${message(error)}\n`);
     return 2;
@@ -1512,6 +1777,108 @@ async function auditKeySeparationCommand(args: string[]): Promise<number> {
         : renderKeySeparationReport(result.report),
     );
     return result.report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+function parseQuorumPeers(value: unknown): QuorumPeerConfig[] {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === 'object' &&
+        value !== null &&
+        Array.isArray((value as { peers?: unknown }).peers)
+      ? (value as { peers: unknown[] }).peers
+      : undefined;
+  if (raw === undefined) {
+    throw new Error('Quorum file must be a JSON array or an object with a "peers" array');
+  }
+
+  return raw.map((entry, index) => {
+    if (typeof entry !== 'object' || entry === null) {
+      throw new Error(`Quorum entry ${index} must be an object with name and validatorKeys`);
+    }
+    const peer = entry as Record<string, unknown>;
+    const name = typeof peer.name === 'string' ? peer.name : undefined;
+    const keys = Array.isArray(peer.validatorKeys)
+      ? peer.validatorKeys.filter((key): key is string => typeof key === 'string')
+      : undefined;
+    if (name === undefined || keys === undefined) {
+      throw new Error(`Quorum entry ${index} must have a string name and a validatorKeys array`);
+    }
+    const kind = peer.kind === 'anchor' ? 'anchor' : 'peer';
+    return { name, validatorKeys: keys, kind };
+  });
+}
+
+/** `stellar-toml-lint audit-validator-rotation --domain <domain> [--format text|json]` */
+async function auditValidatorRotationCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let format = 'text';
+  let peersPath: string | undefined;
+  let previousSignature: string | undefined;
+  let replacementSignature: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else if (arg === '--peers') peersPath = requireValue(args, ++i, arg);
+    else if (arg === '--previous-signature') previousSignature = requireValue(args, ++i, arg);
+    else if (arg === '--replacement-signature') replacementSignature = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-validator-rotation\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-validator-rotation --domain <domain> ' +
+        '[--previous-signature <sig>] [--replacement-signature <sig>] ' +
+        '[--peers <quorum.json>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const host = domain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const url = `https://${host}/.well-known/stellar.toml`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      process.stderr.write(`Could not fetch ${url}: HTTP ${response.status}\n`);
+      return 2;
+    }
+    const doc = parseToml(await response.text()) as Record<string, unknown>;
+
+    const peers =
+      peersPath === undefined
+        ? []
+        : parseQuorumPeers(JSON.parse(await readFile(resolve(peersPath), 'utf8')) as unknown);
+    const attestation: KeyRotationAttestation = {};
+    if (previousSignature !== undefined) attestation.previousKeySignature = previousSignature;
+    if (replacementSignature !== undefined) {
+      attestation.replacementKeySignature = replacementSignature;
+    }
+    const declaredValidatorKeys = Array.isArray(doc.VALIDATORS)
+      ? doc.VALIDATORS.flatMap((entry) => {
+          if (typeof entry !== 'object' || entry === null) return [];
+          const key = (entry as Record<string, unknown>).PUBLIC_KEY;
+          return typeof key === 'string' ? [key] : [];
+        })
+      : [];
+
+    const verifier = new ValidatorKeyRotationVerifier({
+      domain: host,
+      attestation,
+      peers,
+      declaredValidatorKeys,
+    });
+    const report = verifier.audit(doc);
+    process.stdout.write(
+      format === 'json' ? `${JSON.stringify(report, null, 2)}\n` : renderKeyRotationReport(report),
+    );
+    return report.ok ? 0 : 1;
   } catch (error) {
     process.stderr.write(`${message(error)}\n`);
     return 2;
@@ -2168,6 +2535,10 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'sep38-volatility') {
     argv = ['--audit-sep38-volatility', '--check-network', ...argv.slice(1)];
   }
+  // `sep38-spreads --domain <domain>` requests live indicative and firm quotes.
+  if (argv[0] === 'sep38-spreads') {
+    argv = ['--audit-sep38-spreads', '--check-network', ...argv.slice(1)];
+  }
   if (argv[0] === 'refactor') return refactorCommand(argv.slice(1));
   if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   if (argv[0] === 'audit-clawbacks') return auditClawbacks(argv.slice(1));
@@ -2194,6 +2565,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === '--audit-sep24-security') {
     return auditSep24SecurityCommand(argv.slice(1));
   }
+  if (argv[0] === 'audit-validator-rotation') return auditValidatorRotationCommand(argv.slice(1));
   if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
   if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
   if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
@@ -2954,6 +3326,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditClickjacking: false,
     verifyPromotions: false,
     auditSep38Volatility: false,
+    auditSep38Spreads: false,
     auditSep6Polling: false,
     auditSep10Jwt: false,
     testSep12Upload: false,
@@ -2962,6 +3335,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditEsgDisclosures: false,
     auditOpenTelemetry: false,
     crawlPeers: false,
+    monitorHeartbeat: false,
     verifyDnssec: false,
     auditDnsTakeover: false,
     auditSecrets: false,
@@ -3120,6 +3494,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.auditSep38Volatility = true;
         break;
 
+      case '--audit-sep38-spreads':
+        cli.auditSep38Spreads = true;
+        break;
+
       case '--audit-sep6-polling':
         cli.auditSep6Polling = true;
         break;
@@ -3167,6 +3545,20 @@ function parseArgs(argv: string[]): Cli | 'handled' {
       case '--crawl-peers':
         cli.crawlPeers = true;
         break;
+
+      case '--monitor-heartbeat':
+        cli.monitorHeartbeat = true;
+        break;
+
+      case '--timeout': {
+        const raw = requireValue(argv, ++i, arg);
+        const seconds = Number(raw);
+        if (!Number.isFinite(seconds) || seconds <= 0) {
+          throw new Error(`--timeout expects a positive number of seconds, got "${raw}".`);
+        }
+        cli.heartbeatTimeoutSeconds = seconds;
+        break;
+      }
 
       case '--verify-dnssec':
         cli.verifyDnssec = true;
