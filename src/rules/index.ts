@@ -40,6 +40,10 @@ import { corsSecurityRules } from '../security/corsAuditor.js';
 import { mimeSecurityRules } from '../security/mimeScanner.js';
 import { keySeparationRules } from '../security/keySeparationAuditor.js';
 import { clickjackingRules } from '../security/clickjackingAuditor.js';
+import { zkRules } from '../zk/rangeProofVerifier.js';
+import { secp256k1BridgeRules } from '../crypto/secp256k1Verifier.js';
+import { kzgRules } from '../crypto/kzgVerifier.js';
+import { overlayHandshakeRules } from '../overlay/handshakeTester.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -86,6 +90,10 @@ export const allRules: Rule[] = [
   ...mimeSecurityRules,
   ...keySeparationRules,
   ...clickjackingRules,
+  ...zkRules,
+  ...secp256k1BridgeRules,
+  ...kzgRules,
+  ...overlayHandshakeRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -131,4 +139,8 @@ export {
   mimeSecurityRules,
   keySeparationRules,
   clickjackingRules,
+  zkRules,
+  secp256k1BridgeRules,
+  kzgRules,
+  overlayHandshakeRules,
 };

@@ -813,3 +813,86 @@ export type {
   HashAgilityReport,
 } from './crypto/hashAgilityAuditor.js';
 
+// ZK Range Proof Verifier (Issue #511)
+export {
+  RangeProofVerifier,
+  zkRules,
+  zkRuleIds,
+  ZK_INVALID_RANGE_PROOF,
+  ZK_COMMITMENT_MISMATCH,
+  ZK_UNSUPPORTED_CURVE,
+  ZK_MALFORMED_COMMITMENT,
+} from './zk/rangeProofVerifier.js';
+export type {
+  SupportedCurve,
+  BulletproofRangeProof,
+  CommitmentEntry,
+  AnchorReserveDeclaration,
+  RangeProofVerificationResult,
+  ReserveReconciliationResult,
+  RangeProofVerifierOptions,
+} from './zk/rangeProofVerifier.js';
+
+// Secp256k1 EVM-Stellar Bridge Verifier (Issue #512)
+export {
+  Secp256k1BridgeVerifier,
+  secp256k1BridgeRules,
+  secp256k1BridgeRuleIds,
+  toChecksumAddress,
+  CRYPTO_INVALID_SECP256K1_SIGNATURE,
+  CRYPTO_BRIDGE_SIGNER_UNMATCHED,
+  CRYPTO_MALFORMED_SIGNATURE,
+} from './crypto/secp256k1Verifier.js';
+export type {
+  ParsedSignature,
+  RecoveredKeys,
+  BridgeSignatureVerificationResult,
+  Secp256k1BridgeVerifierOptions,
+  MessageHashAlgorithm,
+} from './crypto/secp256k1Verifier.js';
+
+// KZG Commitment Verifier (Issue #513)
+export {
+  KzgCommitmentVerifier,
+  kzgRules,
+  kzgRuleIds,
+  parseG1Point,
+  parseG2Point,
+  KZG_INVALID_PROOF,
+  KZG_SRS_UNLOADED,
+  KZG_MALFORMED_COMMITMENT,
+} from './crypto/kzgVerifier.js';
+export type {
+  SrsData,
+  KzgOpeningProof,
+  KzgVerificationResult,
+  KzgCommitmentVerifierOptions,
+} from './crypto/kzgVerifier.js';
+
+// Overlay Handshake Tester (Issue #514)
+export {
+  OverlayHandshakeTester,
+  overlayHandshakeRules,
+  overlayHandshakeRuleIds,
+  parseValidatorEndpoints,
+  unframeOverlayMessage,
+  OVERLAY_HANDSHAKE_FAILED,
+  OVERLAY_NETWORK_ID_MISMATCH,
+  OVERLAY_VERSION_MISMATCH,
+  OVERLAY_VALIDATOR_KEY_MISMATCH,
+  OVERLAY_CERT_INVALID,
+  OVERLAY_AUTH_MAC_INVALID,
+  DEFAULT_OVERLAY_PORT,
+  DEFAULT_OVERLAY_VERSION,
+  DEFAULT_OVERLAY_MIN_VERSION,
+  DEFAULT_LEDGER_VERSION,
+  DEFAULT_CORE_VERSION,
+} from './overlay/handshakeTester.js';
+export type {
+  ValidatorEndpoint,
+  HelloSummary,
+  HandshakeResult,
+  OverlayTransport,
+  HandshakeTesterOptions,
+} from './overlay/handshakeTester.js';
+
