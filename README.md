@@ -157,6 +157,7 @@ and only `--write` changes the file. `--split` instead emits modular partials gr
 | `--audit-consumer-protection` | Verify `ORG_COMPLAINTS_EMAIL`, `ORG_DISPUTE_RESOLUTION_URL`, `ORG_JURISDICTION`, `ORG_LICENSES` and print a scorecard               |
 | `--audit-sep30-recovery`      | Verify `RECOVERY_SERVER` and recovery signing keys; with `--check-network` probe `/accounts/{address}` for unauthenticated recovery |
 | `--verify-promotions`         | Compare promotional fee claims with SEP-38 `/price` fees (also `verify-promotions --domain <domain>`)                               |
+| `--audit-sep38-spreads`       | Compare SEP-38 indicative and firm quote rates across small, medium and large tiers, and verify quote expiry handling               |
 | `--verify-federation-srv`     | Check `_stellar-federation._tcp.<domain>` SRV records against `FEDERATION_SERVER` (use with `--domain`)                             |
 | `--audit-esg-disclosures`     | Verify `DOCUMENTATION.ORG_ESG` disclosures and attestation signature, and print a sustainability rating                             |
 | `--audit-opentelemetry`       | Probe SEP-6, SEP-24, SEP-31 and SEP-38 `/info` endpoints with W3C Trace Context headers and inspect response correlation evidence   |
@@ -1398,6 +1399,20 @@ emits `quotes/mismatched-quote-fee` (error), because the wallet committed to ter
 honours. A `/deposit` that refuses the `quote_id` advertises programmatic conversion it cannot execute
 and emits `quotes/quote-binding-unsupported` (warning). Either endpoint missing, unusable, or
 unreachable keeps this audit silent.
+
+**Indicative vs firm quote spreads** (with `--check-network --audit-sep38-spreads`, or
+`sep38-spreads --domain <domain>`) — `GET /prices` is an indicative estimate and `POST /quote` is a
+binding price. The audit prices the same trade at small, medium and large volumes through both
+endpoints, derives the effective firm rate from `buy_amount / sell_amount`, and compares it with the
+indicative price using exact integer arithmetic. A firm spread wider than the 50 bps tolerance (plus
+any fee the file discloses) emits `sep38/spread-exceeds-tolerance` (error). A firm fee above the
+percentage disclosed in `DOCUMENTATION` or a currency description emits `sep38/fee-exceeds-disclosure`
+(error), and a lifetime over 300s emits `sep38/quote-lifetime-exceeds-limit` (warning). Quotes without a
+parseable `expires_at` emit `sep38/quote-expiry-missing` (error); a quote already expired when issued
+emits `sep38/firm-quote-expired` (error). When the file declares `TRANSFER_SERVER`, the audit also waits
+for a short-lived quote to lapse and passes its `quote_id` to SEP-6 `/deposit`: an accepted expired quote
+emits `sep38/expired-quote-accepted` (error). Unreachable endpoints and unpriceable pairs stay silent or
+degrade to `sep38/quote-audit-unverifiable` (info) rather than failing the run.
 
 For every `[[CURRENCIES]]` entry marked `regulated=true` with a classic `issuer`, the issuer's
 account flags are read from Horizon: a missing `AUTH_REQUIRED_FLAG` emits

@@ -630,6 +630,33 @@ export type {
   Sep38Pair,
 } from './protocols/sep38CircuitBreaker.js';
 export {
+  DEFAULT_MAX_QUOTE_LIFETIME_SECONDS,
+  DEFAULT_QUOTE_TIERS,
+  DEFAULT_SPREAD_TOLERANCE_BPS,
+  RATE_SCALE,
+  Sep38QuoteDiscrepancyAuditor,
+  advertisedFeeBps,
+  auditSep38QuoteDiscrepancies,
+  feeBps,
+  formatScaledDecimal,
+  indicativePriceFrom,
+  parseScaledDecimal,
+  quoteFeeTotal,
+  rateSpreadBps,
+  sep38DiscrepancyRuleIds,
+  sep38DiscrepancyRules,
+  systemSleep,
+  systemWallClock,
+} from './protocols/sep38Discrepancy.js';
+export type {
+  ExpiredQuoteVerdict,
+  MonotonicWallClock,
+  QuoteTier,
+  QuoteTierObservation,
+  Sep38DiscrepancyResult,
+  Sep38QuoteDiscrepancyOptions,
+} from './protocols/sep38Discrepancy.js';
+export {
   DEFAULT_POLLING_INTERVALS_MS,
   SEP6_TRANSACTION_STATUSES,
   Sep6PollingIdempotencyVerifier,
