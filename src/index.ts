@@ -607,6 +607,74 @@ export type {
   PromotionalPricingResult,
 } from './protocols/promotionalPricingVerifier.js';
 export {
+  DEFAULT_MAX_QUOTE_DURATION_SECONDS,
+  DEFAULT_MIN_QUOTE_DURATION_SECONDS,
+  Sep38CircuitBreakerVerifier,
+  applyShock,
+  isVolatilePair,
+  percentDelta,
+  pickPair as pickSep38Pair,
+  priceFromPricesBody,
+  quoteDurationSeconds,
+  sep38CircuitBreakerRuleIds,
+  sep38CircuitBreakerRules,
+  systemClock,
+  verifySep38Volatility,
+} from './protocols/sep38CircuitBreaker.js';
+export type {
+  CircuitBreakerResult,
+  MarketPhase,
+  MonotonicClock,
+  QuoteSample,
+  Sep38CircuitBreakerOptions,
+  Sep38Pair,
+} from './protocols/sep38CircuitBreaker.js';
+export {
+  DEFAULT_POLLING_INTERVALS_MS,
+  SEP6_TRANSACTION_STATUSES,
+  Sep6PollingIdempotencyVerifier,
+  auditSep6Polling,
+  isUncacheable,
+  sep6PollingRuleIds,
+  sep6PollingRules,
+  stableChecksum,
+  systemPollingClock,
+} from './protocols/sep6Polling.js';
+export type {
+  PollRecord,
+  PollingClock,
+  Sep6PollingOptions,
+  Sep6PollingResult,
+} from './protocols/sep6Polling.js';
+export {
+  DEFAULT_MAX_JWT_LIFETIME_SECONDS,
+  SEP10_ALLOWED_ALGORITHMS,
+  Sep10JwtAuditor,
+  auditSep10Jwt,
+  decodeJwt,
+  isValidSep10Subject,
+  sep10JwtRuleIds,
+  sep10JwtRules,
+} from './protocols/sep10JwtAuditor.js';
+export type {
+  DecodedJwt,
+  Sep10JwtAuditResult,
+  Sep10JwtOptions,
+} from './protocols/sep10JwtAuditor.js';
+export {
+  DEFAULT_OVERSIZED_BYTES,
+  FALLBACK_BINARY_FIELDS,
+  Sep12FileUploadValidator,
+  sep12FileUploadRuleIds,
+  sep12FileUploadRules,
+  testSep12FileUploads,
+} from './protocols/sep12FileUpload.js';
+export type {
+  Sep12FileUploadOptions,
+  Sep12FileUploadResult,
+  UploadProbe,
+} from './protocols/sep12FileUpload.js';
+export {
   FederationSrvRecordVerifier,
   federationSrvRuleIds,
   federationSrvRules,

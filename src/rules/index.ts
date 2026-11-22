@@ -30,6 +30,10 @@ import { federationSecurityRules } from '../protocols/federationSecurityTester.j
 import { reverseFederationRules } from '../protocols/reverseFederationVerifier.js';
 import { sep30Rules } from '../protocols/sep30Verifier.js';
 import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier.js';
+import { sep38CircuitBreakerRules } from '../protocols/sep38CircuitBreaker.js';
+import { sep6PollingRules } from '../protocols/sep6Polling.js';
+import { sep10JwtRules } from '../protocols/sep10JwtAuditor.js';
+import { sep12FileUploadRules } from '../protocols/sep12FileUpload.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
 import { subdomainTakeoverRules } from '../security/subdomainScanner.js';
@@ -81,6 +85,10 @@ export const allRules: Rule[] = [
   ...reverseFederationRules,
   ...sep30Rules,
   ...promotionalPricingRules,
+  ...sep38CircuitBreakerRules,
+  ...sep6PollingRules,
+  ...sep10JwtRules,
+  ...sep12FileUploadRules,
   ...federationSrvRules,
   ...esgRules,
   ...subdomainTakeoverRules,
@@ -131,6 +139,10 @@ export {
   reverseFederationRules,
   sep30Rules,
   promotionalPricingRules,
+  sep38CircuitBreakerRules,
+  sep6PollingRules,
+  sep10JwtRules,
+  sep12FileUploadRules,
   federationSrvRules,
   esgRules,
   subdomainTakeoverRules,
