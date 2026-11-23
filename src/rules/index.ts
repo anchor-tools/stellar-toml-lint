@@ -37,6 +37,10 @@ import { sep10JwtRules } from '../protocols/sep10JwtAuditor.js';
 import { sep12FileUploadRules } from '../protocols/sep12FileUpload.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
+import { tlsCipherRules } from '../security/tlsCipherAuditor.js';
+import { hstsRules } from '../security/hstsVerifier.js';
+import { emergencyPauseRules } from '../bridges/emergencyPauseValidator.js';
+import { bridgeQuorumRules } from '../bridges/bridgeQuorumAuditor.js';
 import { subdomainTakeoverRules } from '../security/subdomainScanner.js';
 import { secretDetectorRules } from '../security/secretDetector.js';
 import { ssrfRules } from '../security/ssrfScanner.js';
@@ -97,6 +101,10 @@ export const allRules: Rule[] = [
   ...sep12FileUploadRules,
   ...federationSrvRules,
   ...esgRules,
+  ...tlsCipherRules,
+  ...hstsRules,
+  ...emergencyPauseRules,
+  ...bridgeQuorumRules,
   ...subdomainTakeoverRules,
   ...secretDetectorRules,
   ...ssrfRules,
@@ -156,6 +164,10 @@ export {
   sep12FileUploadRules,
   federationSrvRules,
   esgRules,
+  tlsCipherRules,
+  hstsRules,
+  emergencyPauseRules,
+  bridgeQuorumRules,
   subdomainTakeoverRules,
   secretDetectorRules,
   ssrfRules,

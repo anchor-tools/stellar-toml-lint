@@ -9,6 +9,34 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `stellar-toml-lint audit-ciphers --domain <domain>` (`src/security/tlsCipherAuditor.ts`): pins a
+  native `node:tls` handshake to each of TLS 1.0, 1.1, 1.2 and 1.3, requires TLS 1.0/1.1 to be
+  rejected, checks the negotiated suites for forward secrecy and AEAD and prints an A+/A/B/F grade
+  (`tlscipher/legacy-protocol-accepted`, `tlscipher/no-modern-protocol`,
+  `tlscipher/no-forward-secrecy`, `tlscipher/non-aead-cipher`, `tlscipher/weak-cipher`,
+  `tlscipher/unreachable`). Sockets are destroyed on every path.
+
+- `--audit-hsts` (`src/security/hstsVerifier.ts`): reads `Strict-Transport-Security` on the domain
+  and every host `stellar.toml` declares and applies the Chromium preload criteria
+  (`hsts/missing-header`, `hsts/invalid-header`, `hsts/short-max-age`,
+  `hsts/missing-include-subdomains`, `hsts/missing-preload`, `hsts/unreachable`), printing a
+  compliance badge per host to stderr.
+
+- `--audit-emergency-pause` (`src/bridges/emergencyPauseValidator.ts`): checks `[[BRIDGES]]` for an
+  exported pause method, multisig or circuit breaker pause authority separate from unpause, a
+  timelocked unpause and a 24/7 `SECURITY_CONTACT` or `ORG_OFFICIAL_EMAIL`
+  (`bridgepause/invalid-bridge`, `bridgepause/missing-pause-method`,
+  `bridgepause/missing-unpause-method`, `bridgepause/unrestricted-pause-authority`,
+  `bridgepause/shared-pause-unpause-authority`, `bridgepause/missing-unpause-timelock`,
+  `bridgepause/missing-security-contact`, `bridgepause/contact-not-24x7`).
+
+- `--audit-bridge-quorum` / `stellar-toml-lint audit-bridge-quorum --domain <domain>`
+  (`src/bridges/bridgeQuorumAuditor.ts`): checks `[[BRIDGES]]` relayer keys and `THRESHOLD` against
+  the 2/3 BFT supermajority with integer math, relayer set rotations and, under `--check-network`,
+  staking bonds and slashing conditions from `STAKING_EVIDENCE_URL`
+  (`bridgequorum/below-supermajority`, `bridgequorum/minority-threshold`,
+  `bridgequorum/small-validator-set`, `bridgequorum/abrupt-rotation`,
+  `bridgequorum/insufficient-stake`, `bridgequorum/missing-slashing` and others).
 - Rule plugins, so a team can write the check SEP-1 does not define
   (`src/engine/semanticRuleEngine.ts`, `src/engine/ruleLoader.ts`, `--rules-dir <dir>`,
   `--plugin <spec>`). A module exports one rule as its `default` or a list as `rules`, and the rule
