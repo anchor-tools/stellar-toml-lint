@@ -800,7 +800,7 @@ export {
 export type {
   CipherGrade,
   HandshakeProbe,
-  HandshakeResult,
+  HandshakeResult as TlsHandshakeResult,
   TlsCipherOptions,
   TlsCipherReport,
   TlsCipherResult,
