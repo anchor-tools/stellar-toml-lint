@@ -140,59 +140,14 @@ clawbacks carry no amount on the operation, so their amount is reported as `n/a`
 1.1, 1.2 and 1.3, requires the legacy versions to be rejected, checks the negotiated suites for
 forward secrecy and AEAD and prints an A+, A, B or F grade. It exits 1 on grade F.
 
-### Options
+### HSTS and bridge audit options
 
-| Flag                          | Effect                                                                                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `-d, --domain <d>`            | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks                                                                      |
-| `-f, --format <fmt>`          | `text` (default), `json`, `ndjson`, `sarif`, `github`, `junit`, `html`, `checkstyle`, `markdown`                                           |
-| `--strict`                    | Treat warnings as errors                                                                                                                   |
-| `--max-warnings <n>`          | Fail if warnings exceed `n`                                                                                                                |
-| `--check-network`             | Verify accounts, CORS pre-flight responses, `HORIZON_URL`, SEP-8 flags, `ANCHOR_QUOTE_SERVER`, and SEP-6 `/info` online                    |
-| `--verify-sep10`              | Verify SEP-10 nonce uniqueness and replay resistance (requires `--check-network`)                                                          |
-| `--audit-quotes`              | Book an ANCHOR_QUOTE_SERVER SEP-38 quote and execute it on TRANSFER_SERVER (requires `--check-network`)                                    |
-| `--audit-unicode-security`    | Detect bidi overrides, invisible characters, Cyrillic/Greek homoglyphs, and bad language tags in string values                             |
-| `--audit-consumer-protection` | Verify `ORG_COMPLAINTS_EMAIL`, `ORG_DISPUTE_RESOLUTION_URL`, `ORG_JURISDICTION`, `ORG_LICENSES` and print a scorecard                      |
-| `--audit-sep30-recovery`      | Verify `RECOVERY_SERVER` and recovery signing keys; with `--check-network` probe `/accounts/{address}` for unauthenticated recovery        |
-| `--verify-promotions`         | Compare promotional fee claims with SEP-38 `/price` fees (also `verify-promotions --domain <domain>`)                                      |
-| `--verify-federation-srv`     | Check `_stellar-federation._tcp.<domain>` SRV records against `FEDERATION_SERVER` (use with `--domain`)                                    |
-| `--audit-esg-disclosures`     | Verify `DOCUMENTATION.ORG_ESG` disclosures and attestation signature, and print a sustainability rating                                    |
-| `--audit-hsts`                | Check `Strict-Transport-Security` on the domain and declared hosts against the Chromium preload criteria (use with `--domain`)             |
-| `--audit-emergency-pause`     | Verify `[[BRIDGES]]` export pause methods, restrict pause authority and publish a 24/7 security contact                                    |
-| `--audit-bridge-quorum`       | Verify `[[BRIDGES]]` relayer thresholds meet the 2/3 BFT supermajority and staking evidence (also `audit-bridge-quorum --domain <domain>`) |
-| `--audit-kyc-fsm`             | Audit SEP-12 customer status state machines for stuck or circular onboarding (use with `--domain`)                                         |
-| `--crawl-peers`               | Discover validator peers with overlay `GET_PEERS` messages (requires `--check-network`)                                                    |
-| `--verify-dnssec`             | Compare A/AAAA answers across Cloudflare, Google, and Quad9 DoH resolvers (requires `--check-network`)                                     |
-| `--follow-links`              | Fetch and lint the `toml` pointers in `CURRENCIES` (implied by `--domain`)                                                                 |
-| `--check-contracts`           | Verify Soroban contract/WASM TTL and the SEP-45 auth interface online                                                                      |
-| `--soroban-rpc <url>`         | Soroban RPC endpoint for `--check-contracts` (defaults from `NETWORK_PASSPHRASE`)                                                          |
-| `--mock-fixtures <dir>`       | Serve network checks from recorded JSON fixtures under `<dir>`, never the network                                                          |
-| `--webhook-slack <url>`       | POST a Slack Block Kit card with the run summary                                                                                           |
-| `--webhook-discord <url>`     | POST a Discord embed with the run summary                                                                                                  |
-| `--off <rule>`                | Disable a rule (repeatable)                                                                                                                |
-| `--error <rule>`              | Raise a rule to error (repeatable)                                                                                                         |
-| `--warn <rule>`               | Lower a rule to warning (repeatable)                                                                                                       |
-| `--preset <name>`             | Start from a role's rule bundle: `validator`, `anchor-sep24`, or `issuer`                                                                  |
-| `-q, --quiet`                 | Show errors only                                                                                                                           |
-| `--show-help-urls`            | Print the spec link for each finding                                                                                                       |
-| `--list-rules`                | Print every rule and exit                                                                                                                  |
-| `--completion <shell>`        | Print a `bash`, `zsh`, or `fish` completion script and exit                                                                                |
-| `--no-suggestions`            | Hide diagnostic suggestions in the output                                                                                                  |
-| `--color`                     | Force colour on, overriding `NO_COLOR`                                                                                                     |
-| `--no-color`                  | Force colour off                                                                                                                           |
-| `-w, --watch`                 | Watch files and re-run on changes                                                                                                          |
-| `-i, --interactive`           | Full-screen dashboard to walk the findings (falls back to text)                                                                            |
-| `--lsp`                       | Run as a Language Server on stdio (diagnostics, quick-fixes, hover)                                                                        |
-| `--graph <fmt>`               | Generate architecture diagram: `mermaid` or `dot`                                                                                          |
-| `--graph-contracts`           | Include Soroban contracts in diagram                                                                                                       |
-| `--graph-validators`          | Include validators in diagram                                                                                                              |
-| `--graph-color`               | Color nodes by protocol type                                                                                                               |
-| `--policy <file>`             | Evaluate enterprise policy file (JSON or YAML)                                                                                             |
-| `--export-ap-config`          | Export Anchor Platform YAML config to stdout                                                                                               |
-| `--generate-openapi <file>`   | Generate an OpenAPI 3.1 spec (json or yaml extension)                                                                                      |
-| `--badge-svg <file>`          | Generate an SVG compliance badge                                                                                                           |
-| `--badge-json <file>`         | Generate a Shields.io JSON endpoint                                                                                                        |
-| `--json-schema`               | Print a JSON Schema (Draft 2020-12) for stellar.toml to stdout                                                                             |
+| Flag                      | Effect                                                                                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--audit-hsts`            | Check `Strict-Transport-Security` on the domain and declared hosts against the Chromium preload criteria (use with `--domain`)             |
+| `--audit-emergency-pause` | Verify `[[BRIDGES]]` export pause methods, restrict pause authority and publish a 24/7 security contact                                    |
+| `--audit-bridge-quorum`   | Verify `[[BRIDGES]]` relayer thresholds meet the 2/3 BFT supermajority and staking evidence (also `audit-bridge-quorum --domain <domain>`) |
+
 `stellar-toml-lint refactor <file> [--deduplicate-assets] [--split] [--max-bytes <n>] [--out-dir <dir>]
 [--write] [--json]` merges `[[CURRENCIES]]` entries that share a code and issuer, keeping comments and
 non-conflicting metadata from every declaration. Conflicting fields keep the first value and are
@@ -1392,13 +1347,49 @@ node with no peers emits `overlay/isolated-node-zero-peers` (error); a node with
 peers emits `overlay/low-peer-count` (warning). The raw TCP transport is skipped in
 `--mock-fixtures` mode, which remains a no-network mode.
 
+**Tier-1 quorum alignment** (`--verify-tier1-alignment`) — reads the quorum configuration from
+the linted file, either an explicit `[QUORUM_SET]` (`THRESHOLD_PERCENT`, `VALIDATORS` as `G...` keys
+or `$NAME` references, nested `[QUORUM_SET.<name>]` inner sets) or stellar-core's automatic quorum
+from `QUALITY`-rated `[[VALIDATORS]]` / `[[HOME_DOMAINS]]`, and cross-references it against a catalog
+of Tier-1 organizations (SDF, SatoshiPay, LOBSTR, PublicNode, Blockdaemon, Franklin Templeton). It
+reports, with a bar per organization, how much of each Tier-1 organization and each quorum set is
+present, and computes the fewest Tier-1 organizations that must agree before the slice is satisfied
+(assuming every non-Tier-1 validator in it cooperates):
+
+| Rule                                 | Severity | When                                                                                                      |
+| ------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------- |
+| `overlay/tier1-independent-quorum`   | error    | The slice can agree with no Tier-1 organization at all                                                    |
+| `overlay/tier1-split-quorum`         | error    | The Tier-1 organizations needed cannot be guaranteed to overlap a core quorum (two thirds of the catalog) |
+| `overlay/tier1-narrow-agreement`     | warning  | A minority of Tier-1 organizations is enough                                                              |
+| `overlay/tier1-low-representation`   | warning  | Fewer than two thirds of Tier-1 organizations appear                                                      |
+| `overlay/tier1-partial-organization` | info     | An organization is listed with less than a majority of its nodes                                          |
+| `overlay/tier1-unverified-validator` | warning  | A key claims a Tier-1 `HOME_DOMAIN` but is not in the catalog (a new node or an impostor)                 |
+| `overlay/tier1-unresolved-validator` | warning  | A quorum entry is neither a valid key nor a known `$NAME`                                                 |
+| `overlay/tier1-threshold-invalid`    | error    | A threshold is out of range or can never be met                                                           |
+| `overlay/tier1-quorum-undeclared`    | info     | No quorum configuration was found                                                                         |
+
+The bundled catalog is a dated snapshot. When Tier-1 membership changes (for example a newly
+registered validator), pass an updated list with `--tier1-catalog <file.json>`; the format is
+described by [`docs/schemas/tier1-catalog.schema.json`](docs/schemas/tier1-catalog.schema.json).
+
+```text
+Tier-1 quorum alignment (catalog 2026-11-23, 6 organizations)
+  quorum source: explicit [QUORUM_SET]
+  ✔ Stellar Development Foundation ███ 3/3
+  ⚠ LOBSTR                         █░░░░ 1/5
+  ✘ SatoshiPay                     ░░░ 0/3
+  ...
+  agreement: needs 2 Tier-1 organization(s) to agree (core quorum: 4)
+  verdict: MISALIGNED
+```
+
 **Overlay cryptography** (used by the peer and session audits) — the auditor validates RFC 5869
 HKDF derivation, big-endian 4-byte message length framing, monotonic sequence numbers, and
 HMAC authentication tags. A malformed frame or replayed sequence emits
 `overlay/invalid-crypto-framing` (error); a failed MAC emits
 `overlay/mac-authentication-failure` (error).
 
-**Peer connection flooding defenses** (`stellar-toml-lint test-peer-defense --host <host> [--port <port>]`)
+**Peer connection flooding defenses** (`ConnectionFloodingDefenseTester`)
 — checks that an overlay port you operate sheds connection bursts without locking out real peers.
 `ConnectionFloodingDefenseTester` opens a baseline connection and an authenticated overlay `HELLO`
 handshake, then a paced burst of TCP connections, polls until the port accepts again, and repeats the

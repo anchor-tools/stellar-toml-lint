@@ -121,20 +121,17 @@ import {
   type QuorumPeerConfig,
 } from './overlay/keyRotationVerifier.js';
 import {
-  ConnectionFloodingDefenseTester,
-  DEFAULT_BURST_CONNECTIONS,
-  DEFAULT_CONNECTION_INTERVAL_MS,
-  MAX_BURST_CONNECTIONS,
-  MIN_CONNECTION_INTERVAL_MS,
-  renderFloodingDefenseReport,
-} from './overlay/floodingTester.js';
-import {
   HEARTBEAT_ERRATIC,
   HEARTBEAT_SUDDEN_CLOSURE,
   HEARTBEAT_UNRESPONSIVE,
   OverlayHeartbeatWatchdog,
   renderHeartbeatReport,
 } from './overlay/heartbeatWatchdog.js';
+import {
+  Tier1QuorumAlignmentVerifier,
+  renderTier1AlignmentReport,
+} from './overlay/tier1AlignmentVerifier.js';
+import { DEFAULT_TIER1_CATALOG, parseTier1Catalog } from './overlay/tier1Catalog.js';
 import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
@@ -268,6 +265,8 @@ interface Cli {
   crawlPeers: boolean;
   monitorHeartbeat: boolean;
   heartbeatTimeoutSeconds?: number;
+  verifyTier1Alignment: boolean;
+  tier1Catalog?: string;
   verifyDnssec: boolean;
   auditDnsTakeover: boolean;
   auditSecrets: boolean;
@@ -385,7 +384,6 @@ USAGE
                                          and report reused signing, issuer, account and
                                          validator keys
   stellar-toml-lint audit-validator-rotation --domain <domain>
-  stellar-toml-lint test-peer-defense --host <host> [--port <port>] [--burst <n>]
                                          [--previous-signature <sig>]
                                          [--replacement-signature <sig>]
                                          [--peers <quorum.json>] [--format text|json]
@@ -537,6 +535,13 @@ OPTIONS
       --monitor-heartbeat  Establish an overlay session with every advertised validator
                           and report ping/pong latency, jitter and keepalive state
       --timeout <seconds> Monitoring window for --monitor-heartbeat (default: 10)
+      --verify-tier1-alignment
+                          Cross-reference the [QUORUM_SET] (or QUALITY-rated
+                          [[VALIDATORS]]) against the Tier-1 validator catalog and
+                          flag slices that can agree without the consensus core
+      --tier1-catalog <file.json>
+                          Tier-1 catalog for --verify-tier1-alignment (default:
+                          bundled snapshot; see docs/schemas/tier1-catalog.schema.json)
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
        --audit-dns-takeover
                            Query CNAME/NS records for every referenced domain and
@@ -779,6 +784,7 @@ async function runExtraAudits(
   if (cli.auditBridgeQuorum) {
     const result = await auditBridgeQuorum(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
     out.push(...result.diagnostics);
+  }
   if (cli.auditDnsTakeover) {
     const report = await scanSubdomainTakeover(parsed, { rules, fetchImpl, domain });
     out.push(...takeoverDiagnostics(report, rules));
@@ -798,6 +804,15 @@ async function runExtraAudits(
     const result = await verifier.verify(parsed, rules);
     out.push(...result.diagnostics);
     process.stderr.write(renderTraceAuditReport(result));
+  }
+  if (cli.verifyTier1Alignment) {
+    const catalog =
+      cli.tier1Catalog === undefined
+        ? DEFAULT_TIER1_CATALOG
+        : parseTier1Catalog(JSON.parse(await readFile(cli.tier1Catalog, 'utf8')) as unknown);
+    const report = new Tier1QuorumAlignmentVerifier({ rules, catalog }).verify(parsed);
+    out.push(...report.diagnostics);
+    process.stderr.write(renderTier1AlignmentReport(report));
   }
   if (cli.monitorHeartbeat) {
     const endpoints = parseValidatorEndpoints(parsed);
@@ -878,6 +893,8 @@ async function auditCiphersCommand(args: string[]): Promise<number> {
     process.stdout.write(`${d.severity}: ${d.message} [${d.rule}]\n`);
   }
   return result.report.grade === 'F' || result.report.grade === null ? 1 : 0;
+}
+
 /**
  * Secrets are the one audit that halts the whole run: a leaked credential must
  * never reach a reporter (SARIF embeds source snippets) and no further network
@@ -1649,69 +1666,6 @@ function parseQuorumPeers(value: unknown): QuorumPeerConfig[] {
   });
 }
 
-const TEST_PEER_DEFENSE_USAGE = `Usage: stellar-toml-lint test-peer-defense --host <host> [--port <port>] [options]
-
-Tests connection rate limiting and flooding defenses of a Stellar Core overlay
-port you operate. Every synthetic connection is throttled: at most
-${MAX_BURST_CONNECTIONS} connections per burst, at least ${MIN_CONNECTION_INTERVAL_MS}ms apart.
-
-Options:
-  --host <host>          Overlay host to test (required)
-  --port <port>          Overlay port (default: 11625)
-  --burst <n>            Connections in the burst, 1-${MAX_BURST_CONNECTIONS} (default: ${DEFAULT_BURST_CONNECTIONS})
-  --interval-ms <ms>     Pause between attempts, >= ${MIN_CONNECTION_INTERVAL_MS} (default: ${DEFAULT_CONNECTION_INTERVAL_MS})
-  --hold-ms <ms>         How long accepted sockets stay open, <= 2000 (default: 250)
-  --timeout-ms <ms>      Per-connection timeout (default: 2000)
-  --recovery-ms <ms>     Recovery polling window, <= 15000 (default: 10000)
-  --no-handshake         Skip the authenticated HELLO handshake checks
-  --format text|json     Output format (default: text)
-`;
-
-/** `stellar-toml-lint test-peer-defense --host <host> [--port <port>]` */
-async function testPeerDefenseCommand(args: string[]): Promise<number> {
-  let host: string | undefined;
-  let port = 11625;
-  let format = 'text';
-  let checkHandshake = true;
-  const numbers: Record<string, number> = {};
-  const numeric: Record<string, string> = {
-    '--burst': 'burst',
-    '--interval-ms': 'intervalMs',
-    '--hold-ms': 'holdMs',
-    '--timeout-ms': 'connectTimeoutMs',
-    '--recovery-ms': 'recoveryWindowMs',
-  };
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i] as string;
-    if (arg === '--host') host = requireValue(args, ++i, arg);
-    else if (arg === '--port') port = Number(requireValue(args, ++i, arg));
-    else if (arg === '--format') format = requireValue(args, ++i, arg);
-    else if (arg === '--no-handshake') checkHandshake = false;
-    else if (arg === '--help' || arg === '-h') {
-      process.stdout.write(TEST_PEER_DEFENSE_USAGE);
-      return 0;
-    } else if (numeric[arg] !== undefined) {
-      const raw = requireValue(args, ++i, arg);
-      const value = Number(raw);
-      if (!Number.isFinite(value)) {
-        process.stderr.write(`${arg} expects a number, got "${raw}"\n`);
-        return 2;
-      }
-      numbers[numeric[arg] as string] = value;
-    } else {
-      process.stderr.write(`Unknown option ${arg} for test-peer-defense\n`);
-      return 2;
-    }
-  }
-  if (host === undefined || (format !== 'text' && format !== 'json')) {
-    process.stderr.write(TEST_PEER_DEFENSE_USAGE);
-    return 2;
-  }
-
-  let tester: ConnectionFloodingDefenseTester;
-  try {
-    tester = new ConnectionFloodingDefenseTester({ ...numbers, checkHandshake });
 const AUDIT_FLOOD_POLICY_USAGE = `Usage: stellar-toml-lint audit-flood-policy [--host <host>] [options]
 
 Checks transaction flood propagation and mempool eviction policy. Metrics come
@@ -1812,12 +1766,6 @@ async function auditFloodPolicyCommand(args: string[]): Promise<number> {
     process.stderr.write(`${message(error)}\n`);
     return 2;
   }
-  try {
-    const report = await tester.run(host, port);
-    process.stdout.write(
-      format === 'json'
-        ? `${JSON.stringify(report, null, 2)}\n`
-        : renderFloodingDefenseReport(report),
   if (
     (format !== 'text' && format !== 'json') ||
     !Number.isInteger(adminPort) ||
@@ -2763,10 +2711,8 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'verify-archive-gpg') return verifyArchiveGpgCommand(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
-  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   if (argv[0] === 'verify-provenance') return verifyProvenance(argv.slice(1));
   if (argv[0] === 'audit-dockerfile') return auditContainer(argv.slice(1));
-  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
   if (argv[0] === 'migrate') return migrateCommand(argv.slice(1), shouldUseColor());
   if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
   if (argv[0] === 'probe-sla') return probeSlaCommand(argv.slice(1));
@@ -2775,7 +2721,6 @@ async function main(argv: string[]): Promise<number> {
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
   if (argv[0] === 'audit-validator-rotation') return auditValidatorRotationCommand(argv.slice(1));
-  if (argv[0] === 'test-peer-defense') return testPeerDefenseCommand(argv.slice(1));
   if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
   if (argv[0] === 'audit-flood-policy') return auditFloodPolicyCommand(argv.slice(1));
   if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
@@ -2802,9 +2747,6 @@ async function main(argv: string[]): Promise<number> {
   }
   if (cli.verifyWasmStreaming !== undefined) {
     return verifyWasmStreaming(cli.verifyWasmStreaming);
-  }
-  if (cli.runSandboxedPlugin !== undefined) {
-    return runSandboxedPlugin(cli.runSandboxedPlugin, cli.sandboxFuel);
   }
 
   if (cli.dryRun && !cli.sortKeys && !cli.pruneOrphaned) {
@@ -3554,6 +3496,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditOpenTelemetry: false,
     crawlPeers: false,
     monitorHeartbeat: false,
+    verifyTier1Alignment: false,
     verifyDnssec: false,
     auditDnsTakeover: false,
     auditSecrets: false,
@@ -3754,6 +3697,8 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-bridge-quorum':
         cli.auditBridgeQuorum = true;
+        break;
+
       case '--audit-opentelemetry':
         cli.auditOpenTelemetry = true;
         break;
@@ -3776,6 +3721,14 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--monitor-heartbeat':
         cli.monitorHeartbeat = true;
+        break;
+
+      case '--verify-tier1-alignment':
+        cli.verifyTier1Alignment = true;
+        break;
+
+      case '--tier1-catalog':
+        cli.tier1Catalog = requireValue(argv, ++i, arg);
         break;
 
       case '--timeout': {
