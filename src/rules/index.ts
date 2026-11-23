@@ -30,8 +30,17 @@ import { federationSecurityRules } from '../protocols/federationSecurityTester.j
 import { reverseFederationRules } from '../protocols/reverseFederationVerifier.js';
 import { sep30Rules } from '../protocols/sep30Verifier.js';
 import { promotionalPricingRules } from '../protocols/promotionalPricingVerifier.js';
+import { sep38CircuitBreakerRules } from '../protocols/sep38CircuitBreaker.js';
+import { sep38DiscrepancyRules } from '../protocols/sep38Discrepancy.js';
+import { sep6PollingRules } from '../protocols/sep6Polling.js';
+import { sep10JwtRules } from '../protocols/sep10JwtAuditor.js';
+import { sep12FileUploadRules } from '../protocols/sep12FileUpload.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
+import { tlsCipherRules } from '../security/tlsCipherAuditor.js';
+import { hstsRules } from '../security/hstsVerifier.js';
+import { emergencyPauseRules } from '../bridges/emergencyPauseValidator.js';
+import { bridgeQuorumRules } from '../bridges/bridgeQuorumAuditor.js';
 import { subdomainTakeoverRules } from '../security/subdomainScanner.js';
 import { secretDetectorRules } from '../security/secretDetector.js';
 import { ssrfRules } from '../security/ssrfScanner.js';
@@ -40,6 +49,15 @@ import { corsSecurityRules } from '../security/corsAuditor.js';
 import { mimeSecurityRules } from '../security/mimeScanner.js';
 import { keySeparationRules } from '../security/keySeparationAuditor.js';
 import { clickjackingRules } from '../security/clickjackingAuditor.js';
+import { zkRules } from '../zk/rangeProofVerifier.js';
+import { secp256k1BridgeRules } from '../crypto/secp256k1Verifier.js';
+import { kzgRules } from '../crypto/kzgVerifier.js';
+import { overlayHandshakeRules } from '../overlay/handshakeTester.js';
+import { floodPropagationRules } from '../overlay/floodVerifier.js';
+import { validatorKeyRotationRules } from '../overlay/keyRotationVerifier.js';
+import { floodingDefenseRules } from '../overlay/floodingTester.js';
+import { overlayHeartbeatRules } from '../overlay/heartbeat-rules.js';
+import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -76,8 +94,17 @@ export const allRules: Rule[] = [
   ...reverseFederationRules,
   ...sep30Rules,
   ...promotionalPricingRules,
+  ...sep38CircuitBreakerRules,
+  ...sep38DiscrepancyRules,
+  ...sep6PollingRules,
+  ...sep10JwtRules,
+  ...sep12FileUploadRules,
   ...federationSrvRules,
   ...esgRules,
+  ...tlsCipherRules,
+  ...hstsRules,
+  ...emergencyPauseRules,
+  ...bridgeQuorumRules,
   ...subdomainTakeoverRules,
   ...secretDetectorRules,
   ...ssrfRules,
@@ -86,6 +113,15 @@ export const allRules: Rule[] = [
   ...mimeSecurityRules,
   ...keySeparationRules,
   ...clickjackingRules,
+  ...zkRules,
+  ...secp256k1BridgeRules,
+  ...kzgRules,
+  ...overlayHandshakeRules,
+  ...floodPropagationRules,
+  ...validatorKeyRotationRules,
+  ...floodingDefenseRules,
+  ...overlayHeartbeatRules,
+  ...sep31Sep12Rules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -121,8 +157,17 @@ export {
   reverseFederationRules,
   sep30Rules,
   promotionalPricingRules,
+  sep38CircuitBreakerRules,
+  sep38DiscrepancyRules,
+  sep6PollingRules,
+  sep10JwtRules,
+  sep12FileUploadRules,
   federationSrvRules,
   esgRules,
+  tlsCipherRules,
+  hstsRules,
+  emergencyPauseRules,
+  bridgeQuorumRules,
   subdomainTakeoverRules,
   secretDetectorRules,
   ssrfRules,
@@ -131,4 +176,13 @@ export {
   mimeSecurityRules,
   keySeparationRules,
   clickjackingRules,
+  zkRules,
+  secp256k1BridgeRules,
+  kzgRules,
+  overlayHandshakeRules,
+  floodPropagationRules,
+  validatorKeyRotationRules,
+  floodingDefenseRules,
+  overlayHeartbeatRules,
+  sep31Sep12Rules,
 };

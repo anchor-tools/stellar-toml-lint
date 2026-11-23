@@ -4,38 +4,13 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { nodeShimPlugin, browserBanner as banner } from './esbuild-node-shim.mjs';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, '..');
 const outDir = join(rootDir, 'dist', 'browser');
 
 mkdirSync(outDir, { recursive: true });
-
-/**
- * Plugin to shim Node built-ins like `node:tls` so that the browser bundle
- * remains fully hermetic without pulling in Node runtime APIs.
- */
-const nodeShimPlugin = {
-  name: 'node-builtins-shim',
-  setup(build) {
-    build.onResolve({ filter: /^node:tls$/ }, (args) => ({
-      path: args.path,
-      namespace: 'node-shim',
-    }));
-    build.onLoad({ filter: /.*/, namespace: 'node-shim' }, () => ({
-      contents: `
-        export function connect() {
-          throw new Error('TLS audit is not supported in browser environments.');
-        }
-        export default { connect };
-      `,
-      loader: 'js',
-    }));
-  },
-};
-
-const banner = {
-  js: 'var self = typeof window !== "undefined" ? window : typeof globalThis !== "undefined" ? globalThis : this;',
-};
 
 async function buildBrowser() {
   console.log('Building browser and worker bundles...');
