@@ -1443,6 +1443,18 @@ An upgrade function exported without admin protection or authorization checks em
 `soroban/unprotected-upgrade-function` (error), and an upgrade admin account secured by only a single signer
 emits `soroban/single-signer-upgrade-admin` (warning).
 
+Contract initialization is verified from the same `contractspecv0` section. A contract that exports the
+Protocol 23 `__constructor` is initialized atomically inside the deployment operation; one that relies on a
+custom `initialize`/`init` instead is checked against its instance storage and persistent
+initialization-marker keys. A contract with an initializer but no initialization state emits
+`soroban/constructor-uninitialized` (error), because the first caller can claim it; initialization state
+that is not guarded by a single-use boolean flag emits `soroban/constructor-no-replay-protection`
+(warning), because the initializer can be invoked again. Constructor and initializer signatures are
+compared with the file's metadata — `CURRENCIES[].display_decimals` is derived automatically, and admin
+or governance-quorum expectations can be supplied by the caller — with a missing or mistyped parameter
+emitting `soroban/constructor-argument-mismatch` (error). An unreachable RPC, an archived entry, a
+Stellar Asset Contract, or a module without a readable spec stays silent.
+
 Each deployed WASM also gets a static resource estimate, read from the module's sections without
 executing it. A Memory section that reserves more than 10 pages (640 KiB) at instantiation emits
 `soroban/excessive-static-memory-pages` (warning); the message also reports the static heap the

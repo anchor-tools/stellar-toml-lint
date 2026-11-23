@@ -260,6 +260,9 @@ describe('Soroban contract TTL audit', () => {
       { id: 'soroban/storage-ttl-critical', severity: 'error' },
       { id: 'soroban/storage-ttl-expiring-soon', severity: 'warning' },
       { id: 'soroban/storage-ttl-unavailable', severity: 'warning' },
+      { id: 'soroban/constructor-uninitialized', severity: 'error' },
+      { id: 'soroban/constructor-no-replay-protection', severity: 'warning' },
+      { id: 'soroban/constructor-argument-mismatch', severity: 'error' },
     ]);
   });
 });
