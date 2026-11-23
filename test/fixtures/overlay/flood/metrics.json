@@ -1,0 +1,44 @@
+{
+  "metrics": {
+    "overlay.flood.unique_recv": {
+      "type": "meter",
+      "count": 1200
+    },
+    "overlay.flood.duplicate_recv": {
+      "type": "meter",
+      "count": 3600
+    },
+    "overlay.recv.get-txset": {
+      "type": "timer",
+      "count": 40
+    },
+    "overlay.recv.dont-have": {
+      "type": "timer",
+      "count": 12
+    },
+    "overlay.recv.transaction": {
+      "type": "timer",
+      "count": 1500
+    },
+    "herder.pending-txs.banned": {
+      "type": "counter",
+      "count": 7
+    },
+    "herder.pending-txs.age0": {
+      "type": "counter",
+      "count": 120
+    },
+    "herder.pending-txs.age1": {
+      "type": "counter",
+      "count": 30
+    },
+    "herder.pending-txs.age2": {
+      "type": "counter",
+      "count": 4
+    },
+    "herder.pending-txs.age3": {
+      "type": "counter",
+      "count": 2
+    }
+  }
+}
