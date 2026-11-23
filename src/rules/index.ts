@@ -37,6 +37,10 @@ import { sep10JwtRules } from '../protocols/sep10JwtAuditor.js';
 import { sep12FileUploadRules } from '../protocols/sep12FileUpload.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
+import { bridgeLatencyRules } from '../bridges/latencyBenchmark.js';
+import { bridgeReplayRules } from '../bridges/eventReplayDetector.js';
+import { bankAttestationRules } from '../bridges/bankAttestationVerifier.js';
+import { proofOfBurnRules } from '../bridges/proofOfBurnValidator.js';
 import { tlsCipherRules } from '../security/tlsCipherAuditor.js';
 import { hstsRules } from '../security/hstsVerifier.js';
 import { emergencyPauseRules } from '../bridges/emergencyPauseValidator.js';
@@ -102,6 +106,10 @@ export const allRules: Rule[] = [
   ...sep12FileUploadRules,
   ...federationSrvRules,
   ...esgRules,
+  ...bridgeLatencyRules,
+  ...bridgeReplayRules,
+  ...bankAttestationRules,
+  ...proofOfBurnRules,
   ...tlsCipherRules,
   ...hstsRules,
   ...emergencyPauseRules,
@@ -166,6 +174,10 @@ export {
   sep12FileUploadRules,
   federationSrvRules,
   esgRules,
+  bridgeLatencyRules,
+  bridgeReplayRules,
+  bankAttestationRules,
+  proofOfBurnRules,
   tlsCipherRules,
   hstsRules,
   emergencyPauseRules,

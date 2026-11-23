@@ -788,6 +788,64 @@ export type {
   EsgResult,
 } from './protocols/esgComplianceVerifier.js';
 export {
+  BridgeSettlementLatencyBenchmark,
+  benchmarkBridgeLatency,
+  blockToMillis,
+  bridgeLatencyRuleIds,
+  bridgeLatencyRules,
+  percentile,
+  renderLatencyReport,
+  toUtcMillis,
+} from './bridges/latencyBenchmark.js';
+export type {
+  BlockCheckpoint,
+  CorridorBenchmark,
+  CorridorRating,
+  LatencyOptions,
+  LatencyResult,
+} from './bridges/latencyBenchmark.js';
+export {
+  BridgeEventReplayDetector,
+  accountToBytes32,
+  auditBridgeReplays,
+  bridgeReplayRuleIds,
+  bridgeReplayRules,
+  normalizeBytes32,
+  parseLockEvent,
+} from './bridges/eventReplayDetector.js';
+export type { LockEvent, ReplayOptions, ReplayResult } from './bridges/eventReplayDetector.js';
+export {
+  BankAttestationVerifier,
+  bankAttestationRuleIds,
+  bankAttestationRules,
+  collectAttestations,
+  parsePdfDate,
+  readPdfMetadata,
+  verifyBankAttestations,
+} from './bridges/bankAttestationVerifier.js';
+export type {
+  AttestationEntry,
+  AttestationOptions,
+  AttestationResult,
+  PdfMetadata,
+} from './bridges/bankAttestationVerifier.js';
+export {
+  ProofOfBurnValidator,
+  auditBurnRedemptions,
+  classifyBurn,
+  isLockedAccount,
+  proofOfBurnRuleIds,
+  proofOfBurnRules,
+  renderBurnReport,
+} from './bridges/proofOfBurnValidator.js';
+export type {
+  BurnKind,
+  BurnOptions,
+  BurnResult,
+  LockedAccount,
+  RedemptionVerdict,
+} from './bridges/proofOfBurnValidator.js';
+export {
   TlsCipherSecurityAuditor,
   auditTlsCiphers,
   hasForwardSecrecy,

@@ -156,6 +156,14 @@ validation checks that no currency or non-conflicting value was lost; the diff i
 and only `--write` changes the file. `--split` instead emits modular partials grouped by table
 (`base`, `currencies`, `validators`, …), optionally written to `--out-dir`.
 
+### Bridge evidence audit options
+
+| Flag                              | Effect                                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `--audit-bridge-replays <file>`   | Match EVM lock event logs to Stellar mints and flag duplicate, unrecorded or replayable events                                        |
+| `--verify-attestations`           | Verify reserve attestation checksums and age; with `--check-network` download the PDFs (also `verify-attestations --domain <domain>`) |
+| `--audit-burn-redemptions <file>` | Verify wrapped-asset redemptions burn supply and flag pseudo-burns                                                                    |
+
 ### Options
 
 | Flag                          | Effect                                                                                                                              |
