@@ -13,7 +13,10 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-imports': 'error',
       'no-console': 'error',
       eqeqeq: ['error', 'always'],
-      '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { varsIgnorePattern: '^_', argsIgnorePattern: '^_' },
+      ],
     },
   },
   {

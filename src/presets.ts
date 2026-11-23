@@ -21,6 +21,7 @@
  * against the registry as the module loads, which turns a rule being renamed
  * into an import-time error rather than a silently dead entry in a bundle.
  */
+import { nearestMatch } from './levenshtein.js';
 import { allRules } from './rules/index.js';
 import type { RuleCategory, RuleOverrides, Severity } from './types.js';
 
@@ -229,36 +230,5 @@ function presetList(): string {
  * guessing is only better than silence when the guess is close.
  */
 function nearestPreset(name: string): PresetName | undefined {
-  let nearest: PresetName | undefined;
-  let smallest = Number.POSITIVE_INFINITY;
-
-  for (const candidate of PRESET_NAMES) {
-    const distance = editDistance(name, candidate);
-    if (distance < smallest) {
-      nearest = candidate;
-      smallest = distance;
-    }
-  }
-
-  // One edit is always a typo; beyond that, only for a name long enough for the
-  // distance to mean something, since `i` is one edit from every name there is.
-  return smallest <= Math.max(1, Math.floor(name.length / 3)) ? nearest : undefined;
-}
-
-/** Levenshtein distance, over the whole string. */
-function editDistance(a: string, b: string): number {
-  const row = (length: number): number[] => Array.from({ length: length + 1 }, (_, i) => i);
-  let previous = row(b.length);
-
-  for (let i = 1; i <= a.length; i++) {
-    const current = row(b.length);
-    current[0] = i;
-    for (let j = 1; j <= b.length; j++) {
-      const substitution = (previous[j - 1] ?? i) + (a[i - 1] === b[j - 1] ? 0 : 1);
-      current[j] = Math.min(substitution, (previous[j] ?? i) + 1, (current[j - 1] ?? j) + 1);
-    }
-    previous = current;
-  }
-
-  return previous[b.length] ?? Math.max(a.length, b.length);
+  return nearestMatch(PRESET_NAMES, name);
 }

@@ -37,6 +37,160 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`bridgequorum/below-supermajority`, `bridgequorum/minority-threshold`,
   `bridgequorum/small-validator-set`, `bridgequorum/abrupt-rotation`,
   `bridgequorum/insufficient-stake`, `bridgequorum/missing-slashing` and others).
+- Rule plugins, so a team can write the check SEP-1 does not define
+  (`src/engine/semanticRuleEngine.ts`, `src/engine/ruleLoader.ts`, `--rules-dir <dir>`,
+  `--plugin <spec>`). A module exports one rule as its `default` or a list as `rules`, and the rule
+  subscribes to node hooks — `visitDocument`, `visitTable`, `visitCurrency`, `visitKeyValue` and a
+  `leave` counterpart for each — over one traversal the whole rule set shares, and each node kind
+  keeps the list of rules that asked for it, so a rule costs a function call per node it listens for
+  and nothing for the rest. 120 rules measure a median 2.2ms over a file with a hundred assets and a
+  hundred validators, against the 10ms `npm run bench` gates them at. A plugin's findings answer to
+  `--off`, `--warn`, `--error` and `.stellartomlrc.json` exactly as a built-in's do, which is what
+  makes a third-party rule operable; `--lsp` still runs the catalog alone, so plugin rules do not
+  appear in editor diagnostics. A source that cannot be read, or a module exporting a rule that is
+  missing a field or takes an id already in use, is a usage error and exits `2`; a rule that throws
+  while running collapses into one `internal/plugin-error` warning naming it and the number of nodes
+  it failed on, and the rest of the run is unaffected. Nothing is autoloaded — a rule runs because it
+  was named on the command line.
+
+- `verify-rate-headers` (`src/telemetry/rateLimitHeaderVerifier.ts`): Anchor API rate-limit header standard
+  RFC 6585 compliance verifier checking IETF headers (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`),
+  legacy `X-RateLimit-*` headers, and `Retry-After` delta-seconds and HTTP-date formats under 429 status codes (#534).
+
+- `audit-tls` (`src/telemetry/tlsWatchdog.ts`): Automated SSL/TLS certificate renewal and OCSP stapling health
+  watchdog establishing non-blocking TLS handshakes to verify expiration dates (<30 day alerts), OCSP stapling
+  response flags, and revocation status (#535).
+
+- `format` / `LosslessCstFormatter` (`src/cst/cstFormatter.ts`): Lossless Concrete Syntax Tree comment- and
+  whitespace-preserving formatter supporting programmatic AST node mutations (currencies, signing keys,
+  section reordering) and round-trip byte-for-byte idempotency (#536).
+
+- `ResilientIncrementalParser` (`src/cst/resilientParser.ts`): Resilient incremental syntax parser with
+  panic-mode and synchronization-token error recovery for Language Servers, isolating syntax errors to
+  localized error nodes without crashing and providing responsive range re-parsing on 5,000+ line TOML files (#538).
+
+- `--audit-cors` (`src/security/corsAuditor.ts`): probes every endpoint the file declares with an
+  `OPTIONS` pre-flight, an actual request from a wallet origin, and an actual request from an origin no
+  whitelist should contain, reading nothing but response headers and never sending credentials. Public
+  `/.well-known/stellar.toml` and SEP-38 `/info` reads must allow every origin
+  (`cors/public-endpoint-missing-wildcard`); an authenticated or interactive endpoint that pairs
+  `Access-Control-Allow-Origin: *` with `Access-Control-Allow-Credentials: true`
+  (`cors/wildcard-origin-with-credentials`) or echoes the unlisted origin back
+  (`cors/unlisted-origin-echoed`) is reported as an error, a refused pre-flight as a warning
+  (`cors/preflight-not-allowed`), and an unreachable host as `cors/endpoint-unreachable`. The resolved
+  policy table prints to stderr.
+
+- `--audit-asset-security` (`src/security/mimeScanner.ts`): fetches `ORG_LOGO`, `CURRENCIES[].image`,
+  the address and phone attestations, reserve attestations and linked `toml` files and classifies each
+  from its headers — missing `X-Content-Type-Options: nosniff` (`mime/missing-nosniff`), an executable
+  `Content-Type` (`mime/active-content-type`), a type that contradicts the URL's extension
+  (`mime/content-type-mismatch`) — then scans text-bearing bodies as raw markup for `<script>`, `on*=`
+  handlers, `javascript:` hrefs, `foreignObject`, embedded documents and `DOCTYPE`/`ENTITY`
+  declarations (`svg/embedded-script`, `svg/entity-declaration`). No XML entity is expanded, so an XXE
+  or billion-laughs payload is reported instead of dereferenced; binary payloads are never buffered and
+  a scanned body is bounded, with the byte limit named in the finding.
+
+- `audit-key-separation --domain <domain> [--horizon <url>] [--format text|json]`
+  (`src/security/keySeparationAuditor.ts`): builds the key/role association graph from `SIGNING_KEY`,
+  `URI_REQUEST_SIGNING_KEY`, `ACCOUNTS`, `CURRENCIES[].issuer`, `collateral_addresses` and
+  `VALIDATORS[].PUBLIC_KEY` and reports every account carrying more than one role —
+  `keys/signing-issuer-reuse`, `keys/issuer-operational-account`, `keys/validator-key-reuse` (errors)
+  and `keys/collateral-issuer-reuse` (warning) — then asks Horizon for signers, thresholds and the last
+  ten operations, emitting `keys/single-signer-root-account` and `keys/issuer-operational-activity`.
+  Issuer administration operations are not counted as operational traffic, and accounts Horizon cannot
+  serve produce no finding. The report prints the role graph as a tree.
+
+- `--audit-clickjacking` (`src/security/clickjackingAuditor.ts`): requests every URL a wallet embeds —
+  SEP-24 interactive endpoints, `KYC_SERVER`, `DIRECT_PAYMENT_SERVER`, `WEB_AUTH_ENDPOINT`,
+  `CURRENCIES[].approval_server` and `ORG_URL` — as an `iframe` navigation and reads both framing
+  headers. `frame-ancestors *` is an error (`clickjacking/wildcard-frame-ancestors`), an absent policy
+  and the browser-ignored `X-Frame-Options: ALLOW-FROM` are warnings
+  (`clickjacking/missing-frame-protection`, `clickjacking/deprecated-allow-from`). CSP decides over
+  `X-Frame-Options`, as it does in a browser, and a report-only policy counts as nothing sent.
+
+- `stellar-toml-lint diff <source> <target> [--json]` (`src/cst/semanticDiffer.ts`): compares two
+  documents by what they configure rather than by how they are typed, so an anchor's revised
+  `stellar.toml` reads as a changelog instead of a line diff. Both sides parse to value trees and
+  `[[CURRENCIES]]` / `[[VALIDATORS]]` entries pair on `code` and `PUBLIC_KEY`, which makes a
+  re-sort, a re-indent, a reordered key inside an entry and two spellings of the same instant all
+  invisible — the output of `--sort-keys` diffs as nothing. Either side can be a path, an `http(s)`
+  URL or `-` for stdin, and the report is markdown on a terminal or a JSON changelog with `path`,
+  `kind`, `section`, `category`, `breaking`, `reason`, `before` and `after`. Changes that stop a
+  client that read the source are tagged `BREAKING` with the reason in SEP-1 terms: a rotated
+  `SIGNING_KEY`, a currency whose `issuer` or `contract` moved, an endpoint that disappears instead
+  of moving, and an asset or validator that is no longer advertised. Additions are never breaking,
+  neither is dropping a field SEP-1 already deprecated, and fields outside SEP-1 are reported rather
+  than graded. Exit 0 with no breaking changes, 1 when there are, and 2 when a side cannot be parsed
+  or read.
+
+- `verify-archive-gpg --url <archive> --pubkey <key-file>` (`src/overlay/archiveGpgVerifier.ts`):
+  downloads the latest checkpoint ledger XDR gzip file described by `.well-known/stellar-history.json`
+  and verifies it against a supplied detached OpenPGP signature with OpenPGP.js. The optional
+  `<ledger-file>.sig` sidecar is a best-effort convention, not a Stellar Core format guarantee;
+  `--signature-url` can name a different location. The verifier enforces RSA 2048-bit or Ed25519
+  signing keys, expiry/revocation checks, SHA-2 signature hashes, bounded HTTPS requests, and
+  reports unknown operator identity trust unless an independently sourced fingerprint is pinned.
+
+- `stellar-toml-lint migrate` / `migrate --dry-run` (`src/cst/migrationCodemod.ts`,
+  `src/cst/codemodRules/`): rewrites deprecated SEP-1 fields into their current form in place —
+  `ORGANIZATION_NAME` → `[DOCUMENTATION].ORG_NAME`, `AUTH_SERVER` → `WEB_AUTH_ENDPOINT`,
+  `DEPOSIT_SERVER` → `TRANSFER_SERVER`, `FEDERATION_SERVER` over `https://`, and a
+  `[DOCUMENTATION]` field written at the document root moved under `[DOCUMENTATION]`. Rules emit
+  offsets into the original text and the engine splices them, so quoting, spacing and the comments
+  attached above a field survive; `--dry-run` runs the identical plan and prints a unified diff,
+  exiting 1 while a file still needs work. The result is linted and compared with the input, and a
+  migration that makes the file worse is refused rather than written — the file is left byte for
+  byte as it was and the exit code says so. Two rules reaching for overlapping text cancel that
+  edit instead of guessing an order, `--skip-rule <id>` leaves one migration undone, `--json`
+  reports the plan, and a file with nothing to migrate exits 0 without touching the disk.
+
+- `--detect-orphans` / `--prune-orphaned` / `--allow-key` (`src/cst/orphanedKeyScanner.ts`,
+  `src/levenshtein.ts`): reports keys and table headers that configure nothing any SEP defines, and
+  exits 1 when a file has any. It reads the CST, so unlike the section-scoped `unknown-field` rules
+  it sees `[[CURRENCY]]` — one letter short, with a whole block below it silently configuring
+  nothing — and a `[DOCUMENTATION]` field parked at the root. The recognized catalog comes from
+  `src/spec.ts`, so a field added to the spec is recognized by the scanner, the schema generator and
+  editor autocompletion in the same commit. Nothing under an unrecognized table is reported, `X_…`
+  vendor extensions are accepted before comparison, and `--allow-key` takes an exact name, a dotted
+  path, a table name or a `PREFIX_*` glob (also configurable as `knownKeys` in
+  `.stellartomlrc.json`). `--prune-orphaned` renames near-miss spellings, deletes what nothing
+  defines together with the comments attached to it, and refuses to delete a populated unknown
+  table.
+
+- `src/editor/` (`monacoBundle.ts`, `codeMirror.ts`, `language.ts`) ships the editor language
+  bundle for both web editors, built by `npm run build:editor`
+  (`scripts/build-editor-bundles.mjs`) to `dist/editor/monaco.bundle.js` and
+  `dist/editor/codemirror.bundle.js` as browser ESM with no Node built-ins. The Monaco half
+  registers a Monarch tokenizer, a language configuration, SEP-1 key/table/value completions, and
+  maps diagnostics through `monaco.editor.setModelMarkers`; the CodeMirror half is a `StreamParser`
+  plus a `linter()` source over the same facts. Validation is injected — either a result the page
+  already has, or `createWorkerValidator(worker)` speaking the existing
+  `stellar-toml-lint/worker` protocol — so the bundles stay under the 150 KB gzip budget the build
+  enforces by measuring its own output into `dist/editor/sizes.json`.
+  New `exports` entries `./editor/monaco` and `./editor/codemirror` resolve to those bundles with
+  the declarations `tsc` emits for the sources.
+  `test/fixtures/editor-demo.html` runs both in a page.
+
+- `grammars/tree-sitter-stellar-toml` now models SEP-1 in the parser rather than in queries:
+  `public_key`, `contract_id`, `asset_code`, `sep_table` and `currency_entry` are nodes, so
+  `tree-sitter tags` and a symbol list can name an account or a contract instead of matching one
+  out of a string, and every consumer that reads `node-types.json` highlights them identically.
+  Values that do not fit a shape still parse as ordinary TOML, so vendor extensions are unaffected,
+  and the reserved table names are lexed by the external scanner because token precedence outranks
+  match length. Adds `queries/tags.scm`, `tree-sitter.json`, `bindings/wasm/binding.c`, a four-file
+  corpus including a full production anchor, `scripts/build-tree-sitter-grammar.mjs` (generate +
+  corpus + optional WASM, with the CLI looked up rather than installed), and install instructions
+  for Neovim and Helix in `grammars/tree-sitter-stellar-toml/README.md`.
+
+- `--sort-keys` / `--sort-keys --dry-run` (`src/cst/canonicalSortCodemod.ts`,
+  `src/line-diff.ts`): rewrites `[DOCUMENTATION]`, `[[PRINCIPALS]]`, `[[CURRENCIES]]` and
+  `[[VALIDATORS]]` into the SEP-1 field order and sorts currency entries by `code` and validators by
+  `PUBLIC_KEY`, so adding one asset stops rediffing the whole file. Entries move as lossless CST
+  nodes, so nothing is reformatted and a comment travels with the key it annotates; a blank line
+  makes a comment floating and it stays at its position. Unknown keys stay last in the order written,
+  the pass is idempotent, and a file that does not parse is reported and left untouched (exit 1).
+  `--dry-run` prints a unified diff instead of writing and exits 1 when a file is not already
+  canonical, which is the CI gate; `--sort-keys -` sorts stdin to stdout.
 
 - `--audit-esg-disclosures` (`src/protocols/esgComplianceVerifier.ts`): checks
   `[DOCUMENTATION.ORG_ESG]` for a carbon accounting methodology, renewable energy certificates, PUE
@@ -203,6 +357,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `--warn <rule>` stored the flag's own spelling as the severity instead of the token `warning`, so
+  the lowered finding was counted under a `warn` key no reporter reads. It stayed in the diagnostic
+  list but left the summary — and an error lowered with `--warn` left `counts.error` too, so
+  `--strict` passed and the run exited `0` on a file with an unaddressed error. The flag now maps to
+  `warning`, which is what `--max-warnings` and the exit code count.
+
 - `--lsp` actually serves the protocol now. `main()` called the line-based `lspMain()`, which
   registered a stdin listener and then fell through to `process.exit`, so the process printed
   nothing and exited before a client could send a message. The CLI runs the framed stdio server
@@ -236,6 +396,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unaffected, and both rules can be tuned with `--off`, `--warn`, and `--error` like any other.
 - `lintDomain` accepts an optional `tlsProbe` so embedders and tests can supply the session instead of
   having one opened for them. `probeTls` is exported for callers that need to measure it themselves.
+- The `textDocument/documentSymbol` outline expands values written on the right of an `=`. An inline
+  table (`SUPPORT = { EMAIL = "…" }`) is an `Object` with a child per entry, an array of them
+  (`TYPES = [{asset = …}, {asset = …}]`) is an `Array` with one `Object` per element, and a nested list
+  nests further — previously all three were a single leaf, so the detail an anchor puts in `TYPES` and
+  `collateral_addresses` had no outline at all. Elements are numbered by source position, and a list of
+  scalars stays a leaf because `ACCOUNTS = ["GA…", "GB…"]` gains nothing from two more nodes.
+  `[[CURRENCIES]]` entries now report `SymbolKind.Interface` (11) rather than `Array` (18), which is
+  what issue #544 asks for and what an asset a client has to conform to is; entries of any other array
+  table are unchanged. `test/lsp/document-symbols.test.ts` covers the tree, the ranges (every selection
+  inside its range, every child inside its parent), and the request over the LSP wire.
 
 ## [0.1.0]
 

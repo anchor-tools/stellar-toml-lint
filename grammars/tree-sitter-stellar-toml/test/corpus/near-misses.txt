@@ -1,0 +1,191 @@
+==================
+Values that only look like Stellar tokens
+==================
+
+# None of these fit a StrKey or an asset code, so they must stay ordinary
+# `string` values. Base32 (RFC 4648) allows every A-Z letter and the digits
+# 2-7, so the disqualifying characters are 0, 1, 8 and 9 — not I, L, O or U.
+SIGNING_KEY = "GC5MEN6ZAK7IPVMSMKXH2FKKGL6UTKW66V6ORPJNPCULDDIMYALEHB51"
+TOO_SHORT = "GC5MEN6ZAK7IPVMSMKXH2FKKGL6UTKW66V6ORPJNPCULDDIMYALEHB5"
+TOO_LONG = "GC5MEN6ZAK7IPVMSMKXH2FKKGL6UTKW66V6ORPJNPCULDDIMYALEHB5KZ"
+WRONG_VERSION_BYTE = "XG5MEN6ZAK7IPVMSMKXH2FKKGL6UTKW66V6ORPJNPCULDDIMYALEHB5K"
+SECRET_SEED = "SBCVMMPOW2SPE4JWM7J4ZULWGLOJOPIYJWQKRKDDOHH3DROJFJ6OJ57L"
+LOWERCASE = "gc5men6zak7ipvmsmkxh2fkzgl6utkw66v6orpjnpculddimyahlehb5k"
+ESCAPED = "GC5MEN6ZAK7IPVMSMKXH2FKKGL6UTKW66V6ORPJNPCULDDIMYALEHB5K\n"
+EMPTY = ""
+LONG_ASSET = "ABCDEFGHIJKLMNOP"
+CODE = "GONE"
+CONTRACT_LOOKALIKE = "CA32UWEBA6HNQTOHALV2LAX6DMUQFSRL7XH4U7QFBPRKE5KPWJU7LWK"
+LITERAL_STRKEY = 'GC5MEN6ZAK7IPVMSMKXH2FKKGL6UTKW66V6ORPJNPCULDDIMYALEHB5K'
+MULTILINE = """
+GC5MEN6ZAK7IPVMSMKXH2FKKGL6UTKW66V6ORPJNPCULDDIMYALEHB5K
+"""
+"GC5MEN6ZAK7IPVMSMKXH2FKKGL6UTKW66V6ORPJNPCULDDIMYALEHB5K" = "a 56-character quoted key"
+
+---
+
+(document
+  (newline)
+  (comment)
+  (newline)
+  (comment)
+  (newline)
+  (comment)
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string
+      (escape_sequence)))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (asset_code))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (quoted_key)
+    (string))
+  (newline))
+
+==================
+Headers that only look like SEP-1 tables
+==================
+
+# A reserved name has to be the *whole* header to become `sep_table`, so the
+# near-miss headers below keep their ordinary keys.
+[DOCUMENTATIONX]
+ORG_NAME = "Example"
+
+[FIELDS.expiration]
+desc = "Dotted header"
+
+["DOCUMENTATION"]
+ORG_NAME = "Quoted header"
+
+[ SERVERS ]
+HOST = "spaced header"
+
+[ACCOUNT]
+SINGLE = "singular"
+
+[[VALIDATORS]]
+ALIAS = "example-us"
+
+[[CURRENCIES2]]
+code = "USD"
+
+DOCUMENTATION = "a key, not a header"
+
+---
+
+(document
+  (newline)
+  (comment)
+  (newline)
+  (comment)
+  (newline)
+  (table
+    (bare_key)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (table
+    (dotted_key
+      (bare_key)
+      (bare_key))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (table
+    (quoted_key)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (table
+    (bare_key)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (table
+    (bare_key)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (array_table
+    (bare_key)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (array_table
+    (bare_key)
+    (newline)
+    (pair
+      (bare_key)
+      (asset_code))
+    (newline)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)))
