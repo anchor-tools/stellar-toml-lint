@@ -134,6 +134,20 @@ each transaction memo carries an audit reference (a URL, a 64-hex hash, a hash m
 exact 7-decimal amounts. It exits 1 when any clawback lacks a reference. Claimable-balance
 clawbacks carry no amount on the operation, so their amount is reported as `n/a`.
 
+### TLS cipher audit
+
+`stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]` handshakes with each of TLS 1.0,
+1.1, 1.2 and 1.3, requires the legacy versions to be rejected, checks the negotiated suites for
+forward secrecy and AEAD and prints an A+, A, B or F grade. It exits 1 on grade F.
+
+### HSTS and bridge audit options
+
+| Flag                      | Effect                                                                                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--audit-hsts`            | Check `Strict-Transport-Security` on the domain and declared hosts against the Chromium preload criteria (use with `--domain`)             |
+| `--audit-emergency-pause` | Verify `[[BRIDGES]]` export pause methods, restrict pause authority and publish a 24/7 security contact                                    |
+| `--audit-bridge-quorum`   | Verify `[[BRIDGES]]` relayer thresholds meet the 2/3 BFT supermajority and staking evidence (also `audit-bridge-quorum --domain <domain>`) |
+
 `stellar-toml-lint refactor <file> [--deduplicate-assets] [--split] [--max-bytes <n>] [--out-dir <dir>]
 [--write] [--json]` merges `[[CURRENCIES]]` entries that share a code and issuer, keeping comments and
 non-conflicting metadata from every declaration. Conflicting fields keep the first value and are
@@ -157,6 +171,7 @@ and only `--write` changes the file. `--split` instead emits modular partials gr
 | `--audit-consumer-protection` | Verify `ORG_COMPLAINTS_EMAIL`, `ORG_DISPUTE_RESOLUTION_URL`, `ORG_JURISDICTION`, `ORG_LICENSES` and print a scorecard               |
 | `--audit-sep30-recovery`      | Verify `RECOVERY_SERVER` and recovery signing keys; with `--check-network` probe `/accounts/{address}` for unauthenticated recovery |
 | `--verify-promotions`         | Compare promotional fee claims with SEP-38 `/price` fees (also `verify-promotions --domain <domain>`)                               |
+| `--audit-sep38-spreads`       | Compare SEP-38 indicative and firm quote rates across small, medium and large tiers, and verify quote expiry handling               |
 | `--verify-federation-srv`     | Check `_stellar-federation._tcp.<domain>` SRV records against `FEDERATION_SERVER` (use with `--domain`)                             |
 | `--audit-esg-disclosures`     | Verify `DOCUMENTATION.ORG_ESG` disclosures and attestation signature, and print a sustainability rating                             |
 | `--audit-opentelemetry`       | Probe SEP-6, SEP-24, SEP-31 and SEP-38 `/info` endpoints with W3C Trace Context headers and inspect response correlation evidence   |
@@ -342,6 +357,89 @@ What it guarantees:
 `--json` writes the same report as a changelog: one `changes` array with `path`, `kind`, `section`,
 `category`, `breaking`, `reason`, `before` and `after`, plus the per-side counts — which is what a
 release notes job or an anchor's status page consumes.
+
+### Migrating deprecated fields
+
+Anchors keep serving files written against an older SEP: `AUTH_SERVER` still appears where SEP-10
+now wants `WEB_AUTH_ENDPOINT`, `FEDERATION_SERVER` still gets published over plain `http://`, and
+`ORG_NAME` still turns up at the document root instead of inside `[DOCUMENTATION]`.
+
+`stellar-toml-lint migrate` rewrites those into the current form, in place:
+
+```bash
+stellar-toml-lint migrate                              # ./stellar.toml
+stellar-toml-lint migrate --dry-run                    # preview; exit 1 if anything still needs work
+stellar-toml-lint migrate "well-known/*.toml"          # a glob (quote it)
+cat stellar.toml | stellar-toml-lint migrate -         # stdin to stdout
+stellar-toml-lint migrate --skip-rule legacy-field-alias
+stellar-toml-lint migrate --json                       # the plan, as data
+```
+
+Four rules ship, and `migrate --help` prints them from the registry so the help text cannot
+advertise a rule that no longer exists:
+
+| Rule id                       | What it does                                                                                                                                  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `legacy-field-alias`          | renames a legacy spelling to the field SEP-1 defines, and moves it into that field's table (`ORGANIZATION_NAME` → `[DOCUMENTATION].ORG_NAME`) |
+| `deprecated-root-field`       | renames a deprecated root field to its successor (`AUTH_SERVER` → `WEB_AUTH_ENDPOINT`, `DEPOSIT_SERVER` → `TRANSFER_SERVER`)                  |
+| `federation-server-scheme`    | rewrites `FEDERATION_SERVER` from `http://` to `https://`, leaving the host, path and quoting alone                                           |
+| `documentation-field-at-root` | moves a `[DOCUMENTATION]` field that was written at the document root under `[DOCUMENTATION]`                                                 |
+
+What it guarantees:
+
+- **Your formatting survives.** Rules emit offsets into the original text and the engine splices
+  them, so quoting, spacing, blank lines and the comments above a field are never re-rendered.
+- **A preview is the write.** `--dry-run` and apply mode run the identical plan; only the
+  `writeFile` call differs, and the diff is the same unified format `--sort-keys --dry-run` prints.
+- **A worse result is refused, not written.** After applying the plan the engine lints the rewritten
+  file and compares it with the lint of the original. If the migration introduced an error, the
+  file is left exactly as it was, the reason is printed, and the exit code is 1 — that is the
+  rollback, and it is what makes the command safe to point at a directory of live configs.
+- **Nothing is invented.** A rename is skipped with a note when the successor is already in the
+  file, a deprecation that needs an endpoint no value here can supply (`KYC_SERVER` for SEP-12) is
+  reported instead of guessed, and two rules that reach for overlapping text cancel that edit rather
+  than picking an order.
+- **It is idempotent, and a clean file exits 0.** A file with nothing to migrate prints
+  `No deprecated fields to migrate.` and changes nothing, which is what lets `migrate --dry-run` sit
+  in CI.
+
+### Orphaned keys and dead tables
+
+`stellar-toml-lint --detect-orphans` reports the keys and table headers in a file that configure
+nothing any SEP defines, and exits 1 when a file has any:
+
+```bash
+stellar-toml-lint --detect-orphans                          # report
+stellar-toml-lint --detect-orphans --format json
+stellar-toml-lint --prune-orphaned --dry-run                # preview the rewrite
+stellar-toml-lint --prune-orphaned                          # apply it
+stellar-toml-lint --detect-orphans --allow-key 'X_ACME_*'   # bless a vendor section
+```
+
+Because it reads the concrete syntax tree rather than the parsed value model, it sees the things a
+value-scoped linter cannot: `[[CURRENCY]]` (one letter short, and the whole block below it
+silently configures nothing) and a `[DOCUMENTATION]` field parked at the root. The recognized
+catalog is read from `src/spec.ts`, so a field added to the spec is recognized by the scanner, the
+schema and autocompletion in the same commit.
+
+Findings are `warning`s under the `general/unknown-key` and `general/unknown-table` rule ids, so
+they follow `--strict` and `--format` like any other diagnostic. The false-positive discipline is
+the point of the check:
+
+- Nothing under an unrecognized table is reported — the table itself is reported once, instead of
+  twelve keys saying the same thing.
+- Vendor extensions (`X_…` by default) are accepted before any comparison.
+- `--allow-key` takes an exact name, a dotted path (`DOCUMENTATION.ORG_NAME`), a table name, or a
+  `PREFIX_*` glob; the `knownKeys` array in `.stellartomlrc.json` holds the same names, and flags
+  join on top of it rather than replacing it.
+- A "did you mean" hint only appears when the spelling is a near-miss at the same distance
+  threshold the preset typo hints use; a legacy spelling is reported as a `migrate` move, not a
+  deletion.
+
+Pruning splits by whether the intent is known. A near-miss is a misspelling, so it is renamed in
+place; an unrecognized name with no near match is removed, with the comments attached to it; and an
+unrecognized table that has entries is never deleted wholesale — that is a data-loss decision, not
+a cleanup, so it stays with a warning.
 
 ### Rule presets
 
@@ -579,6 +677,77 @@ needs the Soroban RPC, so like `--check-contracts` it is off unless the editor o
 `sorobanRpc` is optional; without it the endpoint is derived from the file's
 `NETWORK_PASSPHRASE`. Each contract is fetched once per session and cached. An unreachable RPC,
 an archived contract, or a module without a spec leaves the SEP-1 hover unchanged.
+
+### Tree-sitter grammar
+
+Underneath the LSP sits a tree-sitter grammar for `stellar.toml`, in
+[`grammars/tree-sitter-stellar-toml`](grammars/tree-sitter-stellar-toml/README.md). It is a TOML 1.0
+grammar plus concrete nodes for the five things an anchor file is made of — `public_key`,
+`contract_id`, `asset_code`, `sep_table` and `currency_entry` — so a highlighter, a fold, or a
+symbol list can name a Stellar account instead of pattern-matching one out of a string. It ships
+with `highlights.scm`, `folds.scm` and `tags.scm`, a Node binding, a WASM entry point, and a parse
+corpus that includes a full production anchor.
+
+Install instructions for **Neovim** (0.10+, no plugin required) and **Helix** (`[[grammar]]` +
+`hx --grammar build`), and the `tree-sitter generate / test / build --wasm` procedure, are in
+[the grammar's README](grammars/tree-sitter-stellar-toml/README.md). The grammar validates shapes,
+not checksums: a key with a broken CRC16 still highlights, and `stellar-toml-lint` is what reports
+it.
+
+### Monaco and CodeMirror language bundles
+
+The web editors get the same language features as the terminal, as two small ESM bundles built by
+`npm run build:editor` (esbuild, `format: 'esm'`, `target: 'es2022'`, minified, with source maps):
+
+| Import                                | Bundle                             | gzipped |
+| ------------------------------------- | ---------------------------------- | ------- |
+| `stellar-toml-lint/editor/monaco`     | `dist/editor/monaco.bundle.js`     | 8.1 KB  |
+| `stellar-toml-lint/editor/codemirror` | `dist/editor/codemirror.bundle.js` | 7.1 KB  |
+
+The budget is 150 KB per bundle and the build fails when a bundle overshoots it, so the numbers
+above are the gate's output, not a promise. Neither bundle imports `monaco-editor` or CodeMirror:
+each declares the slice of the host API it uses structurally, which is why a page can load its
+editor from a CDN, from AMD, or from `@monaco-editor/react` and pass whichever instance it has.
+Neither bundle contains the linter core — that one gzips to ~146 KB on its own — so findings arrive
+from outside, pushed in by the page or pulled through the existing worker protocol.
+
+```ts
+import * as monaco from 'monaco-editor';
+import { register, createWorkerValidator } from 'stellar-toml-lint/editor/monaco';
+
+const worker = new Worker(new URL('stellar-toml-lint/worker', import.meta.url), { type: 'module' });
+const bundle = register(monaco, { validator: createWorkerValidator(worker) });
+bundle.observe(model); // markers land in monaco.editor.setModelMarkers as you type
+```
+
+```ts
+import { StreamLanguage } from '@codemirror/language';
+import { linter } from '@codemirror/lint';
+import { lintBrowser } from 'stellar-toml-lint/browser';
+import {
+  stellarTomlStreamParser,
+  toCodeMirrorDiagnostics,
+} from 'stellar-toml-lint/editor/codemirror';
+
+const language = StreamLanguage.define(stellarTomlStreamParser);
+const check = linter(async (view) => {
+  const content = view.state.doc.toString();
+  return toCodeMirrorDiagnostics(await lintBrowser(content), content);
+});
+```
+
+Both tokenise from one shared catalog in `src/editor/language.ts`, so the same key is the same
+_thing_ in either editor even though the two hosts name their tags differently: a SEP-1 field is
+`propertyName.sep` for CodeMirror and `identifier.key.sep` for Monaco, a SEP table header is
+`keyword.sep` and `keyword.table.sep`, and a Stellar primitive in a quoted value is `string.stellar`
+in both — Monaco appends the kind, `string.stellar.account-id` or `string.stellar.asset-code`.
+Completions come from the same SEP-1 catalog the CLI uses
+(`completionsFor(content, lineNumber, column)` for CodeMirror, a registered provider for Monaco),
+and both map the core's three severities onto the host's without inventing a fourth.
+
+[`test/fixtures/editor-demo.html`](test/fixtures/editor-demo.html) is the reference page — it
+imports the built bundles directly, needs no build step, and shows markers, completions, and the
+worker validator together.
 
 ### Alerting a Slack or Discord channel
 
@@ -1184,11 +1353,91 @@ HMAC authentication tags. A malformed frame or replayed sequence emits
 `overlay/invalid-crypto-framing` (error); a failed MAC emits
 `overlay/mac-authentication-failure` (error).
 
+**Peer connection flooding defenses** (`ConnectionFloodingDefenseTester`)
+— checks that an overlay port you operate sheds connection bursts without locking out real peers.
+`ConnectionFloodingDefenseTester` opens a baseline connection and an authenticated overlay `HELLO`
+handshake, then a paced burst of TCP connections, polls until the port accepts again, and repeats the
+handshake and a latency check:
+
+| Rule                                    | Severity | When                                                                                           |
+| --------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `overlay/peer-port-unreachable`         | error    | The baseline connection is refused or times out                                                |
+| `overlay/peer-unresponsive-after-burst` | error    | The port stops accepting after the burst and does not recover (crash or descriptor exhaustion) |
+| `overlay/peer-handshake-dropped`        | error    | A handshake that worked before the burst fails after it                                        |
+| `overlay/peer-slow-recovery`            | warning  | Recovery takes longer than 3 s                                                                 |
+| `overlay/peer-latency-degraded`         | warning  | Connect latency rises more than 5× (and above 200 ms)                                          |
+| `overlay/peer-no-throttling-observed`   | info     | Every burst connection was accepted                                                            |
+| `overlay/peer-handshake-unverified`     | info     | The baseline handshake failed, so preservation was not checked                                 |
+
+The tester is deliberately not a load generator and its limits cannot be raised: at most **32**
+connections per burst (default 16), at least **20 ms** between attempts (≤ 50 per second), accepted
+sockets held for at most 2 s, and recovery polled with single connections every 250 ms for at most
+15 s. It reports how many of its own sockets were left open (always 0 unless the platform failed to
+close one). Only run it against nodes you operate.
+
+```text
+Peer defense test core.example.com:11625
+  limits: 16 connections, 50ms apart (<= 20/s), held 250ms
+  baseline: accepted in 31ms, handshake accepted
+  burst: 12/16 accepted, 4 refused, 0 reset, 0 timed out, 0 errors (rejection 25%)
+  throttling: first rejection at attempt 13
+  recovery: accepting again after 512ms (3 poll(s)), latency 33ms, handshake accepted
+  tester sockets left open: 0
+  verdict: PASS
+```
+
 **DNS integrity** (with `--check-network --verify-dnssec`) — A and AAAA answers are queried from
 Cloudflare (`1.1.1.1`), Google (`8.8.8.8`), and Quad9 (`9.9.9.9`) through their DNS-over-HTTPS
 endpoints. Resolver sets are normalized and compared; disagreement emits
 `security/dns-resolver-divergence` (error), while an explicit unauthenticated response emits
 `security/dnssec-not-enabled` (warning).
+
+**Transaction flood propagation and mempool eviction** (`stellar-toml-lint audit-flood-policy --host <host>`)
+— `FloodPropagationVerifier` reads stellar-core's admin `/info` and `/metrics` (port `11626` by
+default, or saved copies via `--info-file` / `--metrics-file`) and checks three things:
+
+- **Propagation metrics**: the flood duplicate-to-unique ratio, the share of `GET_TX_SET` traffic
+  answered with `DONT_HAVE`, banned transactions, and transactions stuck in the oldest pending-age bucket.
+- **Transaction set exchanges** (`--exchanges-file`): recorded `GET_TX_SET` requests and their
+  `TX_SET`, `GENERALIZED_TX_SET`, or `DONT_HAVE` responses, decoded as standard `StellarMessage` XDR.
+  Answered sets are split into fee tiers; `DONT_HAVE` misses, `DONT_HAVE` for hashes that were never
+  requested, and undecodable frames are counted.
+- **Queue behavior under bursts**: a deterministic model of the queue (capacity `maxTxSetSize ×
+TRANSACTION_QUEUE_SIZE_MULTIPLIER`, one pending transaction per account with 10× replace-by-fee,
+  eviction of the cheapest fee-per-operation transactions when full) is driven by a burst across
+  `low`/`medium`/`high`/`priority` fee tiers. By default the burst is 150% of capacity; set it with
+  `--profile low=300,medium=150,high=60,priority=15`. An observed log from a real node
+  (`--submissions-file`, including rejected and evicted transactions) is checked the same way.
+  Nothing is submitted to the network.
+
+| Rule                                                             | Severity | When                                                                         |
+| ---------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------- |
+| `overlay/flood-priority-inversion`                               | error    | A transaction is evicted or rejected while a lower fee-rate one stays queued |
+| `overlay/flood-premature-drop`                                   | error    | A `high`/`priority` transaction is rejected while the queue still has room   |
+| `overlay/flood-dont-have-mismatch`                               | error    | `DONT_HAVE` names a transaction set hash that was never requested            |
+| `overlay/flood-txset-unavailable`                                | warning  | Over 20% of `GET_TX_SET` requests get `DONT_HAVE`                            |
+| `overlay/flood-duplicate-overhead`                               | warning  | More than two duplicate flood messages per unique one                        |
+| `overlay/flood-stale-pending`                                    | warning  | Transactions sit in the oldest pending-age bucket                            |
+| `overlay/flood-malformed-frame`                                  | warning  | An overlay frame is not valid `StellarMessage` XDR                           |
+| `overlay/flood-queue-saturated` / `overlay/flood-queue-pressure` | info     | The burst saturates the queue, or passes 80% of it                           |
+| `overlay/flood-metrics-unavailable`                              | info     | No `/metrics` were available                                                 |
+
+The report states the queue's saturation thresholds (80% pressure, 100% saturation), the submission
+at which the burst saturates it, the entry fee once it is full, per-tier accepted, rejected, evicted
+and retained counts, and a 0–100 mempool health score (`healthy` ≥ 80, `degraded` ≥ 50). Mock
+fixtures for every input live in `test/fixtures/overlay/flood/`.
+
+```text
+Flood propagation and mempool policy
+  queue: 200 ops (pressure at 160, saturation at 200), base fee 100
+  simulated burst: 300 submissions, peak 200/200 ops [####################] 100%
+    saturated at submission 200, entry fee now 101 stroops/op
+    evictions 46, rejections: insufficient-fee 54
+    priority  submitted 15, accepted 15, rejected 0, evicted 0, retained 15
+    fairness: no violations
+  exchanges: 3 GET_TX_SET, 1 answered, 2 DONT_HAVE (1 mismatched), 1 malformed, 5 transactions decoded
+  mempool health: 15/100 (unhealthy)
+```
 
 **DNS takeover and SSRF** (`--audit-dns-takeover`, `--audit-ssrf`) — the takeover audit collects the
 apex domain and every hostname referenced by the file, then queries CNAME and NS records through a
@@ -1245,6 +1494,20 @@ honours. A `/deposit` that refuses the `quote_id` advertises programmatic conver
 and emits `quotes/quote-binding-unsupported` (warning). Either endpoint missing, unusable, or
 unreachable keeps this audit silent.
 
+**Indicative vs firm quote spreads** (with `--check-network --audit-sep38-spreads`, or
+`sep38-spreads --domain <domain>`) — `GET /prices` is an indicative estimate and `POST /quote` is a
+binding price. The audit prices the same trade at small, medium and large volumes through both
+endpoints, derives the effective firm rate from `buy_amount / sell_amount`, and compares it with the
+indicative price using exact integer arithmetic. A firm spread wider than the 50 bps tolerance (plus
+any fee the file discloses) emits `sep38/spread-exceeds-tolerance` (error). A firm fee above the
+percentage disclosed in `DOCUMENTATION` or a currency description emits `sep38/fee-exceeds-disclosure`
+(error), and a lifetime over 300s emits `sep38/quote-lifetime-exceeds-limit` (warning). Quotes without a
+parseable `expires_at` emit `sep38/quote-expiry-missing` (error); a quote already expired when issued
+emits `sep38/firm-quote-expired` (error). When the file declares `TRANSFER_SERVER`, the audit also waits
+for a short-lived quote to lapse and passes its `quote_id` to SEP-6 `/deposit`: an accepted expired quote
+emits `sep38/expired-quote-accepted` (error). Unreachable endpoints and unpriceable pairs stay silent or
+degrade to `sep38/quote-audit-unverifiable` (info) rather than failing the run.
+
 For every `[[CURRENCIES]]` entry marked `regulated=true` with a classic `issuer`, the issuer's
 account flags are read from Horizon: a missing `AUTH_REQUIRED_FLAG` emits
 `currencies/regulated-missing-auth-required-flag` (error) and a missing `AUTH_REVOCABLE_FLAG` emits
@@ -1273,6 +1536,18 @@ Contract specs are also audited for contract upgrade functions (`upgrade`, `set_
 An upgrade function exported without admin protection or authorization checks emits
 `soroban/unprotected-upgrade-function` (error), and an upgrade admin account secured by only a single signer
 emits `soroban/single-signer-upgrade-admin` (warning).
+
+Contract initialization is verified from the same `contractspecv0` section. A contract that exports the
+Protocol 23 `__constructor` is initialized atomically inside the deployment operation; one that relies on a
+custom `initialize`/`init` instead is checked against its instance storage and persistent
+initialization-marker keys. A contract with an initializer but no initialization state emits
+`soroban/constructor-uninitialized` (error), because the first caller can claim it; initialization state
+that is not guarded by a single-use boolean flag emits `soroban/constructor-no-replay-protection`
+(warning), because the initializer can be invoked again. Constructor and initializer signatures are
+compared with the file's metadata — `CURRENCIES[].display_decimals` is derived automatically, and admin
+or governance-quorum expectations can be supplied by the caller — with a missing or mistyped parameter
+emitting `soroban/constructor-argument-mismatch` (error). An unreachable RPC, an archived entry, a
+Stellar Asset Contract, or a module without a readable spec stays silent.
 
 Each deployed WASM also gets a static resource estimate, read from the module's sections without
 executing it. A Memory section that reserves more than 10 pages (640 KiB) at instantiation emits

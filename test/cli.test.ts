@@ -124,6 +124,15 @@ describe('cli', () => {
     expect(code).toBe(0);
   });
 
+  it('documents --audit-sep38-spreads and accepts it without a network run', async () => {
+    const { stdout } = await cli(['--help']);
+    expect(stdout).toContain('--audit-sep38-spreads');
+
+    const { code, stdout: runOut } = await cli([fixture('valid.toml'), '--audit-sep38-spreads']);
+    expect(code).toBe(0);
+    expect(runOut).not.toContain('sep38/spread-exceeds-tolerance');
+  });
+
   it('runs the OpenTelemetry trace audit with hermetic fixtures', async () => {
     const { code, stderr } = await cli([
       fixture('valid.toml'),

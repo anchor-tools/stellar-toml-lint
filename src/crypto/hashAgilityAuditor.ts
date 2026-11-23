@@ -78,7 +78,8 @@ export class HashAgilityAuditor {
       let algorithm: HashAlgorithm = 'UNKNOWN';
 
       if (bitLen === 128) algorithm = 'MD5';
-      else if (bitLen === 160) algorithm = 'SHA-1'; // or RIPEMD-160
+      else if (bitLen === 160)
+        algorithm = 'SHA-1'; // or RIPEMD-160
       else if (bitLen === 256) algorithm = 'SHA-256';
       else if (bitLen === 384) algorithm = 'SHA-384';
       else if (bitLen === 512) algorithm = 'SHA-512';
@@ -87,7 +88,10 @@ export class HashAgilityAuditor {
     }
 
     // Check Base64
-    if (/^[A-Za-z0-9+/=]+$/.test(trimmed) && (trimmed.length % 4 === 0 || trimmed.length % 4 === 2 || trimmed.length % 4 === 3)) {
+    if (
+      /^[A-Za-z0-9+/=]+$/.test(trimmed) &&
+      (trimmed.length % 4 === 0 || trimmed.length % 4 === 2 || trimmed.length % 4 === 3)
+    ) {
       try {
         const buf = Buffer.from(trimmed, 'base64');
         const bitLen = buf.length * 8;
@@ -170,7 +174,8 @@ export class HashAgilityAuditor {
     for (const { path, value } of hashFields) {
       const { algorithm, bitLength, encoding } = this.classifyHash(value);
 
-      const isDeprecated = algorithm === 'MD5' || algorithm === 'SHA-1' || algorithm === 'RIPEMD-160';
+      const isDeprecated =
+        algorithm === 'MD5' || algorithm === 'SHA-1' || algorithm === 'RIPEMD-160';
       const isCompliant = bitLength >= 256 && !isDeprecated;
 
       let severity: 'error' | 'warning' | 'info' = 'info';
@@ -181,13 +186,17 @@ export class HashAgilityAuditor {
         deprecatedCount++;
         score -= 25;
         issue = `Field '${path}' uses obsolete collision-compromised algorithm ${algorithm} (${bitLength}-bit). Upgrade immediately to SHA-256 or SHA-512.`;
-        recommendations.push(`Replace deprecated ${algorithm} hash in '${path}' with standard SHA-256 digest.`);
+        recommendations.push(
+          `Replace deprecated ${algorithm} hash in '${path}' with standard SHA-256 digest.`,
+        );
       } else if (bitLength > 0 && bitLength < 256) {
         severity = 'error';
         insufficientLengthCount++;
         score -= 20;
         issue = `Field '${path}' digest bit length (${bitLength} bits) is below the minimum required 256 bits collision resistance standard.`;
-        recommendations.push(`Upgrade digest in '${path}' to >= 256-bit hash (SHA-256 or SHA-512).`);
+        recommendations.push(
+          `Upgrade digest in '${path}' to >= 256-bit hash (SHA-256 or SHA-512).`,
+        );
       } else if (algorithm === 'UNKNOWN' || encoding === 'unknown') {
         severity = 'warning';
         score -= 10;
@@ -211,7 +220,9 @@ export class HashAgilityAuditor {
     }
 
     if (hashFields.length === 0) {
-      recommendations.push('No explicit checksums or hashes declared. When publishing binary or document artifacts, declare SHA-256 hashes.');
+      recommendations.push(
+        'No explicit checksums or hashes declared. When publishing binary or document artifacts, declare SHA-256 hashes.',
+      );
     }
 
     const finalScore = Math.max(0, Math.min(100, score));

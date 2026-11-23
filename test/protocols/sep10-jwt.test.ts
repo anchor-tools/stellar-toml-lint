@@ -70,7 +70,7 @@ describe('SEP-10 JWT helpers', () => {
   });
 
   it('accepts classic and muxed subjects only', () => {
-    const muxed = StrKey.encodeMed25519PublicKey(new Uint8Array(40));
+    const muxed = StrKey.encodeMed25519PublicKey(Buffer.alloc(40));
     expect(isValidSep10Subject(ACCOUNT)).toBe(true);
     expect(isValidSep10Subject(muxed)).toBe(true);
     expect(isValidSep10Subject('not-an-account')).toBe(false);

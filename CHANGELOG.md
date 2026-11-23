@@ -9,6 +9,34 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `stellar-toml-lint audit-ciphers --domain <domain>` (`src/security/tlsCipherAuditor.ts`): pins a
+  native `node:tls` handshake to each of TLS 1.0, 1.1, 1.2 and 1.3, requires TLS 1.0/1.1 to be
+  rejected, checks the negotiated suites for forward secrecy and AEAD and prints an A+/A/B/F grade
+  (`tlscipher/legacy-protocol-accepted`, `tlscipher/no-modern-protocol`,
+  `tlscipher/no-forward-secrecy`, `tlscipher/non-aead-cipher`, `tlscipher/weak-cipher`,
+  `tlscipher/unreachable`). Sockets are destroyed on every path.
+
+- `--audit-hsts` (`src/security/hstsVerifier.ts`): reads `Strict-Transport-Security` on the domain
+  and every host `stellar.toml` declares and applies the Chromium preload criteria
+  (`hsts/missing-header`, `hsts/invalid-header`, `hsts/short-max-age`,
+  `hsts/missing-include-subdomains`, `hsts/missing-preload`, `hsts/unreachable`), printing a
+  compliance badge per host to stderr.
+
+- `--audit-emergency-pause` (`src/bridges/emergencyPauseValidator.ts`): checks `[[BRIDGES]]` for an
+  exported pause method, multisig or circuit breaker pause authority separate from unpause, a
+  timelocked unpause and a 24/7 `SECURITY_CONTACT` or `ORG_OFFICIAL_EMAIL`
+  (`bridgepause/invalid-bridge`, `bridgepause/missing-pause-method`,
+  `bridgepause/missing-unpause-method`, `bridgepause/unrestricted-pause-authority`,
+  `bridgepause/shared-pause-unpause-authority`, `bridgepause/missing-unpause-timelock`,
+  `bridgepause/missing-security-contact`, `bridgepause/contact-not-24x7`).
+
+- `--audit-bridge-quorum` / `stellar-toml-lint audit-bridge-quorum --domain <domain>`
+  (`src/bridges/bridgeQuorumAuditor.ts`): checks `[[BRIDGES]]` relayer keys and `THRESHOLD` against
+  the 2/3 BFT supermajority with integer math, relayer set rotations and, under `--check-network`,
+  staking bonds and slashing conditions from `STAKING_EVIDENCE_URL`
+  (`bridgequorum/below-supermajority`, `bridgequorum/minority-threshold`,
+  `bridgequorum/small-validator-set`, `bridgequorum/abrupt-rotation`,
+  `bridgequorum/insufficient-stake`, `bridgequorum/missing-slashing` and others).
 - Rule plugins, so a team can write the check SEP-1 does not define
   (`src/engine/semanticRuleEngine.ts`, `src/engine/ruleLoader.ts`, `--rules-dir <dir>`,
   `--plugin <spec>`). A module exports one rule as its `default` or a list as `rules`, and the rule
@@ -102,6 +130,57 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `--signature-url` can name a different location. The verifier enforces RSA 2048-bit or Ed25519
   signing keys, expiry/revocation checks, SHA-2 signature hashes, bounded HTTPS requests, and
   reports unknown operator identity trust unless an independently sourced fingerprint is pinned.
+
+- `stellar-toml-lint migrate` / `migrate --dry-run` (`src/cst/migrationCodemod.ts`,
+  `src/cst/codemodRules/`): rewrites deprecated SEP-1 fields into their current form in place —
+  `ORGANIZATION_NAME` → `[DOCUMENTATION].ORG_NAME`, `AUTH_SERVER` → `WEB_AUTH_ENDPOINT`,
+  `DEPOSIT_SERVER` → `TRANSFER_SERVER`, `FEDERATION_SERVER` over `https://`, and a
+  `[DOCUMENTATION]` field written at the document root moved under `[DOCUMENTATION]`. Rules emit
+  offsets into the original text and the engine splices them, so quoting, spacing and the comments
+  attached above a field survive; `--dry-run` runs the identical plan and prints a unified diff,
+  exiting 1 while a file still needs work. The result is linted and compared with the input, and a
+  migration that makes the file worse is refused rather than written — the file is left byte for
+  byte as it was and the exit code says so. Two rules reaching for overlapping text cancel that
+  edit instead of guessing an order, `--skip-rule <id>` leaves one migration undone, `--json`
+  reports the plan, and a file with nothing to migrate exits 0 without touching the disk.
+
+- `--detect-orphans` / `--prune-orphaned` / `--allow-key` (`src/cst/orphanedKeyScanner.ts`,
+  `src/levenshtein.ts`): reports keys and table headers that configure nothing any SEP defines, and
+  exits 1 when a file has any. It reads the CST, so unlike the section-scoped `unknown-field` rules
+  it sees `[[CURRENCY]]` — one letter short, with a whole block below it silently configuring
+  nothing — and a `[DOCUMENTATION]` field parked at the root. The recognized catalog comes from
+  `src/spec.ts`, so a field added to the spec is recognized by the scanner, the schema generator and
+  editor autocompletion in the same commit. Nothing under an unrecognized table is reported, `X_…`
+  vendor extensions are accepted before comparison, and `--allow-key` takes an exact name, a dotted
+  path, a table name or a `PREFIX_*` glob (also configurable as `knownKeys` in
+  `.stellartomlrc.json`). `--prune-orphaned` renames near-miss spellings, deletes what nothing
+  defines together with the comments attached to it, and refuses to delete a populated unknown
+  table.
+
+- `src/editor/` (`monacoBundle.ts`, `codeMirror.ts`, `language.ts`) ships the editor language
+  bundle for both web editors, built by `npm run build:editor`
+  (`scripts/build-editor-bundles.mjs`) to `dist/editor/monaco.bundle.js` and
+  `dist/editor/codemirror.bundle.js` as browser ESM with no Node built-ins. The Monaco half
+  registers a Monarch tokenizer, a language configuration, SEP-1 key/table/value completions, and
+  maps diagnostics through `monaco.editor.setModelMarkers`; the CodeMirror half is a `StreamParser`
+  plus a `linter()` source over the same facts. Validation is injected — either a result the page
+  already has, or `createWorkerValidator(worker)` speaking the existing
+  `stellar-toml-lint/worker` protocol — so the bundles stay under the 150 KB gzip budget the build
+  enforces by measuring its own output into `dist/editor/sizes.json`.
+  New `exports` entries `./editor/monaco` and `./editor/codemirror` resolve to those bundles with
+  the declarations `tsc` emits for the sources.
+  `test/fixtures/editor-demo.html` runs both in a page.
+
+- `grammars/tree-sitter-stellar-toml` now models SEP-1 in the parser rather than in queries:
+  `public_key`, `contract_id`, `asset_code`, `sep_table` and `currency_entry` are nodes, so
+  `tree-sitter tags` and a symbol list can name an account or a contract instead of matching one
+  out of a string, and every consumer that reads `node-types.json` highlights them identically.
+  Values that do not fit a shape still parse as ordinary TOML, so vendor extensions are unaffected,
+  and the reserved table names are lexed by the external scanner because token precedence outranks
+  match length. Adds `queries/tags.scm`, `tree-sitter.json`, `bindings/wasm/binding.c`, a four-file
+  corpus including a full production anchor, `scripts/build-tree-sitter-grammar.mjs` (generate +
+  corpus + optional WASM, with the CLI looked up rather than installed), and install instructions
+  for Neovim and Helix in `grammars/tree-sitter-stellar-toml/README.md`.
 
 - `--sort-keys` / `--sort-keys --dry-run` (`src/cst/canonicalSortCodemod.ts`,
   `src/line-diff.ts`): rewrites `[DOCUMENTATION]`, `[[PRINCIPALS]]`, `[[CURRENCIES]]` and

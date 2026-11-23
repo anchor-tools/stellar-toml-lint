@@ -10,7 +10,7 @@
  * explicit flag (`--check-contracts`), never fails the run on an RPC outage,
  * and registers rule objects so `--list-rules` and `--off` know its ids.
  */
-import { Address, cereal, xdr } from '@stellar/stellar-base';
+import { cereal, xdr } from '@stellar/stellar-base';
 import type { Diagnostic, Rule, RuleOverrides, Severity } from './types.js';
 import { isString } from './predicates.js';
 import { rpcUrlFor } from './rules/display-decimals-audit.js';
@@ -21,6 +21,14 @@ import { auditSupplyInvariant, supplyInvariantRules } from './soroban/supply-inv
 import { auditWasmBudget, budgetEstimatorRules } from './soroban/budget-estimator.js';
 import type { BudgetOptions } from './soroban/budget-estimator.js';
 import { eventVerifierRules } from './soroban/eventVerifier.js';
+import { contractCodeKey, contractDataInstanceKey, wasmHashOf } from './soroban/ledgerKeys.js';
+import { auditTomlStorageTtl, SorobanTtlAuditor, ttlAuditorRules } from './soroban/ttlAuditor.js';
+import {
+  auditConstructorInvariants,
+  auditTomlConstructorInvariants,
+  ConstructorInvariantVerifier,
+  constructorVerifierRules,
+} from './soroban/constructorVerifier.js';
 
 /** Roughly a day of ledgers at ~5 seconds per ledger. */
 const EXPIRING_WINDOW_LEDGERS = 17_280;
@@ -65,46 +73,7 @@ function severityFor(
   return override === 'error' || override === 'warning' ? override : fallback;
 }
 
-/**
- * The ledger key of a contract's instance entry. A contract instance is a
- * single key in the `ContractData` table with the special
- * `ledgerKeyContractInstance` scval as its key.
- */
-export function contractDataInstanceKey(contractId: string): string {
-  const key = xdr.LedgerKey.contractData(
-    new xdr.LedgerKeyContractData({
-      contract: new Address(contractId).toScAddress(),
-      key: xdr.ScVal.scvLedgerKeyContractInstance(),
-      durability: xdr.ContractDataDurability.persistent(),
-    }),
-  );
-  return key.toXDR('base64');
-}
-
-/** The ledger key of the WASM blob a contract instance points at. */
-export function contractCodeKey(wasmHash: Buffer): string {
-  const key = xdr.LedgerKey.contractCode(new xdr.LedgerKeyContractCode({ hash: wasmHash }));
-  return key.toXDR('base64');
-}
-
-/**
- * The WASM hash referenced by a contract's instance entry, or `undefined`
- * when the entry does not describe a contract executable as WASM.
- */
-export function wasmHashOf(entryXdr: unknown): Buffer | undefined {
-  if (!isString(entryXdr)) return undefined;
-  try {
-    const data = xdr.LedgerEntryData.fromXDR(entryXdr, 'base64');
-    const contractData = data.contractData();
-    const val = contractData.val();
-    if (val.switch().name !== 'scvContractInstance') return undefined;
-    const executable = val.instance().executable();
-    if (executable.switch().name !== 'contractExecutableWasm') return undefined;
-    return Buffer.from(executable.wasmHash());
-  } catch {
-    return undefined;
-  }
-}
+export { contractDataInstanceKey, contractCodeKey, wasmHashOf };
 
 /**
  * The WASM bytes carried by a contract-code entry, or `undefined` when the
@@ -509,6 +478,8 @@ export const sorobanRules: Rule[] = [
   ...supplyInvariantRules,
   ...budgetEstimatorRules,
   ...eventVerifierRules,
+  ...ttlAuditorRules,
+  ...constructorVerifierRules,
 ];
 
 export const sorobanRuleIds: readonly string[] = sorobanRules.map((rule) => rule.id);
@@ -518,3 +489,30 @@ export { auditSupplyInvariant, supplyInvariantRules };
 export { budgetEstimatorRules };
 export { eventVerifierRules };
 export { auditTomlEvents, EventSchemaVerifier } from './soroban/eventVerifier.js';
+export { ttlAuditorRules, SorobanTtlAuditor, auditTomlStorageTtl };
+export { auditContractStorageTtl, estimateExtendTtlResources } from './soroban/ttlAuditor.js';
+export type {
+  ExtendTtlCostEstimate,
+  StorageEntryKind,
+  StorageKeyTarget,
+  StorageTtlEntry,
+  TtlAuditReport,
+  TtlAuditorOptions,
+} from './soroban/ttlAuditor.js';
+export {
+  auditConstructorInvariants,
+  auditTomlConstructorInvariants,
+  ConstructorInvariantVerifier,
+  constructorVerifierRules,
+};
+export type {
+  ConstructorArgumentExpectation,
+  ConstructorArgumentType,
+  ConstructorVerifierOptions,
+  ContractFunctionParameter,
+  ContractFunctionSignature,
+  InitializationMarker,
+  InitializationSignature,
+  InitializationState,
+  InitializationStrategy,
+} from './soroban/constructorVerifier.js';
