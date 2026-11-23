@@ -1,0 +1,12 @@
+{
+  "info": {
+    "build": "stellar-core 22.0.0",
+    "state": "Synced!",
+    "ledger": {
+      "num": 52000000,
+      "baseFee": 100,
+      "baseReserve": 5000000,
+      "maxTxSetSize": 100
+    }
+  }
+}

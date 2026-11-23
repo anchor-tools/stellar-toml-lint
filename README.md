@@ -134,6 +134,58 @@ each transaction memo carries an audit reference (a URL, a 64-hex hash, a hash m
 exact 7-decimal amounts. It exits 1 when any clawback lacks a reference. Claimable-balance
 clawbacks carry no amount on the operation, so their amount is reported as `n/a`.
 
+### Cross-chain bridge and reserve verifiers
+
+Anchors whose Stellar assets are backed or bridged from other chains can declare that backing in
+`stellar.toml` and have it checked. Declarations are validated offline; the chains and Horizon are
+only queried with `--check-network`. RPC errors and rate limits (retried once) become warnings, and
+all amounts are compared as exact integers across decimal scales.
+
+```toml
+[DOCUMENTATION.PROOF_OF_RESERVES]
+CHAINLINK_FEEDS = [
+  { asset = "USDX", chain = "ethereum", aggregator = "0x...", heartbeat = 86400 },
+]
+
+[[CURRENCIES]]
+code = "USDS"
+issuer = "G..."
+solana_bridge = { spl_mint = "EPjF...", escrow_program = "worm...", escrow_token_account = "..." }
+collateral_vaults = [
+  { chain = "base", vault = "0x...", shares = "1000000", share_price = "1.04", tolerance_bps = 50 },
+]
+```
+
+- `--verify-por-feed` (or `verify-por-feed --domain <domain>`) reads `latestRoundData()` from each
+  Chainlink Proof of Reserve aggregator, requires a complete round updated within its heartbeat (at
+  most 24 hours), and checks the reserve covers the Stellar supply, reporting the collateralization
+  ratio. Feeds can also be declared per currency as `chainlink_por = { chain, aggregator }`.
+- `--verify-solana-bridge` (or `verify-solana-bridge --domain <domain>`) confirms the escrow is an
+  SPL token account for `spl_mint`, reads its balance with `getTokenAccountBalance`, and enforces
+  `locked on Solana >= minted on Stellar` with exact 9-to-7 decimal normalization.
+- `--audit-erc4626-vaults` calls `asset()`, `totalAssets()` and `convertToAssets()` on each vault,
+  flags held shares worth more than `totalAssets()`, share prices below par or drifting from the
+  declared `share_price`, and vault NAV that does not cover the Stellar supply.
+- `stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> [--guardian-set <file.json>]
+[--format text|json]` parses a Wormhole VAA with bounds-checked slices, decodes token transfer
+  payloads, recovers every guardian signature (secp256k1, Keccak-256, no native dependencies) and
+  requires a two-thirds quorum of the guardian set (`{ "index": 4, "keys": ["0x..."] }`). It exits 1
+  on any error.
+
+### TLS cipher audit
+
+`stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]` handshakes with each of TLS 1.0,
+1.1, 1.2 and 1.3, requires the legacy versions to be rejected, checks the negotiated suites for
+forward secrecy and AEAD and prints an A+, A, B or F grade. It exits 1 on grade F.
+
+### HSTS and bridge audit options
+
+| Flag                      | Effect                                                                                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--audit-hsts`            | Check `Strict-Transport-Security` on the domain and declared hosts against the Chromium preload criteria (use with `--domain`)             |
+| `--audit-emergency-pause` | Verify `[[BRIDGES]]` export pause methods, restrict pause authority and publish a 24/7 security contact                                    |
+| `--audit-bridge-quorum`   | Verify `[[BRIDGES]]` relayer thresholds meet the 2/3 BFT supermajority and staking evidence (also `audit-bridge-quorum --domain <domain>`) |
+
 `stellar-toml-lint refactor <file> [--deduplicate-assets] [--split] [--max-bytes <n>] [--out-dir <dir>]
 [--write] [--json]` merges `[[CURRENCIES]]` entries that share a code and issuer, keeping comments and
 non-conflicting metadata from every declaration. Conflicting fields keep the first value and are
@@ -141,6 +193,14 @@ both recorded in the summary and preserved as `# refactor: conflict` comments. A
 validation checks that no currency or non-conflicting value was lost; the diff is printed for review
 and only `--write` changes the file. `--split` instead emits modular partials grouped by table
 (`base`, `currencies`, `validators`, …), optionally written to `--out-dir`.
+
+### Bridge evidence audit options
+
+| Flag                              | Effect                                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `--audit-bridge-replays <file>`   | Match EVM lock event logs to Stellar mints and flag duplicate, unrecorded or replayable events                                        |
+| `--verify-attestations`           | Verify reserve attestation checksums and age; with `--check-network` download the PDFs (also `verify-attestations --domain <domain>`) |
+| `--audit-burn-redemptions <file>` | Verify wrapped-asset redemptions burn supply and flag pseudo-burns                                                                    |
 
 ### Options
 
@@ -1337,17 +1397,133 @@ node with no peers emits `overlay/isolated-node-zero-peers` (error); a node with
 peers emits `overlay/low-peer-count` (warning). The raw TCP transport is skipped in
 `--mock-fixtures` mode, which remains a no-network mode.
 
+**Tier-1 quorum alignment** (`--verify-tier1-alignment`) — reads the quorum configuration from
+the linted file, either an explicit `[QUORUM_SET]` (`THRESHOLD_PERCENT`, `VALIDATORS` as `G...` keys
+or `$NAME` references, nested `[QUORUM_SET.<name>]` inner sets) or stellar-core's automatic quorum
+from `QUALITY`-rated `[[VALIDATORS]]` / `[[HOME_DOMAINS]]`, and cross-references it against a catalog
+of Tier-1 organizations (SDF, SatoshiPay, LOBSTR, PublicNode, Blockdaemon, Franklin Templeton). It
+reports, with a bar per organization, how much of each Tier-1 organization and each quorum set is
+present, and computes the fewest Tier-1 organizations that must agree before the slice is satisfied
+(assuming every non-Tier-1 validator in it cooperates):
+
+| Rule                                 | Severity | When                                                                                                      |
+| ------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------- |
+| `overlay/tier1-independent-quorum`   | error    | The slice can agree with no Tier-1 organization at all                                                    |
+| `overlay/tier1-split-quorum`         | error    | The Tier-1 organizations needed cannot be guaranteed to overlap a core quorum (two thirds of the catalog) |
+| `overlay/tier1-narrow-agreement`     | warning  | A minority of Tier-1 organizations is enough                                                              |
+| `overlay/tier1-low-representation`   | warning  | Fewer than two thirds of Tier-1 organizations appear                                                      |
+| `overlay/tier1-partial-organization` | info     | An organization is listed with less than a majority of its nodes                                          |
+| `overlay/tier1-unverified-validator` | warning  | A key claims a Tier-1 `HOME_DOMAIN` but is not in the catalog (a new node or an impostor)                 |
+| `overlay/tier1-unresolved-validator` | warning  | A quorum entry is neither a valid key nor a known `$NAME`                                                 |
+| `overlay/tier1-threshold-invalid`    | error    | A threshold is out of range or can never be met                                                           |
+| `overlay/tier1-quorum-undeclared`    | info     | No quorum configuration was found                                                                         |
+
+The bundled catalog is a dated snapshot. When Tier-1 membership changes (for example a newly
+registered validator), pass an updated list with `--tier1-catalog <file.json>`; the format is
+described by [`docs/schemas/tier1-catalog.schema.json`](docs/schemas/tier1-catalog.schema.json).
+
+```text
+Tier-1 quorum alignment (catalog 2026-11-23, 6 organizations)
+  quorum source: explicit [QUORUM_SET]
+  ✔ Stellar Development Foundation ███ 3/3
+  ⚠ LOBSTR                         █░░░░ 1/5
+  ✘ SatoshiPay                     ░░░ 0/3
+  ...
+  agreement: needs 2 Tier-1 organization(s) to agree (core quorum: 4)
+  verdict: MISALIGNED
+```
+
 **Overlay cryptography** (used by the peer and session audits) — the auditor validates RFC 5869
 HKDF derivation, big-endian 4-byte message length framing, monotonic sequence numbers, and
 HMAC authentication tags. A malformed frame or replayed sequence emits
 `overlay/invalid-crypto-framing` (error); a failed MAC emits
 `overlay/mac-authentication-failure` (error).
 
+**Peer connection flooding defenses** (`ConnectionFloodingDefenseTester`)
+— checks that an overlay port you operate sheds connection bursts without locking out real peers.
+`ConnectionFloodingDefenseTester` opens a baseline connection and an authenticated overlay `HELLO`
+handshake, then a paced burst of TCP connections, polls until the port accepts again, and repeats the
+handshake and a latency check:
+
+| Rule                                    | Severity | When                                                                                           |
+| --------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `overlay/peer-port-unreachable`         | error    | The baseline connection is refused or times out                                                |
+| `overlay/peer-unresponsive-after-burst` | error    | The port stops accepting after the burst and does not recover (crash or descriptor exhaustion) |
+| `overlay/peer-handshake-dropped`        | error    | A handshake that worked before the burst fails after it                                        |
+| `overlay/peer-slow-recovery`            | warning  | Recovery takes longer than 3 s                                                                 |
+| `overlay/peer-latency-degraded`         | warning  | Connect latency rises more than 5× (and above 200 ms)                                          |
+| `overlay/peer-no-throttling-observed`   | info     | Every burst connection was accepted                                                            |
+| `overlay/peer-handshake-unverified`     | info     | The baseline handshake failed, so preservation was not checked                                 |
+
+The tester is deliberately not a load generator and its limits cannot be raised: at most **32**
+connections per burst (default 16), at least **20 ms** between attempts (≤ 50 per second), accepted
+sockets held for at most 2 s, and recovery polled with single connections every 250 ms for at most
+15 s. It reports how many of its own sockets were left open (always 0 unless the platform failed to
+close one). Only run it against nodes you operate.
+
+```text
+Peer defense test core.example.com:11625
+  limits: 16 connections, 50ms apart (<= 20/s), held 250ms
+  baseline: accepted in 31ms, handshake accepted
+  burst: 12/16 accepted, 4 refused, 0 reset, 0 timed out, 0 errors (rejection 25%)
+  throttling: first rejection at attempt 13
+  recovery: accepting again after 512ms (3 poll(s)), latency 33ms, handshake accepted
+  tester sockets left open: 0
+  verdict: PASS
+```
+
 **DNS integrity** (with `--check-network --verify-dnssec`) — A and AAAA answers are queried from
 Cloudflare (`1.1.1.1`), Google (`8.8.8.8`), and Quad9 (`9.9.9.9`) through their DNS-over-HTTPS
 endpoints. Resolver sets are normalized and compared; disagreement emits
 `security/dns-resolver-divergence` (error), while an explicit unauthenticated response emits
 `security/dnssec-not-enabled` (warning).
+
+**Transaction flood propagation and mempool eviction** (`stellar-toml-lint audit-flood-policy --host <host>`)
+— `FloodPropagationVerifier` reads stellar-core's admin `/info` and `/metrics` (port `11626` by
+default, or saved copies via `--info-file` / `--metrics-file`) and checks three things:
+
+- **Propagation metrics**: the flood duplicate-to-unique ratio, the share of `GET_TX_SET` traffic
+  answered with `DONT_HAVE`, banned transactions, and transactions stuck in the oldest pending-age bucket.
+- **Transaction set exchanges** (`--exchanges-file`): recorded `GET_TX_SET` requests and their
+  `TX_SET`, `GENERALIZED_TX_SET`, or `DONT_HAVE` responses, decoded as standard `StellarMessage` XDR.
+  Answered sets are split into fee tiers; `DONT_HAVE` misses, `DONT_HAVE` for hashes that were never
+  requested, and undecodable frames are counted.
+- **Queue behavior under bursts**: a deterministic model of the queue (capacity `maxTxSetSize ×
+TRANSACTION_QUEUE_SIZE_MULTIPLIER`, one pending transaction per account with 10× replace-by-fee,
+  eviction of the cheapest fee-per-operation transactions when full) is driven by a burst across
+  `low`/`medium`/`high`/`priority` fee tiers. By default the burst is 150% of capacity; set it with
+  `--profile low=300,medium=150,high=60,priority=15`. An observed log from a real node
+  (`--submissions-file`, including rejected and evicted transactions) is checked the same way.
+  Nothing is submitted to the network.
+
+| Rule                                                             | Severity | When                                                                         |
+| ---------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------- |
+| `overlay/flood-priority-inversion`                               | error    | A transaction is evicted or rejected while a lower fee-rate one stays queued |
+| `overlay/flood-premature-drop`                                   | error    | A `high`/`priority` transaction is rejected while the queue still has room   |
+| `overlay/flood-dont-have-mismatch`                               | error    | `DONT_HAVE` names a transaction set hash that was never requested            |
+| `overlay/flood-txset-unavailable`                                | warning  | Over 20% of `GET_TX_SET` requests get `DONT_HAVE`                            |
+| `overlay/flood-duplicate-overhead`                               | warning  | More than two duplicate flood messages per unique one                        |
+| `overlay/flood-stale-pending`                                    | warning  | Transactions sit in the oldest pending-age bucket                            |
+| `overlay/flood-malformed-frame`                                  | warning  | An overlay frame is not valid `StellarMessage` XDR                           |
+| `overlay/flood-queue-saturated` / `overlay/flood-queue-pressure` | info     | The burst saturates the queue, or passes 80% of it                           |
+| `overlay/flood-metrics-unavailable`                              | info     | No `/metrics` were available                                                 |
+
+The report states the queue's saturation thresholds (80% pressure, 100% saturation), the submission
+at which the burst saturates it, the entry fee once it is full, per-tier accepted, rejected, evicted
+and retained counts, and a 0–100 mempool health score (`healthy` ≥ 80, `degraded` ≥ 50). Mock
+fixtures for every input live in `test/fixtures/overlay/flood/`.
+
+```text
+Flood propagation and mempool policy
+  queue: 200 ops (pressure at 160, saturation at 200), base fee 100
+  simulated burst: 300 submissions, peak 200/200 ops [####################] 100%
+    saturated at submission 200, entry fee now 101 stroops/op
+    evictions 46, rejections: insufficient-fee 54
+    priority  submitted 15, accepted 15, rejected 0, evicted 0, retained 15
+    fairness: no violations
+  exchanges: 3 GET_TX_SET, 1 answered, 2 DONT_HAVE (1 mismatched), 1 malformed, 5 transactions decoded
+  mempool health: 15/100 (unhealthy)
+```
 
 **DNS takeover and SSRF** (`--audit-dns-takeover`, `--audit-ssrf`) — the takeover audit collects the
 apex domain and every hostname referenced by the file, then queries CNAME and NS records through a
@@ -1446,6 +1622,18 @@ Contract specs are also audited for contract upgrade functions (`upgrade`, `set_
 An upgrade function exported without admin protection or authorization checks emits
 `soroban/unprotected-upgrade-function` (error), and an upgrade admin account secured by only a single signer
 emits `soroban/single-signer-upgrade-admin` (warning).
+
+Contract initialization is verified from the same `contractspecv0` section. A contract that exports the
+Protocol 23 `__constructor` is initialized atomically inside the deployment operation; one that relies on a
+custom `initialize`/`init` instead is checked against its instance storage and persistent
+initialization-marker keys. A contract with an initializer but no initialization state emits
+`soroban/constructor-uninitialized` (error), because the first caller can claim it; initialization state
+that is not guarded by a single-use boolean flag emits `soroban/constructor-no-replay-protection`
+(warning), because the initializer can be invoked again. Constructor and initializer signatures are
+compared with the file's metadata — `CURRENCIES[].display_decimals` is derived automatically, and admin
+or governance-quorum expectations can be supplied by the caller — with a missing or mistyped parameter
+emitting `soroban/constructor-argument-mismatch` (error). An unreachable RPC, an archived entry, a
+Stellar Asset Contract, or a module without a readable spec stays silent.
 
 Each deployed WASM also gets a static resource estimate, read from the module's sections without
 executing it. A Memory section that reserves more than 10 pages (640 KiB) at instantiation emits

@@ -23,6 +23,13 @@ import type { BudgetOptions } from './soroban/budget-estimator.js';
 import { eventVerifierRules } from './soroban/eventVerifier.js';
 import { contractCodeKey, contractDataInstanceKey, wasmHashOf } from './soroban/ledgerKeys.js';
 import { auditTomlStorageTtl, SorobanTtlAuditor, ttlAuditorRules } from './soroban/ttlAuditor.js';
+import { reentrancyValidatorRules } from './soroban/reentrancyValidator.js';
+import {
+  auditConstructorInvariants,
+  auditTomlConstructorInvariants,
+  ConstructorInvariantVerifier,
+  constructorVerifierRules,
+} from './soroban/constructorVerifier.js';
 
 /** Roughly a day of ledgers at ~5 seconds per ledger. */
 const EXPIRING_WINDOW_LEDGERS = 17_280;
@@ -473,6 +480,8 @@ export const sorobanRules: Rule[] = [
   ...budgetEstimatorRules,
   ...eventVerifierRules,
   ...ttlAuditorRules,
+  ...reentrancyValidatorRules,
+  ...constructorVerifierRules,
 ];
 
 export const sorobanRuleIds: readonly string[] = sorobanRules.map((rule) => rule.id);
@@ -492,3 +501,31 @@ export type {
   TtlAuditReport,
   TtlAuditorOptions,
 } from './soroban/ttlAuditor.js';
+export {
+  reentrancyValidatorRules,
+  CrossContractReentrancyValidator,
+  auditWasmReentrancy,
+} from './soroban/reentrancyValidator.js';
+export type {
+  CallGraphEdge,
+  FunctionAnalysis,
+  ReentrancyAnalysis,
+  ReentrancyOptions,
+} from './soroban/reentrancyValidator.js';
+export {
+  auditConstructorInvariants,
+  auditTomlConstructorInvariants,
+  ConstructorInvariantVerifier,
+  constructorVerifierRules,
+};
+export type {
+  ConstructorArgumentExpectation,
+  ConstructorArgumentType,
+  ConstructorVerifierOptions,
+  ContractFunctionParameter,
+  ContractFunctionSignature,
+  InitializationMarker,
+  InitializationSignature,
+  InitializationState,
+  InitializationStrategy,
+} from './soroban/constructorVerifier.js';
