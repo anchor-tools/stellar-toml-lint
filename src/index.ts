@@ -1301,3 +1301,38 @@ export type {
   HeartbeatReport,
   HeartbeatWatchdogOptions,
 } from './overlay/heartbeatWatchdog.js';
+export {
+  Tier1QuorumAlignmentVerifier,
+  parseQuorumConfig,
+  isSatisfied,
+  thresholdFromPercent,
+  renderTier1AlignmentReport,
+  tier1AlignmentRules,
+  tier1AlignmentRuleIds,
+  DEFAULT_THRESHOLD_PERCENT,
+  TIER1_INDEPENDENT_QUORUM,
+  TIER1_SPLIT_QUORUM,
+  TIER1_NARROW_AGREEMENT,
+  TIER1_LOW_REPRESENTATION,
+  TIER1_PARTIAL_ORGANIZATION,
+  TIER1_UNVERIFIED_VALIDATOR,
+  TIER1_UNRESOLVED_VALIDATOR,
+  TIER1_THRESHOLD_INVALID,
+  TIER1_QUORUM_UNDECLARED,
+} from './overlay/tier1AlignmentVerifier.js';
+export type {
+  QuorumSetNode,
+  DeclaredValidator,
+  ParsedQuorumConfig,
+  Tier1OrganizationCoverage,
+  QuorumSetCoverage,
+  Tier1AlignmentReport,
+  Tier1AlignmentOptions,
+} from './overlay/tier1AlignmentVerifier.js';
+export {
+  DEFAULT_TIER1_CATALOG,
+  TIER1_CATALOG_VERSION,
+  MAX_TIER1_ORGANIZATIONS,
+  parseTier1Catalog,
+} from './overlay/tier1Catalog.js';
+export type { Tier1Catalog, Tier1Organization, Tier1Validator } from './overlay/tier1Catalog.js';
