@@ -131,6 +131,11 @@ import {
   OverlayHeartbeatWatchdog,
   renderHeartbeatReport,
 } from './overlay/heartbeatWatchdog.js';
+import {
+  Tier1QuorumAlignmentVerifier,
+  renderTier1AlignmentReport,
+} from './overlay/tier1AlignmentVerifier.js';
+import { DEFAULT_TIER1_CATALOG, parseTier1Catalog } from './overlay/tier1Catalog.js';
 import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
@@ -267,6 +272,8 @@ interface Cli {
   crawlPeers: boolean;
   monitorHeartbeat: boolean;
   heartbeatTimeoutSeconds?: number;
+  verifyTier1Alignment: boolean;
+  tier1Catalog?: string;
   verifyDnssec: boolean;
   auditDnsTakeover: boolean;
   auditSecrets: boolean;
@@ -547,6 +554,13 @@ OPTIONS
       --monitor-heartbeat  Establish an overlay session with every advertised validator
                           and report ping/pong latency, jitter and keepalive state
       --timeout <seconds> Monitoring window for --monitor-heartbeat (default: 10)
+      --verify-tier1-alignment
+                          Cross-reference the [QUORUM_SET] (or QUALITY-rated
+                          [[VALIDATORS]]) against the Tier-1 validator catalog and
+                          flag slices that can agree without the consensus core
+      --tier1-catalog <file.json>
+                          Tier-1 catalog for --verify-tier1-alignment (default:
+                          bundled snapshot; see docs/schemas/tier1-catalog.schema.json)
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
        --audit-dns-takeover
                            Query CNAME/NS records for every referenced domain and
@@ -828,6 +842,15 @@ async function runExtraAudits(
     const result = await verifier.verify(parsed, rules);
     out.push(...result.diagnostics);
     process.stderr.write(renderTraceAuditReport(result));
+  }
+  if (cli.verifyTier1Alignment) {
+    const catalog =
+      cli.tier1Catalog === undefined
+        ? DEFAULT_TIER1_CATALOG
+        : parseTier1Catalog(JSON.parse(await readFile(cli.tier1Catalog, 'utf8')) as unknown);
+    const report = new Tier1QuorumAlignmentVerifier({ rules, catalog }).verify(parsed);
+    out.push(...report.diagnostics);
+    process.stderr.write(renderTier1AlignmentReport(report));
   }
   if (cli.monitorHeartbeat) {
     const endpoints = parseValidatorEndpoints(parsed);
@@ -2802,9 +2825,6 @@ async function main(argv: string[]): Promise<number> {
   if (cli.verifyWasmStreaming !== undefined) {
     return verifyWasmStreaming(cli.verifyWasmStreaming);
   }
-  if (cli.runSandboxedPlugin !== undefined) {
-    return runSandboxedPlugin(cli.runSandboxedPlugin, cli.sandboxFuel);
-  }
 
   if (cli.dryRun && !cli.sortKeys && !cli.pruneOrphaned) {
     process.stderr.write(
@@ -3554,6 +3574,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditOpenTelemetry: false,
     crawlPeers: false,
     monitorHeartbeat: false,
+    verifyTier1Alignment: false,
     verifyDnssec: false,
     auditDnsTakeover: false,
     auditSecrets: false,
@@ -3790,6 +3811,14 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--monitor-heartbeat':
         cli.monitorHeartbeat = true;
+        break;
+
+      case '--verify-tier1-alignment':
+        cli.verifyTier1Alignment = true;
+        break;
+
+      case '--tier1-catalog':
+        cli.tier1Catalog = requireValue(argv, ++i, arg);
         break;
 
       case '--timeout': {

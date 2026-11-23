@@ -61,6 +61,7 @@ import { floodPropagationRules } from '../overlay/floodVerifier.js';
 import { validatorKeyRotationRules } from '../overlay/keyRotationVerifier.js';
 import { floodingDefenseRules } from '../overlay/floodingTester.js';
 import { overlayHeartbeatRules } from '../overlay/heartbeat-rules.js';
+import { tier1AlignmentRules } from '../overlay/tier1AlignmentVerifier.js';
 import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
 
 /** Every rule, in report order. */
@@ -129,6 +130,7 @@ export const allRules: Rule[] = [
   ...validatorKeyRotationRules,
   ...floodingDefenseRules,
   ...overlayHeartbeatRules,
+  ...tier1AlignmentRules,
   ...sep31Sep12Rules,
 ];
 
@@ -196,5 +198,6 @@ export {
   validatorKeyRotationRules,
   floodingDefenseRules,
   overlayHeartbeatRules,
+  tier1AlignmentRules,
   sep31Sep12Rules,
 };
