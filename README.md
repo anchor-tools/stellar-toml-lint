@@ -220,6 +220,10 @@ and only `--write` changes the file. `--split` instead emits modular partials gr
 | `--audit-sep38-spreads`       | Compare SEP-38 indicative and firm quote rates across small, medium and large tiers, and verify quote expiry handling               |
 | `--verify-federation-srv`     | Check `_stellar-federation._tcp.<domain>` SRV records against `FEDERATION_SERVER` (use with `--domain`)                             |
 | `--audit-esg-disclosures`     | Verify `DOCUMENTATION.ORG_ESG` disclosures and attestation signature, and print a sustainability rating                             |
+| `--audit-caa`                 | Check DNS CAA records on `--domain` and its parent zones for `issue`, `issuewild` and `iodef`                                       |
+| `--verify-security-txt`       | Validate `/.well-known/security.txt` against RFC 9116 (also `verify-security-txt --domain <domain>`)                                |
+| `--audit-ip-spoofing`         | Probe SEP endpoints with spoofed client IP headers for rate-limit bypass (requires `--check-network`)                               |
+| `--audit-btc-reserves`        | Validate BTC `collateral_addresses`; with `--check-network` reconcile 6-conf UTXOs with supply                                      |
 | `--audit-opentelemetry`       | Probe SEP-6, SEP-24, SEP-31 and SEP-38 `/info` endpoints with W3C Trace Context headers and inspect response correlation evidence   |
 | `--audit-kyc-fsm`             | Audit SEP-12 customer status state machines for stuck or circular onboarding (use with `--domain`)                                  |
 | `--audit-cors`                | Probe every declared endpoint for wildcard-plus-credentials and unvalidated `Origin` CORS policies (OWASP)                          |
