@@ -17,7 +17,6 @@ import {
   WasmModuleError,
   importedFunction,
   parseWasmModule,
-  type WasmFunction,
   type WasmModule,
 } from './wasmModule.js';
 

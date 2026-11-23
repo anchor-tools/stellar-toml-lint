@@ -5,7 +5,7 @@ import {
   Asset,
   Operation,
   StrKey,
-  Transaction,
+  type Transaction,
   TransactionBuilder,
   xdr,
 } from '@stellar/stellar-base';
