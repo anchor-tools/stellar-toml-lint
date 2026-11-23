@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "package": "LSP-stellar-toml",
+  "name": "LSP-stellar-toml",
+  "description": "LSP helper package for stellar.toml files providing diagnostics, completions, and hover documentation.",
+  "author": "anchor-tools",
+  "homepage": "https://github.com/anchor-tools/stellar-toml-lint",
+  "last_modified": "2026-09-24",
+  "platforms": {
+    "windows": [
+      {
+        "version": "1.0.0",
+        "url": "https://github.com/anchor-tools/stellar-toml-lint/raw/main/integrations/sublime/LSP-stellar-toml.zip",
+        "hash": ""
+      }
+    ],
+    "linux": [
+      {
+        "version": "1.0.0",
+        "url": "https://github.com/anchor-tools/stellar-toml-lint/raw/main/integrations/sublime/LSP-stellar-toml.zip",
+        "hash": ""
+      }
+    ],
+    "osx": [
+      {
+        "version": "1.0.0",
+        "url": "https://github.com/anchor-tools/stellar-toml-lint/raw/main/integrations/sublime/LSP-stellar-toml.zip",
+        "hash": ""
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "status": 200,
+  "headers": {
+    "access-control-allow-origin": "*",
+    "content-type": "text/plain; charset=utf-8"
+  },
+  "body": "VERSION=\"2.0.0\"\nNETWORK_PASSPHRASE=\"Public Global Stellar Network ; September 2015\"\n\n[DOCUMENTATION]\nORG_NAME=\"Mock Anchor\"\nORG_URL=\"https://mock-anchor.example.com\"\n"
+}

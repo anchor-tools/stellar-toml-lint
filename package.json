@@ -32,15 +32,41 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser/index.js",
+      "default": "./dist/browser/stellar-toml-lint.esm.min.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "import": "./dist/browser/worker.js",
+      "default": "./dist/browser/stellar-toml-lint.worker.min.js"
+    },
+    "./editor/monaco": {
+      "types": "./dist/editor/monacoBundle.d.ts",
+      "import": "./dist/editor/monaco.bundle.js"
+    },
+    "./editor/codemirror": {
+      "types": "./dist/editor/codeMirror.d.ts",
+      "import": "./dist/editor/codemirror.bundle.js"
     }
   },
   "files": [
     "dist",
+    "templates",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "packaging/homebrew/stellar-toml-lint.rb"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && npm run build:browser && npm run build:editor",
+    "build:binaries": "node scripts/build-binaries.mjs",
+    "release": "semantic-release",
+    "release:dry-run": "semantic-release --dry-run",
+    "build:browser": "node scripts/build-browser.js",
+    "build:editor": "node scripts/build-editor-bundles.mjs",
+    "build:monaco": "node scripts/build-monaco.mjs",
     "dev": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -49,21 +75,39 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "bench": "npx tsx benchmarks/runner.ts"
   },
   "dependencies": {
     "@stellar/stellar-base": "^15.0.0",
+    "openpgp": "^6.3.2",
     "smol-toml": "^1.7.1"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "@vitest/coverage-v8": "^2.1.8",
-    "eslint": "^9.17.0",
-    "fast-xml-parser": "^5.11.1",
-    "prettier": "^3.4.2",
-    "typescript": "^5.7.2",
-    "typescript-eslint": "^8.18.0",
-    "vitest": "^2.1.8"
+    "@eslint/js": "^10.0.1",
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^11.0.1",
+    "@semantic-release/github": "^12.0.10",
+    "@semantic-release/npm": "^13.2.0",
+    "@semantic-release/release-notes-generator": "^14.1.1",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^26.6.6",
+    "@vitest/coverage-v8": "^5.1.0",
+    "@yao-pkg/pkg": "^6.25.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.14.0",
+    "fake-indexeddb": "^6.2.8",
+    "fast-xml-parser": "^5.12.1",
+    "prettier": "^3.10.0",
+    "semantic-release": "^26.0.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.73.0",
+    "vitest": "^5.1.1",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2",
+    "yaml": "^2.9.1"
   },
   "repository": {
     "type": "git",
@@ -72,5 +116,8 @@
   "bugs": {
     "url": "https://github.com/anchor-tools/stellar-toml-lint/issues"
   },
-  "homepage": "https://github.com/anchor-tools/stellar-toml-lint#readme"
+  "homepage": "https://github.com/anchor-tools/stellar-toml-lint#readme",
+  "publishConfig": {
+    "provenance": true
+  }
 }

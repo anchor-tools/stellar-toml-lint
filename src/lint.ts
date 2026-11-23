@@ -11,10 +11,13 @@ import type {
 } from './types.js';
 import { allRules } from './rules/index.js';
 import { securityRuleIds } from './rules/security.js';
+import { SemanticRuleEngine } from './engine/semanticRuleEngine.js';
 import { SourceIndex } from './source-index.js';
 import { MAX_FILE_BYTES, isString } from './predicates.js';
 import { specUrl } from './spec.js';
 import { probeTls, type TlsProbe } from './tls.js';
+import { checkOrgUrl } from './rules/org-url-check.js';
+import { checkSep6 } from './cross-sep/sep6.js';
 
 /** Severity ordering used for sorting and for `--max-warnings` style counts. */
 const SEVERITY_RANK: Record<Severity, number> = { error: 0, warning: 1, info: 2 };
@@ -94,6 +97,21 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
     }
   }
 
+  const plugins = options.semanticRules;
+  if (plugins !== undefined && plugins.length > 0) {
+    // One traversal for the whole plugin set, after the catalog so a built-in's
+    // finding is never displaced by a rule the project added later.
+    diagnostics.push(
+      ...new SemanticRuleEngine(plugins).run({
+        doc: parsed,
+        source,
+        rules: overrides,
+        options,
+        locate: (path: string): Position | undefined => index.get(path),
+      }),
+    );
+  }
+
   return finalize(diagnostics, options, parsed);
 }
 
@@ -146,20 +164,45 @@ export async function lintDomain(
   }
 
   if (!response.ok) {
-    return finalize(
-      [
-        {
-          rule: 'network/unreachable',
-          severity: 'error',
-          category: 'network',
-          message: `${url} returned HTTP ${response.status}`,
-          helpUri: specUrl('specification'),
-          suggestion: 'SEP-1 requires the file at exactly /.well-known/stellar.toml.',
-        },
-      ],
-      options,
-      undefined,
-    );
+    const failed: Diagnostic[] = [
+      {
+        rule: 'network/unreachable',
+        severity: 'error',
+        category: 'network',
+        message: `${url} returned HTTP ${response.status}`,
+        helpUri: specUrl('specification'),
+        suggestion: 'SEP-1 requires the file at exactly /.well-known/stellar.toml.',
+      },
+    ];
+
+    // A 404 is often a deploy mistake rather than a missing file: the anchor
+    // published stellar.toml at the site root. One bounded probe of that path
+    // turns a dead-end status code into a fix the maintainer can act on.
+    if (response.status === 404) {
+      const rootUrl = `https://${host}/stellar.toml`;
+      try {
+        const root = await fetchImpl(rootUrl, {
+          redirect: 'follow',
+          headers: { Origin: 'https://stellar-toml-lint.invalid' },
+        });
+        if (root.ok) {
+          failed.push({
+            rule: 'network/wrong-path',
+            severity: 'error',
+            category: 'network',
+            message: `Found stellar.toml at ${rootUrl}, but SEP-1 requires /.well-known/stellar.toml`,
+            helpUri: specUrl('specification'),
+            suggestion:
+              'Move the file to /.well-known/stellar.toml — wallets only discover it there.',
+          });
+        }
+      } catch {
+        // The root probe is a hint, not a requirement: a transport failure
+        // here leaves today's network/unreachable behaviour unchanged.
+      }
+    }
+
+    return finalize(failed, options, undefined);
   }
 
   // Anchors sign SEP-10 challenges over this same host, so deprecated protocol
@@ -212,7 +255,125 @@ export async function lintDomain(
     domain: options.domain ?? host,
     ...(tls ? { tls } : {}),
   });
-  return finalize([...diagnostics, ...fileResult.diagnostics], options, fileResult.parsed);
+
+  // The identity anchor itself must also be alive: probe ORG_URL so a dead
+  // endpoint is caught here rather than by the next wallet that vetts the
+  // anchor. Same transport as the file fetch, so tests can stub both.
+  let orgUrlDiagnostics: Diagnostic[] = [];
+  if (fileResult.parsed) {
+    orgUrlDiagnostics = await checkOrgUrl(fileResult.parsed, fetchImpl, {
+      rules: options.rules,
+    });
+  }
+
+  // SEP-6 is the reason many anchors name a TRANSFER_SERVER at all; a wallet
+  // that discovers the endpoint here but finds no /info learns that too late.
+  let sep6Diagnostics: Diagnostic[] = [];
+  if (fileResult.parsed) {
+    sep6Diagnostics = await checkSep6(fileResult.parsed, fetchImpl, { rules: options.rules });
+  }
+
+  // A currency's real details often live in a separate `toml` pointer, so
+  // linting only the served file would pass anchors whose linked assets are
+  // broken. Only reached under `--follow-links`/`--domain`, and only over the
+  // transport that fetched the file itself.
+  let linkDiagnostics: Diagnostic[] = [];
+  if (options.followLinks && fileResult.parsed) {
+    linkDiagnostics = await followTomlPointers(fileResult.parsed, options, fetchImpl);
+  }
+
+  return finalize(
+    [
+      ...diagnostics,
+      ...fileResult.diagnostics,
+      ...orgUrlDiagnostics,
+      ...sep6Diagnostics,
+      ...linkDiagnostics,
+    ],
+    options,
+    fileResult.parsed,
+  );
+}
+
+/** Upper bound on linked documents fetched, so a long list cannot fan out. */
+const MAX_POINTER_FETCHES = 20;
+
+/**
+ * Fetches every `toml` pointer under `CURRENCIES` and lints the linked
+ * documents, folding their findings into this run.
+ *
+ * A pointer that cannot be fetched is a `network/toml-pointer-fetch` warning
+ * rather than a hard failure: the anchor published a link we cannot read, which
+ * is worth reporting but should not mask the findings from the file itself.
+ * Each linked document is linted with `followLinks` off, so a pointer pointing
+ * at another pointer terminates instead of recursing.
+ *
+ * Findings are prefixed with the URL they came from, since the caller is
+ * auditing several files at once and a bare message would be ambiguous.
+ */
+export async function followTomlPointers(
+  doc: Record<string, unknown>,
+  options: LintOptions,
+  fetchImpl: typeof fetch = globalFetch,
+): Promise<Diagnostic[]> {
+  const diagnostics: Diagnostic[] = [];
+  const currencies = doc.CURRENCIES;
+  if (!Array.isArray(currencies)) return diagnostics;
+
+  const pointers = currencies
+    .map((entry, index) => ({ entry, path: `CURRENCIES[${index}]` }))
+    .filter(
+      ({ entry }) =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        typeof (entry as Record<string, unknown>).toml === 'string',
+    )
+    .slice(0, MAX_POINTER_FETCHES);
+
+  for (const { entry, path } of pointers) {
+    const url = (entry as Record<string, unknown>).toml as string;
+
+    let response: Response;
+    try {
+      response = await fetchImpl(url, { redirect: 'follow' });
+    } catch (error) {
+      diagnostics.push({
+        rule: 'network/toml-pointer-fetch',
+        severity: 'warning',
+        category: 'network',
+        message: `Could not fetch TOML pointer ${url}: ${errorMessage(error)}`,
+        path: `${path}.toml`,
+        helpUri: specUrl('currency-documentation'),
+      });
+      continue;
+    }
+
+    if (!response.ok) {
+      diagnostics.push({
+        rule: 'network/toml-pointer-fetch',
+        severity: 'warning',
+        category: 'network',
+        message: `Could not fetch TOML pointer ${url}: HTTP ${response.status}`,
+        path: `${path}.toml`,
+        helpUri: specUrl('currency-documentation'),
+      });
+      continue;
+    }
+
+    const linked = lint(await response.text(), {
+      ...options,
+      // The linked document was not itself fetched from the domain under
+      // audit, and re-following its pointers would let two files loop.
+      checkNetwork: false,
+      followLinks: false,
+    });
+
+    for (const diagnostic of linked.diagnostics) {
+      diagnostics.push({ ...diagnostic, message: `[${url}] ${diagnostic.message}` });
+    }
+  }
+
+  return diagnostics;
 }
 
 /**

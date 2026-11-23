@@ -1,0 +1,8 @@
+{
+  "status": 200,
+  "headers": {
+    "content-type": "text/html; charset=utf-8",
+    "access-control-allow-origin": "*"
+  },
+  "body": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>Mock Anchor</title>\n  </head>\n  <body>\n    <h1>Mock Anchor</h1>\n    <p>Recorded homepage served in fixture mode, so the ORG_URL probe has a 200 to find.</p>\n  </body>\n</html>\n"
+}
