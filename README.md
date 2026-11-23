@@ -1378,6 +1378,53 @@ endpoints. Resolver sets are normalized and compared; disagreement emits
 `security/dns-resolver-divergence` (error), while an explicit unauthenticated response emits
 `security/dnssec-not-enabled` (warning).
 
+**Transaction flood propagation and mempool eviction** (`stellar-toml-lint audit-flood-policy --host <host>`)
+— `FloodPropagationVerifier` reads stellar-core's admin `/info` and `/metrics` (port `11626` by
+default, or saved copies via `--info-file` / `--metrics-file`) and checks three things:
+
+- **Propagation metrics**: the flood duplicate-to-unique ratio, the share of `GET_TX_SET` traffic
+  answered with `DONT_HAVE`, banned transactions, and transactions stuck in the oldest pending-age bucket.
+- **Transaction set exchanges** (`--exchanges-file`): recorded `GET_TX_SET` requests and their
+  `TX_SET`, `GENERALIZED_TX_SET`, or `DONT_HAVE` responses, decoded as standard `StellarMessage` XDR.
+  Answered sets are split into fee tiers; `DONT_HAVE` misses, `DONT_HAVE` for hashes that were never
+  requested, and undecodable frames are counted.
+- **Queue behavior under bursts**: a deterministic model of the queue (capacity `maxTxSetSize ×
+TRANSACTION_QUEUE_SIZE_MULTIPLIER`, one pending transaction per account with 10× replace-by-fee,
+  eviction of the cheapest fee-per-operation transactions when full) is driven by a burst across
+  `low`/`medium`/`high`/`priority` fee tiers. By default the burst is 150% of capacity; set it with
+  `--profile low=300,medium=150,high=60,priority=15`. An observed log from a real node
+  (`--submissions-file`, including rejected and evicted transactions) is checked the same way.
+  Nothing is submitted to the network.
+
+| Rule                                                             | Severity | When                                                                         |
+| ---------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------- |
+| `overlay/flood-priority-inversion`                               | error    | A transaction is evicted or rejected while a lower fee-rate one stays queued |
+| `overlay/flood-premature-drop`                                   | error    | A `high`/`priority` transaction is rejected while the queue still has room   |
+| `overlay/flood-dont-have-mismatch`                               | error    | `DONT_HAVE` names a transaction set hash that was never requested            |
+| `overlay/flood-txset-unavailable`                                | warning  | Over 20% of `GET_TX_SET` requests get `DONT_HAVE`                            |
+| `overlay/flood-duplicate-overhead`                               | warning  | More than two duplicate flood messages per unique one                        |
+| `overlay/flood-stale-pending`                                    | warning  | Transactions sit in the oldest pending-age bucket                            |
+| `overlay/flood-malformed-frame`                                  | warning  | An overlay frame is not valid `StellarMessage` XDR                           |
+| `overlay/flood-queue-saturated` / `overlay/flood-queue-pressure` | info     | The burst saturates the queue, or passes 80% of it                           |
+| `overlay/flood-metrics-unavailable`                              | info     | No `/metrics` were available                                                 |
+
+The report states the queue's saturation thresholds (80% pressure, 100% saturation), the submission
+at which the burst saturates it, the entry fee once it is full, per-tier accepted, rejected, evicted
+and retained counts, and a 0–100 mempool health score (`healthy` ≥ 80, `degraded` ≥ 50). Mock
+fixtures for every input live in `test/fixtures/overlay/flood/`.
+
+```text
+Flood propagation and mempool policy
+  queue: 200 ops (pressure at 160, saturation at 200), base fee 100
+  simulated burst: 300 submissions, peak 200/200 ops [####################] 100%
+    saturated at submission 200, entry fee now 101 stroops/op
+    evictions 46, rejections: insufficient-fee 54
+    priority  submitted 15, accepted 15, rejected 0, evicted 0, retained 15
+    fairness: no violations
+  exchanges: 3 GET_TX_SET, 1 answered, 2 DONT_HAVE (1 mismatched), 1 malformed, 5 transactions decoded
+  mempool health: 15/100 (unhealthy)
+```
+
 **DNS takeover and SSRF** (`--audit-dns-takeover`, `--audit-ssrf`) — the takeover audit collects the
 apex domain and every hostname referenced by the file, then queries CNAME and NS records through a
 DNS-over-HTTPS resolver. A CNAME whose target matches a known cloud signature (S3, GitHub Pages,
@@ -1475,6 +1522,18 @@ Contract specs are also audited for contract upgrade functions (`upgrade`, `set_
 An upgrade function exported without admin protection or authorization checks emits
 `soroban/unprotected-upgrade-function` (error), and an upgrade admin account secured by only a single signer
 emits `soroban/single-signer-upgrade-admin` (warning).
+
+Contract initialization is verified from the same `contractspecv0` section. A contract that exports the
+Protocol 23 `__constructor` is initialized atomically inside the deployment operation; one that relies on a
+custom `initialize`/`init` instead is checked against its instance storage and persistent
+initialization-marker keys. A contract with an initializer but no initialization state emits
+`soroban/constructor-uninitialized` (error), because the first caller can claim it; initialization state
+that is not guarded by a single-use boolean flag emits `soroban/constructor-no-replay-protection`
+(warning), because the initializer can be invoked again. Constructor and initializer signatures are
+compared with the file's metadata — `CURRENCIES[].display_decimals` is derived automatically, and admin
+or governance-quorum expectations can be supplied by the caller — with a missing or mistyped parameter
+emitting `soroban/constructor-argument-mismatch` (error). An unreachable RPC, an archived entry, a
+Stellar Asset Contract, or a module without a readable spec stays silent.
 
 Each deployed WASM also gets a static resource estimate, read from the module's sections without
 executing it. A Memory section that reserves more than 10 pages (640 KiB) at instantiation emits
