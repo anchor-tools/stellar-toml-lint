@@ -14,6 +14,9 @@ import { orgUrlRules } from './org-url-check.js';
 import { sep38Rules } from './sep38-endpoints.js';
 import { sorobanRules } from './soroban.js';
 import { authTreeSimulatorRules } from '../soroban/auth-tree-simulator.js';
+import { authTreeCredentialRules } from '../soroban/authTreeSimulator.js';
+import { wasmMemoryRules } from '../soroban/wasmMemoryAnalyzer.js';
+import { signatureReplayRules } from '../soroban/signatureReplayAuditor.js';
 import { sep12Rules } from './sep12-schema.js';
 import { sep6Rules } from '../cross-sep/sep6.js';
 import { corsPreflightRules } from '../network/cors-preflight.js';
@@ -41,6 +44,10 @@ import { chainlinkPorRules } from '../bridges/chainlinkPorVerifier.js';
 import { wormholeRules } from '../bridges/wormholeVaaAuditor.js';
 import { solanaEscrowRules } from '../bridges/solanaEscrowVerifier.js';
 import { erc4626Rules } from '../bridges/erc4626VaultAuditor.js';
+import { bridgeLatencyRules } from '../bridges/latencyBenchmark.js';
+import { bridgeReplayRules } from '../bridges/eventReplayDetector.js';
+import { bankAttestationRules } from '../bridges/bankAttestationVerifier.js';
+import { proofOfBurnRules } from '../bridges/proofOfBurnValidator.js';
 import { tlsCipherRules } from '../security/tlsCipherAuditor.js';
 import { hstsRules } from '../security/hstsVerifier.js';
 import { emergencyPauseRules } from '../bridges/emergencyPauseValidator.js';
@@ -83,6 +90,9 @@ export const allRules: Rule[] = [
   ...sep38Rules,
   ...sorobanRules,
   ...authTreeSimulatorRules,
+  ...authTreeCredentialRules,
+  ...wasmMemoryRules,
+  ...signatureReplayRules,
   ...sep12Rules,
   ...sep6Rules,
   ...corsPreflightRules,
@@ -110,6 +120,10 @@ export const allRules: Rule[] = [
   ...wormholeRules,
   ...solanaEscrowRules,
   ...erc4626Rules,
+  ...bridgeLatencyRules,
+  ...bridgeReplayRules,
+  ...bankAttestationRules,
+  ...proofOfBurnRules,
   ...tlsCipherRules,
   ...hstsRules,
   ...emergencyPauseRules,
@@ -151,6 +165,9 @@ export {
   sep38Rules,
   sorobanRules,
   authTreeSimulatorRules,
+  authTreeCredentialRules,
+  wasmMemoryRules,
+  signatureReplayRules,
   sep12Rules,
   sep6Rules,
   corsPreflightRules,
@@ -178,6 +195,10 @@ export {
   wormholeRules,
   solanaEscrowRules,
   erc4626Rules,
+  bridgeLatencyRules,
+  bridgeReplayRules,
+  bankAttestationRules,
+  proofOfBurnRules,
   tlsCipherRules,
   hstsRules,
   emergencyPauseRules,
