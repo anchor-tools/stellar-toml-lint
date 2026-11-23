@@ -37,6 +37,10 @@ import { sep10JwtRules } from '../protocols/sep10JwtAuditor.js';
 import { sep12FileUploadRules } from '../protocols/sep12FileUpload.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
+import { tlsCipherRules } from '../security/tlsCipherAuditor.js';
+import { hstsRules } from '../security/hstsVerifier.js';
+import { emergencyPauseRules } from '../bridges/emergencyPauseValidator.js';
+import { bridgeQuorumRules } from '../bridges/bridgeQuorumAuditor.js';
 import { subdomainTakeoverRules } from '../security/subdomainScanner.js';
 import { secretDetectorRules } from '../security/secretDetector.js';
 import { ssrfRules } from '../security/ssrfScanner.js';
@@ -49,7 +53,9 @@ import { zkRules } from '../zk/rangeProofVerifier.js';
 import { secp256k1BridgeRules } from '../crypto/secp256k1Verifier.js';
 import { kzgRules } from '../crypto/kzgVerifier.js';
 import { overlayHandshakeRules } from '../overlay/handshakeTester.js';
+import { floodPropagationRules } from '../overlay/floodVerifier.js';
 import { validatorKeyRotationRules } from '../overlay/keyRotationVerifier.js';
+import { floodingDefenseRules } from '../overlay/floodingTester.js';
 import { overlayHeartbeatRules } from '../overlay/heartbeat-rules.js';
 import { tier1AlignmentRules } from '../overlay/tier1AlignmentVerifier.js';
 import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
@@ -96,6 +102,10 @@ export const allRules: Rule[] = [
   ...sep12FileUploadRules,
   ...federationSrvRules,
   ...esgRules,
+  ...tlsCipherRules,
+  ...hstsRules,
+  ...emergencyPauseRules,
+  ...bridgeQuorumRules,
   ...subdomainTakeoverRules,
   ...secretDetectorRules,
   ...ssrfRules,
@@ -108,7 +118,9 @@ export const allRules: Rule[] = [
   ...secp256k1BridgeRules,
   ...kzgRules,
   ...overlayHandshakeRules,
+  ...floodPropagationRules,
   ...validatorKeyRotationRules,
+  ...floodingDefenseRules,
   ...overlayHeartbeatRules,
   ...tier1AlignmentRules,
   ...sep31Sep12Rules,
@@ -154,6 +166,10 @@ export {
   sep12FileUploadRules,
   federationSrvRules,
   esgRules,
+  tlsCipherRules,
+  hstsRules,
+  emergencyPauseRules,
+  bridgeQuorumRules,
   subdomainTakeoverRules,
   secretDetectorRules,
   ssrfRules,
@@ -166,7 +182,9 @@ export {
   secp256k1BridgeRules,
   kzgRules,
   overlayHandshakeRules,
+  floodPropagationRules,
   validatorKeyRotationRules,
+  floodingDefenseRules,
   overlayHeartbeatRules,
   tier1AlignmentRules,
   sep31Sep12Rules,
