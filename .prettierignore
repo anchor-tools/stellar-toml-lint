@@ -14,3 +14,6 @@ apps/extension/test-results/
 # Tree-sitter CLI output; regenerate with `tree-sitter generate`.
 grammars/*/src/grammar.json
 grammars/*/src/node-types.json
+
+# SLSA test fixture must stay minified (JSONL).
+test/fixtures/gitops/slsa/attestation-public-key.json

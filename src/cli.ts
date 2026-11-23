@@ -102,10 +102,7 @@ import { scanSsrf, renderSsrfReport, ssrfDiagnostics } from './security/ssrfScan
 import { StructuralRefactoringEngine, renderRefactorSummary } from './cst/structuralRefactoring.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
-import { RangeProofVerifier } from './zk/rangeProofVerifier.js';
-import { Secp256k1BridgeVerifier } from './crypto/secp256k1Verifier.js';
-import { KzgCommitmentVerifier } from './crypto/kzgVerifier.js';
-import { OverlayHandshakeTester, parseValidatorEndpoints } from './overlay/handshakeTester.js';
+import { parseValidatorEndpoints } from './overlay/handshakeTester.js';
 import {
   ValidatorKeyRotationVerifier,
   renderKeyRotationReport,
@@ -2489,6 +2486,8 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
   if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
   if (argv[0] === 'soroban-ttl') return sorobanTtlCommand(argv.slice(1));
+  if (argv[0] === 'verify-provenance') return verifyProvenance(argv.slice(1));
+  if (argv[0] === 'audit-dockerfile') return auditContainer(argv.slice(1));
   if (argv[0] === 'format') return formatCommand(argv.slice(1));
   if (argv[0] === 'diff') return diffCommand(argv.slice(1));
   let cli: Cli;

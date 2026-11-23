@@ -109,9 +109,10 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 /** Routes by pathname + query, so tests assert the exact URLs the engine builds. */
-function routedFetch(
-  routes: Record<string, () => Response | Promise<Response>>,
-): { fetchImpl: typeof fetch; requests: string[] } {
+function routedFetch(routes: Record<string, () => Response | Promise<Response>>): {
+  fetchImpl: typeof fetch;
+  requests: string[];
+} {
   const requests: string[] = [];
   const fetchImpl = (async (input: string | URL | globalThis.Request) => {
     const url = input.toString();
@@ -418,9 +419,7 @@ describe('Sep31Sep12ConsistencyEngine.analyze', () => {
       },
     };
     const report = engine.analyze(INFO, lookupOf({ 'sep31-sender': schema }));
-    const [mismatch] = report.discrepancies.filter(
-      (d) => d.rule === 'sep31/description-mismatch',
-    );
+    const [mismatch] = report.discrepancies.filter((d) => d.rule === 'sep31/description-mismatch');
 
     expect(mismatch?.severity).toBe('warning');
     expect(mismatch?.expected).toContain('ABA routing number');
@@ -436,9 +435,7 @@ describe('Sep31Sep12ConsistencyEngine.analyze', () => {
       },
     };
     const report = engine.analyze(INFO, lookupOf({ 'sep31-sender': schema }));
-    const [missing] = report.discrepancies.filter(
-      (d) => d.rule === 'sep31/description-mismatch',
-    );
+    const [missing] = report.discrepancies.filter((d) => d.rule === 'sep31/description-mismatch');
     expect(missing?.message).toContain('has no description');
   });
 
@@ -625,9 +622,7 @@ describe('Sep31Sep12ConsistencyEngine.analyze', () => {
       },
     };
     const report = engine.analyze(INFO, lookupOf({ 'sep31-sender': schema }));
-    expect(rulesOf(report.discrepancies)).not.toContain(
-      'sep31/orphaned-sep12-required-field',
-    );
+    expect(rulesOf(report.discrepancies)).not.toContain('sep31/orphaned-sep12-required-field');
   });
 
   it('accepts a plain record of schemas and treats absent keys as missing', () => {
@@ -637,8 +632,7 @@ describe('Sep31Sep12ConsistencyEngine.analyze', () => {
     });
     expect(rulesOf(report.discrepancies)).toContain('sep12/customer-schema-missing');
     expect(
-      report.discrepancies.find((d) => d.rule === 'sep12/customer-schema-missing')
-        ?.customerType,
+      report.discrepancies.find((d) => d.rule === 'sep12/customer-schema-missing')?.customerType,
     ).toBe('sep31-receiver');
   });
 
@@ -650,10 +644,13 @@ describe('Sep31Sep12ConsistencyEngine.analyze', () => {
   });
 
   it('reports a SEP-12 response with no fields at all', () => {
-    const report = engine.analyze(INFO, lookupOf({
-      'sep31-sender': { status: 'NEEDS_INFO' },
-      'sep31-receiver': RECEIVER_SCHEMA,
-    }));
+    const report = engine.analyze(
+      INFO,
+      lookupOf({
+        'sep31-sender': { status: 'NEEDS_INFO' },
+        'sep31-receiver': RECEIVER_SCHEMA,
+      }),
+    );
     const missing = report.discrepancies.find((d) => d.rule === 'sep12/customer-schema-missing');
     expect(missing?.message).toContain('no fields or provided_fields');
   });
@@ -669,10 +666,13 @@ describe('Sep31Sep12ConsistencyEngine.analyze', () => {
 
   it('reports a customer type the response labels differently', () => {
     const schema = { ...SENDER_SCHEMA, type: 'sep31-receiver' };
-    const report = engine.analyze(INFO, lookupOf({
-      'sep31-sender': schema,
-      'sep31-receiver': RECEIVER_SCHEMA,
-    }));
+    const report = engine.analyze(
+      INFO,
+      lookupOf({
+        'sep31-sender': schema,
+        'sep31-receiver': RECEIVER_SCHEMA,
+      }),
+    );
     const [mismatch] = report.discrepancies.filter(
       (d) => d.rule === 'sep12/customer-type-mismatch',
     );
@@ -703,9 +703,7 @@ describe('Sep31Sep12ConsistencyEngine.analyze', () => {
     };
     const report = engine.analyze(info, lookupOf({ 'sep31-sender': { fields: {} } }));
     expect(rulesOf(report.discrepancies)).toContain('sep31/field-description-missing');
-    expect(rulesOf(report.discrepancies)).toContain(
-      'sep31/customer-type-description-missing',
-    );
+    expect(rulesOf(report.discrepancies)).toContain('sep31/customer-type-description-missing');
   });
 
   it('warns when a deprecated type is no longer advertised', () => {
@@ -725,9 +723,7 @@ describe('Sep31Sep12ConsistencyEngine.analyze', () => {
       info,
       lookupOf({ 'sep31-sender': SENDER_SCHEMA, 'sep31-receiver': RECEIVER_SCHEMA }),
     );
-    expect(rulesOf(report.discrepancies)).not.toContain(
-      'sep31/deprecated-type-not-advertised',
-    );
+    expect(rulesOf(report.discrepancies)).not.toContain('sep31/deprecated-type-not-advertised');
   });
 
   it('warns when a deprecated receiver type is no longer advertised', () => {
@@ -751,9 +747,7 @@ describe('Sep31Sep12ConsistencyEngine.analyze', () => {
       info,
       lookupOf({ 'sep31-sender': SENDER_SCHEMA, 'sep31-receiver': RECEIVER_SCHEMA }),
     );
-    expect(rulesOf(report.discrepancies)).not.toContain(
-      'sep31/deprecated-type-not-advertised',
-    );
+    expect(rulesOf(report.discrepancies)).not.toContain('sep31/deprecated-type-not-advertised');
   });
 
   it('uses a deprecated receiver type when no types map exists', () => {
@@ -867,8 +861,7 @@ describe('Sep31Sep12ConsistencyEngine.verify', () => {
     };
     const { fetchImpl, requests } = routedFetch({
       [`${DIRECT}/info`]: () => jsonResponse(info),
-      [`${KYC}/customer?type=sep31%20sender%2F%C3%BC`]: () =>
-        jsonResponse({ fields: {} }),
+      [`${KYC}/customer?type=sep31%20sender%2F%C3%BC`]: () => jsonResponse({ fields: {} }),
     });
     await new Sep31Sep12ConsistencyEngine({ fetchImpl }).verify({
       directPaymentServer: DIRECT,
@@ -935,8 +928,7 @@ describe('Sep31Sep12ConsistencyEngine.verify', () => {
       [`${DIRECT}/info`]: () => jsonResponse(INFO),
       [`${KYC}/customer?type=sep31-sender`]: () =>
         new Response('<html>not json</html>', { status: 200 }),
-      [`${KYC}/customer?type=sep31-receiver`]: () =>
-        new Response('not json', { status: 200 }),
+      [`${KYC}/customer?type=sep31-receiver`]: () => new Response('not json', { status: 200 }),
     });
     const report = await new Sep31Sep12ConsistencyEngine({ fetchImpl }).verify({
       directPaymentServer: DIRECT,
@@ -1041,9 +1033,7 @@ describe('verifySep31Sep12 document helper', () => {
       fetchImpl,
       { rules: { 'sep12/customer-schema-unauthorized': 'off' } },
     );
-    expect(rulesOf(report.discrepancies)).not.toContain(
-      'sep12/customer-schema-unauthorized',
-    );
+    expect(rulesOf(report.discrepancies)).not.toContain('sep12/customer-schema-unauthorized');
   });
 });
 
@@ -1081,9 +1071,7 @@ describe('renderSep31Sep12Report', () => {
     const empty = renderSep31Sep12Report(engine.analyze({}, {}));
     expect(empty).toContain('No asset corridors could be inspected.');
 
-    const typeless = renderSep31Sep12Report(
-      engine.analyze({ receive: { USDC: {} } }, {}),
-    );
+    const typeless = renderSep31Sep12Report(engine.analyze({ receive: { USDC: {} } }, {}));
     expect(typeless).toContain('sender: (none)');
     expect(typeless).toContain('receiver: (none)');
     expect(typeless).not.toContain('transaction fields:');
@@ -1109,11 +1097,7 @@ describe('rule registration', () => {
   it('never emits consistency diagnostics from an offline lint', async () => {
     const { lint } = await import('../src/lint.js');
     const result = lint(
-      [
-        'VERSION="2.7.0"',
-        `DIRECT_PAYMENT_SERVER="${DIRECT}"`,
-        `KYC_SERVER="${KYC}"`,
-      ].join('\n'),
+      ['VERSION="2.7.0"', `DIRECT_PAYMENT_SERVER="${DIRECT}"`, `KYC_SERVER="${KYC}"`].join('\n'),
     );
     expect(result.diagnostics.map((d) => d.rule)).not.toContain('sep31/field-orphaned');
   });

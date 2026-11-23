@@ -22,7 +22,8 @@
  * the simulated `ContractEvent` XDR, then turns these findings into
  * diagnostics.
  */
-import { Address, xdr } from '@stellar/stellar-base';
+import { Address } from '@stellar/stellar-base';
+import type { xdr } from '@stellar/stellar-base';
 import type { Rule } from '../types.js';
 
 export const EVENT_MISSING_TOPICS_RULE = 'soroban/event-missing-topics';

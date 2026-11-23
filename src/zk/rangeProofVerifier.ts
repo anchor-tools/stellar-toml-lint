@@ -391,8 +391,6 @@ export class RangeProofVerifier {
 
     // Compute polynomial t(X) = t0 + t1*X + t2*X^2
     const z2 = mod(z * z, order);
-    const z3 = mod(z2 * z, order);
-
     // y powers
     const yPowers: bigint[] = [1n];
     for (let i = 1; i <= bitLength; i++) {
@@ -535,7 +533,9 @@ export class RangeProofVerifier {
   /**
    * Verifies a Bulletproof range proof.
    */
-  verifyRangeProof(proofOrSerialized: BulletproofRangeProof | string): RangeProofVerificationResult {
+  verifyRangeProof(
+    proofOrSerialized: BulletproofRangeProof | string,
+  ): RangeProofVerificationResult {
     let proof: BulletproofRangeProof;
     if (typeof proofOrSerialized === 'string') {
       try {
@@ -580,10 +580,7 @@ export class RangeProofVerifier {
       const T2 = ops.parsePoint(proof.T2);
 
       const taux = mod(BigInt(`0x${proof.taux}`), order);
-      const mu = mod(BigInt(`0x${proof.mu}`), order);
       const that = mod(BigInt(`0x${proof.that}`), order);
-      const a = mod(BigInt(`0x${proof.a}`), order);
-      const b = mod(BigInt(`0x${proof.b}`), order);
 
       // Replay transcript
       const transcript = new Transcript(`Bulletproofs_${curve}_${bitLength}`);
@@ -679,14 +676,13 @@ export class RangeProofVerifier {
     curve: SupportedCurve = 'secp256k1',
   ): ReserveReconciliationResult {
     const ops = getCurveOps(curve);
-    let entries: CommitmentEntry[] = [];
+    let entries: CommitmentEntry[];
     let expectedReserve = 0n;
     let totalBlinding: bigint | undefined;
 
     if (Array.isArray(declarations)) {
       entries = declarations;
-      expectedReserve =
-        publicReserveTotal !== undefined ? BigInt(publicReserveTotal) : 0n;
+      expectedReserve = publicReserveTotal !== undefined ? BigInt(publicReserveTotal) : 0n;
     } else {
       entries = declarations.commitments ?? [];
       if (declarations.pedersen_commitment) {
@@ -753,7 +749,9 @@ export class RangeProofVerifier {
     const activeBlinding = totalBlinding ?? (hasExplicitValues ? sumBlinding : undefined);
 
     if (activeBlinding !== undefined) {
-      const expectedCommitment = ops.G.multiply(expectedReserve).add(ops.H.multiply(activeBlinding));
+      const expectedCommitment = ops.G.multiply(expectedReserve).add(
+        ops.H.multiply(activeBlinding),
+      );
       const matches = sumPoint.equals(expectedCommitment);
       return {
         reconciled: matches,
@@ -762,7 +760,9 @@ export class RangeProofVerifier {
         commitmentsSum: sumPoint.toHex(),
         publicReserveTotal: expectedReserve,
         delta: matches ? 0n : sumValue - expectedReserve,
-        error: matches ? undefined : 'Commitment sum point does not match expected reserve commitment',
+        error: matches
+          ? undefined
+          : 'Commitment sum point does not match expected reserve commitment',
       };
     }
 
@@ -776,7 +776,9 @@ export class RangeProofVerifier {
         commitmentsSum: sumPoint.toHex(),
         publicReserveTotal: expectedReserve,
         delta: sumValue - expectedReserve,
-        error: matches ? undefined : `Commitment balance sum (${sumValue}) does not equal public reserve (${expectedReserve})`,
+        error: matches
+          ? undefined
+          : `Commitment balance sum (${sumValue}) does not equal public reserve (${expectedReserve})`,
       };
     }
 
@@ -843,7 +845,8 @@ export class RangeProofVerifier {
               category: 'currencies',
               message: `Zero-knowledge balance range proof failed verification: ${verification.error ?? 'constraint check failed'}`,
               path: `${path}.zk_range_proof`,
-              suggestion: 'Ensure Bulletproof range constraints are valid for the balance commitment.',
+              suggestion:
+                'Ensure Bulletproof range constraints are valid for the balance commitment.',
             });
           }
         }
@@ -851,10 +854,12 @@ export class RangeProofVerifier {
     }
 
     // Scan [PRIVACY] or [ANCHOR_RESERVES]
-    const reserveSection = (doc.ANCHOR_RESERVES ?? doc.PRIVACY) as Record<string, unknown> | undefined;
+    const reserveSection = (doc.ANCHOR_RESERVES ?? doc.PRIVACY) as
+      Record<string, unknown> | undefined;
     if (reserveSection && typeof reserveSection === 'object') {
       const curve = (reserveSection.curve as SupportedCurve) ?? 'secp256k1';
-      const publicReserve = reserveSection.public_reserve_amount ?? reserveSection.collateral_reserves;
+      const publicReserve =
+        reserveSection.public_reserve_amount ?? reserveSection.collateral_reserves;
       const commitments = reserveSection.commitments as CommitmentEntry[] | undefined;
 
       if (commitments && Array.isArray(commitments) && publicReserve !== undefined) {
@@ -876,7 +881,8 @@ export class RangeProofVerifier {
             category: 'currencies',
             message: `Anchor confidential reserve commitments do not reconcile with public collateral: ${reconciliation.error}`,
             path: 'ANCHOR_RESERVES.commitments',
-            suggestion: 'Reconcile sum of confidential commitments with on-chain public collateral reserves.',
+            suggestion:
+              'Reconcile sum of confidential commitments with on-chain public collateral reserves.',
           });
         }
       }
@@ -892,14 +898,16 @@ export const zkRules: Rule[] = [
     id: ZK_INVALID_RANGE_PROOF,
     category: 'currencies',
     severity: 'error',
-    description: 'Zero-knowledge balance range proof must be valid and satisfy Bulletproof constraints',
+    description:
+      'Zero-knowledge balance range proof must be valid and satisfy Bulletproof constraints',
     run() {},
   },
   {
     id: ZK_COMMITMENT_MISMATCH,
     category: 'currencies',
     severity: 'error',
-    description: 'Confidential commitment sums must reconcile with anchor on-chain public collateral reserves',
+    description:
+      'Confidential commitment sums must reconcile with anchor on-chain public collateral reserves',
     run() {},
   },
   {

@@ -7,6 +7,7 @@
  */
 
 import { bls12_381 } from '@noble/curves/bls12-381';
+import { parse as parseToml } from 'smol-toml';
 
 export type BlsGroup = 'G1' | 'G2';
 export type SerializationFormat = 'compressed' | 'uncompressed';
@@ -63,8 +64,9 @@ export const BLS12_381_P =
   0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaabn;
 
 function toBytes(input: Uint8Array | string): Uint8Array {
-  if (input instanceof Uint8Array || ArrayBuffer.isView(input) || Buffer.isBuffer(input)) return input as Uint8Array;
-  if (typeof input !== 'string') return new Uint8Array(input as any);
+  if (input instanceof Uint8Array || ArrayBuffer.isView(input) || Buffer.isBuffer(input))
+    return input as Uint8Array;
+  if (typeof input !== 'string') return new Uint8Array(input as unknown as ArrayLike<number>);
   const cleaned = input.trim().replace(/^0x/i, '');
   return Buffer.from(cleaned, 'hex');
 }
@@ -198,7 +200,10 @@ export class BlsSignatureVerifier {
   /**
    * Check whether a given point is in the prime-order subgroup r (prevents small-subgroup attacks).
    */
-  public verifySubgroupMembership(pointBytes: Uint8Array | string, group: BlsGroup = 'G1'): boolean {
+  public verifySubgroupMembership(
+    pointBytes: Uint8Array | string,
+    group: BlsGroup = 'G1',
+  ): boolean {
     try {
       const parsed = this.parsePublicKey(pointBytes, group);
       return parsed.valid && parsed.inSubgroup;
@@ -242,7 +247,10 @@ export class BlsSignatureVerifier {
   /**
    * Aggregate multiple signatures into a single aggregated signature.
    */
-  public aggregateSignatures(signatures: (Uint8Array | string)[], signatureGroup: BlsGroup = 'G2'): Uint8Array {
+  public aggregateSignatures(
+    signatures: (Uint8Array | string)[],
+    signatureGroup: BlsGroup = 'G2',
+  ): Uint8Array {
     if (signatures.length === 0) {
       throw new Error('Cannot aggregate an empty list of signatures');
     }
@@ -404,7 +412,9 @@ export class BlsSignatureVerifier {
         };
       }
 
-      const byteMessages = messages.map((m) => (typeof m === 'string' ? Buffer.from(m, 'utf-8') : m));
+      const byteMessages = messages.map((m) =>
+        typeof m === 'string' ? Buffer.from(m, 'utf-8') : m,
+      );
 
       let valid = false;
       if (pubGroup === 'G1') {
@@ -414,9 +424,10 @@ export class BlsSignatureVerifier {
         // Compute pairing batch: e(sigma, G2_generator) == prod(e(H(m_i), pk_i))
         const P_sig = bls12_381.G1.ProjectivePoint.fromHex(sigBytes);
         const neg_G2 = bls12_381.G2.ProjectivePoint.BASE.negate();
-        const pairs: { g1: typeof bls12_381.G1.ProjectivePoint.prototype; g2: typeof bls12_381.G2.ProjectivePoint.prototype }[] = [
-          { g1: P_sig, g2: neg_G2 },
-        ];
+        const pairs: {
+          g1: typeof bls12_381.G1.ProjectivePoint.prototype;
+          g2: typeof bls12_381.G2.ProjectivePoint.prototype;
+        }[] = [{ g1: P_sig, g2: neg_G2 }];
         for (let i = 0; i < byteMessages.length; i++) {
           const m = byteMessages[i]!;
           const pk = pubBytesList[i]!;
@@ -454,8 +465,7 @@ export class BlsSignatureVerifier {
     let parsed: Record<string, unknown>;
     if (typeof toml === 'string') {
       try {
-        const { parse } = require('smol-toml');
-        parsed = parse(toml) as Record<string, unknown>;
+        parsed = parseToml(toml) as Record<string, unknown>;
       } catch {
         parsed = {};
       }
@@ -476,7 +486,9 @@ export class BlsSignatureVerifier {
       if (!parseRes.valid) {
         issues.push(parseRes.error || 'Invalid point on curve');
       } else if (!parseRes.inSubgroup) {
-        issues.push('Point does not belong to prime-order subgroup r (vulnerable to small-subgroup attacks)');
+        issues.push(
+          'Point does not belong to prime-order subgroup r (vulnerable to small-subgroup attacks)',
+        );
       }
 
       findings.push({
@@ -529,7 +541,8 @@ export class BlsSignatureVerifier {
         if (typeof signer === 'object' && signer !== null) {
           const sObj = signer as Record<string, unknown>;
           if (sObj.PUBLIC_KEY) inspectKey(sObj.PUBLIC_KEY, `BLS_SIGNERS[${idx}].PUBLIC_KEY`);
-          if (sObj.BLS_PUBLIC_KEY) inspectKey(sObj.BLS_PUBLIC_KEY, `BLS_SIGNERS[${idx}].BLS_PUBLIC_KEY`);
+          if (sObj.BLS_PUBLIC_KEY)
+            inspectKey(sObj.BLS_PUBLIC_KEY, `BLS_SIGNERS[${idx}].BLS_PUBLIC_KEY`);
         }
       });
     }

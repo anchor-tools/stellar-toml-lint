@@ -48,8 +48,8 @@ describe('HashAgilityAuditor', () => {
     const report = HashAgilityAuditor.audit(tomlWithMd5);
     expect(report.deprecatedCount).toBe(1);
     expect(report.securityRating).toBe('INSECURE');
-    expect(report.inspections[0].isDeprecated).toBe(true);
-    expect(report.inspections[0].detectedAlgorithm).toBe('MD5');
+    expect(report.inspections[0]?.isDeprecated).toBe(true);
+    expect(report.inspections[0]?.detectedAlgorithm).toBe('MD5');
   });
 
   it('passes compliant modern SHA-256 digests', () => {

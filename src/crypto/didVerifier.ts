@@ -5,7 +5,7 @@
  * supporting did:web, did:key (Ed25519), and did:ion resolution.
  */
 
-import { ed25519 } from '@noble/curves/ed25519';
+import { parse as parseToml } from 'smol-toml';
 
 export interface DidDocument {
   '@context': string | string[];
@@ -172,27 +172,34 @@ export function encodeBase58(source: Uint8Array): string {
  * Verifier and resolver for W3C DIDs and Verifiable Credentials.
  */
 export class DidResolutionVerifier {
-  private fetcher: (url: string) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
+  private fetcher: (
+    url: string,
+  ) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
   private ionResolverUrl: string;
 
   constructor(options: DidVerifierOptions = {}) {
-    this.fetcher = options.fetcher ?? (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : async () => {
-      throw new Error('fetch is not available in the current environment');
-    });
+    this.fetcher =
+      options.fetcher ??
+      (typeof fetch !== 'undefined'
+        ? fetch.bind(globalThis)
+        : async () => {
+            throw new Error('fetch is not available in the current environment');
+          });
     this.ionResolverUrl = options.ionResolverUrl ?? 'https://identity.foundation/ion/identifiers';
   }
 
   /**
    * Extract DID entries from parsed stellar.toml object or raw string.
    */
-  public extractDidsFromToml(toml: Record<string, unknown> | string): { field: string; did: string }[] {
+  public extractDidsFromToml(
+    toml: Record<string, unknown> | string,
+  ): { field: string; did: string }[] {
     const results: { field: string; did: string }[] = [];
     let parsed: Record<string, unknown>;
 
     if (typeof toml === 'string') {
       try {
-        const { parse } = require('smol-toml');
-        parsed = parse(toml) as Record<string, unknown>;
+        parsed = parseToml(toml) as Record<string, unknown>;
       } catch {
         // Simple regex fallback if parser fails
         const didRegex = /(?:ORG_DID|DID)\s*=\s*["'](did:[a-z0-9]+:[^"']+)["']/gi;
@@ -208,7 +215,11 @@ export class DidResolutionVerifier {
       parsed = toml;
     }
 
-    const checkField = (obj: Record<string, unknown> | undefined, fieldName: string, prefix: string) => {
+    const checkField = (
+      obj: Record<string, unknown> | undefined,
+      fieldName: string,
+      prefix: string,
+    ) => {
       if (!obj) return;
       const val = obj[fieldName];
       if (typeof val === 'string' && val.startsWith('did:')) {
@@ -347,7 +358,7 @@ export class DidResolutionVerifier {
 
     // did:web:example.com -> https://example.com/.well-known/did.json
     // did:web:example.com:user:alice -> https://example.com/user/alice/did.json
-    let domain = decodeURIComponent(parts[2] ?? '');
+    const domain = decodeURIComponent(parts[2] ?? '');
     const pathParts = parts.slice(3).map((p) => decodeURIComponent(p));
 
     let url: string;
@@ -389,7 +400,9 @@ export class DidResolutionVerifier {
     if (rawBytes[0] === 0xed && rawBytes[1] === 0x01) {
       const pubKeyBytes = rawBytes.slice(2);
       if (pubKeyBytes.length !== 32) {
-        throw new Error(`Invalid Ed25519 public key length in did:key: expected 32 bytes, got ${pubKeyBytes.length}`);
+        throw new Error(
+          `Invalid Ed25519 public key length in did:key: expected 32 bytes, got ${pubKeyBytes.length}`,
+        );
       }
 
       const keyId = `${did}#${multibaseKey}`;
@@ -464,7 +477,12 @@ export class DidResolutionVerifier {
   public validateDidDocument(
     doc: DidDocument,
     expectedDid: string,
-  ): { errors: string[]; warnings: string[]; summaries: VerificationMethodSummary[]; authenticated: boolean } {
+  ): {
+    errors: string[];
+    warnings: string[];
+    summaries: VerificationMethodSummary[];
+    authenticated: boolean;
+  } {
     const errors: string[] = [];
     const warnings: string[] = [];
     const summaries: VerificationMethodSummary[] = [];
@@ -482,14 +500,19 @@ export class DidResolutionVerifier {
             c.includes('w3.org/2018/credentials')),
       );
       if (!validDidContext) {
-        errors.push(`DID document @context does not include standard W3C DID Core context ("https://www.w3.org/ns/did/v1")`);
+        errors.push(
+          `DID document @context does not include standard W3C DID Core context ("https://www.w3.org/ns/did/v1")`,
+        );
       }
     }
 
     // Subject ID validation
     if (!doc.id) {
       errors.push(`Missing required "id" in DID document`);
-    } else if (doc.id !== expectedDid && !doc.id.startsWith(expectedDid.split(':')[0] ?? expectedDid)) {
+    } else if (
+      doc.id !== expectedDid &&
+      !doc.id.startsWith(expectedDid.split(':')[0] ?? expectedDid)
+    ) {
       warnings.push(`Document ID "${doc.id}" does not match requested DID "${expectedDid}"`);
     }
 
@@ -500,7 +523,7 @@ export class DidResolutionVerifier {
     }
 
     for (const vm of vms) {
-      const summary = this.validateVerificationMethod(vm, doc.id);
+      const summary = this.validateVerificationMethod(vm);
       summaries.push(summary);
       if (!summary.valid && summary.error) {
         errors.push(`VerificationMethod "${vm.id}": ${summary.error}`);
@@ -514,12 +537,14 @@ export class DidResolutionVerifier {
       for (const auth of authList) {
         const authId = typeof auth === 'string' ? auth : auth.id;
         // Check if referenced VM exists and is valid
-        const found = summaries.find((s) => s.id === authId || s.id.endsWith(authId) || authId.endsWith(s.id));
+        const found = summaries.find(
+          (s) => s.id === authId || s.id.endsWith(authId) || authId.endsWith(s.id),
+        );
         if (found && found.valid) {
           authenticated = true;
           break;
         } else if (typeof auth === 'object' && auth !== null) {
-          const inlineSummary = this.validateVerificationMethod(auth, doc.id);
+          const inlineSummary = this.validateVerificationMethod(auth);
           summaries.push(inlineSummary);
           if (inlineSummary.valid) {
             authenticated = true;
@@ -537,7 +562,7 @@ export class DidResolutionVerifier {
   /**
    * Validate a single verification method (e.g. Ed25519VerificationKey2020).
    */
-  public validateVerificationMethod(vm: VerificationMethod, docId: string): VerificationMethodSummary {
+  public validateVerificationMethod(vm: VerificationMethod): VerificationMethodSummary {
     if (!vm.id || !vm.type || !vm.controller) {
       return {
         id: vm.id || 'unknown',
@@ -654,7 +679,9 @@ export class DidResolutionVerifier {
         controller: vm.controller,
         valid: true,
         keyType: 'Ed25519-JWK',
-        publicKeyHex: vm.publicKeyJwk.x ? Buffer.from(vm.publicKeyJwk.x, 'base64url').toString('hex') : undefined,
+        publicKeyHex: vm.publicKeyJwk.x
+          ? Buffer.from(vm.publicKeyJwk.x, 'base64url').toString('hex')
+          : undefined,
       };
     }
 
@@ -753,7 +780,9 @@ export class DidResolutionVerifier {
   /**
    * Audit stellar.toml for DID declaration and perform resolution.
    */
-  public async auditTomlDids(tomlContent: Record<string, unknown> | string): Promise<TomlDidAuditResult> {
+  public async auditTomlDids(
+    tomlContent: Record<string, unknown> | string,
+  ): Promise<TomlDidAuditResult> {
     const foundDids = this.extractDidsFromToml(tomlContent);
     const resolutionResults: DidResolutionResult[] = [];
 
@@ -762,7 +791,8 @@ export class DidResolutionVerifier {
       resolutionResults.push(res);
     }
 
-    const compliant = foundDids.length > 0 && resolutionResults.every((r) => r.resolved && r.authenticated);
+    const compliant =
+      foundDids.length > 0 && resolutionResults.every((r) => r.resolved && r.authenticated);
 
     let summary: string;
     if (foundDids.length === 0) {

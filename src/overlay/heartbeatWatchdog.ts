@@ -578,8 +578,8 @@ export class OverlayHeartbeatWatchdog {
     const warnings: string[] = [];
     let suddenClosure: string | undefined;
     let channelClosed = false;
-    let beforeClose: SocketKeepaliveSnapshot = channel.keepalive();
-    let closedCleanly = false;
+    let beforeClose!: SocketKeepaliveSnapshot;
+    let closedCleanly!: boolean;
 
     try {
       while (Date.now() < deadline) {
@@ -788,4 +788,3 @@ export function renderHeartbeatReport(report: HeartbeatReport): string {
   }
   return `${lines.join('\n')}\n`;
 }
-

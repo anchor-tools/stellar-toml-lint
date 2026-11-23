@@ -7,6 +7,18 @@
  */
 
 import { Keypair, Networks, StrKey, hash, xdr } from '@stellar/stellar-base';
+
+interface TcpSocket {
+  write(data: Buffer): void;
+  destroy(): void;
+  on(event: 'data', listener: (chunk: Buffer | string) => void): void;
+  on(event: 'error', listener: (err: Error) => void): void;
+  on(event: 'close', listener: () => void): void;
+  end(): void;
+}
+interface NetModuleShape {
+  createConnection: (options: { host: string; port: number }, cb?: () => void) => TcpSocket;
+}
 import { ed25519 } from '@noble/curves/ed25519';
 import { sha256 } from '@noble/hashes/sha256';
 import { hmac } from '@noble/hashes/hmac';
@@ -99,7 +111,9 @@ export function unframeOverlayMessage(frameBytes: Uint8Array): Uint8Array {
   const rawLen = view.getUint32(0);
   const length = rawLen & 0x7fffffff;
   if (frameBytes.length < length + 4) {
-    throw new Error(`Incomplete overlay frame: expected ${length + 4} bytes, got ${frameBytes.length}`);
+    throw new Error(
+      `Incomplete overlay frame: expected ${length + 4} bytes, got ${frameBytes.length}`,
+    );
   }
   return frameBytes.subarray(4, length + 4);
 }
@@ -209,7 +223,10 @@ export class OverlayHandshakeTester {
   /**
    * Constructs an authenticated Stellar overlay HELLO message.
    */
-  constructHello(cert: xdr.AuthCert, nonce?: Uint8Array): {
+  constructHello(
+    cert: xdr.AuthCert,
+    nonce?: Uint8Array,
+  ): {
     hello: xdr.Hello;
     stellarMessage: xdr.StellarMessage;
     framedBytes: Uint8Array;
@@ -247,7 +264,10 @@ export class OverlayHandshakeTester {
   /**
    * Constructs an authenticated AUTH message.
    */
-  constructAuth(sequence = 0n, macKey?: Uint8Array): {
+  constructAuth(
+    sequence = 0n,
+    macKey?: Uint8Array,
+  ): {
     authMessage: xdr.AuthenticatedMessage;
     framedBytes: Uint8Array;
     mac: Uint8Array;
@@ -298,7 +318,8 @@ export class OverlayHandshakeTester {
     }
 
     const stellarMsg = xdr.StellarMessage.fromXDR(Buffer.from(payload));
-    const msgArm = (stellarMsg as any).arm ? (stellarMsg as any).arm() : (stellarMsg.switch() as any).name;
+    const msgArm =
+      (stellarMsg as unknown as { arm?: () => string }).arm?.() ?? stellarMsg.switch().name;
     if (msgArm !== 'hello') {
       throw new Error(`Expected HELLO message, got ${msgArm}`);
     }
@@ -472,10 +493,13 @@ export class OverlayHandshakeTester {
       ]),
     );
 
-    const macKey = hkdf(sha256, sharedSecret, this.networkId, new TextEncoder().encode('stellar-overlay-mac'), 32);
-
-    // Construct local AUTH message
-    const localAuth = this.constructAuth(0n, macKey);
+    const macKey = hkdf(
+      sha256,
+      sharedSecret,
+      this.networkId,
+      new TextEncoder().encode('stellar-overlay-mac'),
+      32,
+    );
 
     return {
       ok: networkIdMatched && versionCompatible && publicKeyMatched && certValid,
@@ -502,7 +526,7 @@ export class OverlayHandshakeTester {
     timeoutMs: number,
   ): Promise<Uint8Array> {
     const netModule = 'node:net';
-    const { createConnection } = (await import(/* @vite-ignore */ netModule)) as any;
+    const { createConnection } = (await import(/* @vite-ignore */ netModule)) as NetModuleShape;
     return new Promise((resolve, reject) => {
       const socket = createConnection({ host, port }, () => {
         socket.write(Buffer.from(data));
@@ -573,7 +597,8 @@ export class OverlayHandshakeTester {
           category: 'network',
           message: `Overlay handshake failed for validator ${ep.rawEndpoint}: ${result.error ?? 'validation checks failed'}`,
           path: ep.path,
-          suggestion: 'Verify validator peer endpoint accessibility, network passphrase, and overlay versions.',
+          suggestion:
+            'Verify validator peer endpoint accessibility, network passphrase, and overlay versions.',
         });
       }
     }
