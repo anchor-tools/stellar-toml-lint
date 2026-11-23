@@ -96,6 +96,11 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--crawl-peers', description: 'Discover and audit overlay peers' },
   { long: '--monitor-heartbeat', description: 'Monitor overlay heartbeat latency and jitter' },
   { long: '--timeout', description: 'Heartbeat monitoring window in seconds', takesValue: true },
+  {
+    long: '--verify-tier1-alignment',
+    description: 'Check quorum slices against the Tier-1 validator catalog',
+  },
+  { long: '--tier1-catalog', description: 'Custom Tier-1 catalog JSON file', takesValue: true },
   { long: '--verify-dnssec', description: 'Compare DNSSEC-validating DNS resolvers' },
   { long: '--check-contracts', description: 'Verify Soroban contract TTL liveliness' },
   {
