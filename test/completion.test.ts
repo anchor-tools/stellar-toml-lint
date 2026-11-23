@@ -15,6 +15,7 @@ const LONG_FLAGS = [
   '--preset',
   '--check-network',
   '--check-contracts',
+  '--audit-events',
   '--mock-fixtures',
   '--completion',
 ];

@@ -4,7 +4,7 @@ Minimal anchor
 
 VERSION = "2.7.0"
 NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"
-SIGNING_KEY = "GAC2CQ7JBSRCCNZRCSJNZK5SMH4R4N5XQVQZQZQZQZQZQZQZQZQZQZQ"
+SIGNING_KEY = "GC5MEN6ZAK7IPVMSMKXH2FKKGL6UTKW66V6ORPJNPCULDDIMYALEHB5K"
 
 [DOCUMENTATION]
 ORG_NAME = "Example Anchor"
@@ -12,14 +12,14 @@ ORG_URL = "https://example.com"
 
 [[CURRENCIES]]
 code = "USDC"
-issuer = "GAC2CQ7JBSRCCNZRCSJNZK5SMH4R4N5XQVQZQZQZQZQZQZQZQZQZQZ"
+issuer = "GCX3MNFJJ4RHYXJPZYHWKCVGVMKU5VTP3VT34SWR34ZOFRIXO2KTT3G3"
 status = "live"
 display_decimals = 2
 regulated = true
 
 [[VALIDATORS]]
 ALIAS = "example-us-node"
-PUBLIC_KEY = "GAC2CQ7JBSRCCNZRCSJNZK5SMH4R4N5XQVQZQZQZQZQZQZQZQZQZQZ"
+PUBLIC_KEY = "GCX3MNFJJ4RHYXJPZYHWKCVGVMKU5VTP3VT34SWR34ZOFRIXO2KTT3G3"
 HOST = "stellar-core.example.com:11625"
 
 ---
@@ -36,11 +36,11 @@ HOST = "stellar-core.example.com:11625"
   (newline)
   (pair
     (bare_key)
-    (string))
+    (public_key))
   (newline)
   (newline)
   (table
-    (bare_key)
+    (sep_table)
     (newline)
     (pair
       (bare_key)
@@ -52,15 +52,15 @@ HOST = "stellar-core.example.com:11625"
     (newline)
     (newline))
   (array_table
-    (bare_key)
+    (currency_entry)
     (newline)
     (pair
       (bare_key)
-      (string))
+      (asset_code))
     (newline)
     (pair
       (bare_key)
-      (string))
+      (public_key))
     (newline)
     (pair
       (bare_key)
@@ -84,7 +84,7 @@ HOST = "stellar-core.example.com:11625"
     (newline)
     (pair
       (bare_key)
-      (string))
+      (public_key))
     (newline)
     (pair
       (bare_key)

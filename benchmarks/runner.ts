@@ -1,4 +1,7 @@
 import { lint } from '../src/lint.js';
+import { SemanticRuleEngine } from '../src/engine/semanticRuleEngine.js';
+import type { AstVisitor, PluginContext, SemanticRule } from '../src/engine/semanticRuleEngine.js';
+import { parse } from 'smol-toml';
 import { performance } from 'perf_hooks';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,6 +14,13 @@ const THRESHOLDS = {
   '5MB': 200,
 };
 const LINE_THRESHOLD_MS = 50;
+
+/**
+ * The plugin rule budget: a hundred-plus rules have to run inside one traversal,
+ * not one traversal each, so the whole set costs less than a single extra parse.
+ */
+const RULE_COUNT = 120;
+const RULES_THRESHOLD_MS = 10;
 
 interface BenchmarkResult {
   label: string;
@@ -109,9 +119,72 @@ function benchmark(label: string, content: string): BenchmarkResult {
   };
 }
 
+/**
+ * `count` rules shaped like the ones a team writes: read the identity fields off
+ * a currency, test a string value, and keep a tally across a table's keys.
+ */
+function generateRules(count: number): SemanticRule[] {
+  const makeVisitor =
+    (index: number) =>
+    (ctx: PluginContext): AstVisitor => {
+      let characters = 0;
+      return {
+        visitCurrency: (node) => {
+          if (node.code === 'ASSET_0' && node.status !== 'live') {
+            ctx.report({ message: `rule ${index} saw an inactive asset`, path: node.path });
+          }
+        },
+        visitKeyValue: (node) => {
+          if (typeof node.value === 'string') characters += node.value.length;
+        },
+        leaveTable: (node) => {
+          if (characters > 512) {
+            ctx.report({ message: `rule ${index} saw an unusually long table`, path: node.path });
+          }
+          characters = 0;
+        },
+      };
+    };
+
+  return Array.from({ length: count }, (_unused, index) => ({
+    id: `bench/rule-${index}`,
+    category: 'currencies' as const,
+    severity: 'warning' as const,
+    description: 'A rule that costs about what a real rule costs.',
+    create: makeVisitor(index),
+  }));
+}
+
+function median(samples: number[]): number {
+  const sorted = [...samples].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)] ?? Number.NaN;
+}
+
+/**
+ * Times one engine run over `content`: the walk plus the 120 visitors it builds.
+ *
+ * The median of a dozen samples, because a single run on a laptop is more noise
+ * than signal and this number is a gate.
+ */
+function benchmarkRules(content: string): { ms: number; passed: boolean } {
+  const doc = parse(content) as Record<string, unknown>;
+  const engine = new SemanticRuleEngine(generateRules(RULE_COUNT));
+
+  for (let warm = 0; warm < 5; warm++) engine.run({ doc, source: content });
+
+  const samples: number[] = [];
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const start = performance.now();
+    engine.run({ doc, source: content });
+    samples.push(performance.now() - start);
+  }
+
+  const ms = median(samples);
+  return { ms, passed: ms < RULES_THRESHOLD_MS };
+}
+
 function runBenchmarks(): void {
   mkdirSync(BENCHMARK_DIR, { recursive: true });
-
   const configs = [
     { name: 'small', entryCount: 1 },
     { name: 'medium', entryCount: 10 },
@@ -139,10 +212,40 @@ function runBenchmarks(): void {
 
   console.log('');
   console.log('-'.repeat(80));
+  console.log(
+    `Plugin rules: ${RULE_COUNT} rules over one traversal (threshold: ${RULES_THRESHOLD_MS}ms)`,
+  );
+  console.log('-'.repeat(80));
+
+  // The "large" document, which is the size a real anchor's file reaches: a
+  // hundred assets and a hundred validators.
+  const largeDoc = generateTOML(100);
+  const rules = benchmarkRules(largeDoc);
+  console.log(
+    `  [${rules.passed ? 'PASS' : 'FAIL'}] ${String(RULE_COUNT).padStart(3)} rules over ${String(
+      getLineCount(largeDoc),
+    ).padStart(5)} lines | median ${rules.ms.toFixed(2)}ms per run | ${(
+      rules.ms / RULE_COUNT
+    ).toFixed(3)}ms per rule`,
+  );
+  if (!rules.passed) {
+    console.log('  WARNING: rule traversal regression detected!');
+  }
+  // The same set over ten times as much file, printed so the shape of the curve
+  // is visible and a future change that makes the engine pay per rule rather than
+  // per node cannot hide inside the gated document. This line is not a threshold.
+  const hugeDoc = generateTOML(1000);
+  const huge = benchmarkRules(hugeDoc);
+  console.log(
+    `          same rules over ${String(getLineCount(hugeDoc)).padStart(5)} lines (not gated) | median ${huge.ms.toFixed(2)}ms per run`,
+  );
+  console.log('');
+
+  console.log('-'.repeat(80));
   console.log('Regression Thresholds (< 50ms per 1,000 lines):');
   console.log('-'.repeat(80));
 
-  const allPassed = results.every((r) => r.passed);
+  const allPassed = results.every((r) => r.passed) && rules.passed;
   const xlargeResult = results.find((r) => r.label === 'xlarge');
   if (xlargeResult) {
     const msPer1000Lines = (xlargeResult.parseTimeMs / xlargeResult.lineCount) * 1000;
