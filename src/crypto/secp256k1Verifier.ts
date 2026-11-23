@@ -134,8 +134,22 @@ export class Secp256k1BridgeVerifier {
     let rawBytes: Uint8Array;
 
     if (typeof sigInput === 'object' && !(sigInput instanceof Uint8Array)) {
-      rBig = typeof sigInput.r === 'bigint' ? sigInput.r : BigInt(typeof sigInput.r === 'string' && !sigInput.r.startsWith('0x') ? `0x${sigInput.r}` : sigInput.r.toString());
-      sBig = typeof sigInput.s === 'bigint' ? sigInput.s : BigInt(typeof sigInput.s === 'string' && !sigInput.s.startsWith('0x') ? `0x${sigInput.s}` : sigInput.s.toString());
+      rBig =
+        typeof sigInput.r === 'bigint'
+          ? sigInput.r
+          : BigInt(
+              typeof sigInput.r === 'string' && !sigInput.r.startsWith('0x')
+                ? `0x${sigInput.r}`
+                : sigInput.r.toString(),
+            );
+      sBig =
+        typeof sigInput.s === 'bigint'
+          ? sigInput.s
+          : BigInt(
+              typeof sigInput.s === 'string' && !sigInput.s.startsWith('0x')
+                ? `0x${sigInput.s}`
+                : sigInput.s.toString(),
+            );
       vNum = Number(sigInput.v);
 
       rawBytes = new Uint8Array(65);
@@ -317,7 +331,9 @@ export class Secp256k1BridgeVerifier {
   /**
    * Extracts bridge and validator EVM addresses declared in stellar.toml.
    */
-  static extractBridgeAddressesFromToml(doc: Record<string, unknown>): Array<{ address: string; path: string }> {
+  static extractBridgeAddressesFromToml(
+    doc: Record<string, unknown>,
+  ): Array<{ address: string; path: string }> {
     const results: Array<{ address: string; path: string }> = [];
 
     const isEvmAddress = (addr: unknown): addr is string =>
@@ -325,7 +341,7 @@ export class Secp256k1BridgeVerifier {
 
     // Check [BRIDGE] or [[BRIDGES]] or [EVM]
     const bridgeTables = [doc.BRIDGE, doc.BRIDGES, doc.EVM, doc.EVM_BRIDGE].filter(Boolean);
-    bridgeTables.forEach((entry, idx) => {
+    bridgeTables.forEach((entry) => {
       const items = Array.isArray(entry) ? entry : [entry];
       items.forEach((item, itemIdx) => {
         if (typeof item !== 'object' || item === null) return;
@@ -457,7 +473,8 @@ export const secp256k1BridgeRules: Rule[] = [
     id: CRYPTO_BRIDGE_SIGNER_UNMATCHED,
     category: 'security',
     severity: 'warning',
-    description: 'Recovered EVM bridge signer address should match declared bridge contracts or validators in stellar.toml',
+    description:
+      'Recovered EVM bridge signer address should match declared bridge contracts or validators in stellar.toml',
     run() {},
   },
   {
