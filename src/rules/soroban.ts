@@ -3,6 +3,9 @@ import type { Diagnostic, RuleOverrides } from '../types.js';
 import { auditContractBudget, checkContracts as checkContractsBase } from '../soroban.js';
 import { auditUpgradeSecurity } from '../soroban/upgrade-auditor.js';
 import { auditSupplyInvariant } from '../soroban/supply-invariant.js';
+import { auditTomlStorageTtl } from '../soroban/ttlAuditor.js';
+import { auditTomlConstructorInvariants } from '../soroban/constructorVerifier.js';
+import type { TtlAuditorOptions } from '../soroban/ttlAuditor.js';
 import { rpcUrlFor } from './display-decimals-audit.js';
 import { contractIdsOf } from './currencies.js';
 import { webAuthContractIdOf } from './general.js';
@@ -11,6 +14,12 @@ export interface SorobanAuditOptions {
   rules?: RuleOverrides;
   rpcUrl?: string;
   horizonUrl?: string;
+  /**
+   * Opt-in storage TTL audit. Passing an object turns it on and forwards the
+   * buffer options; leaving it undefined keeps the historical behaviour so
+   * the day-scale expiry check above remains the only TTL finding.
+   */
+  storageTtl?: TtlAuditorOptions;
 }
 
 /**
@@ -82,6 +91,25 @@ export async function checkContracts(
         diagnostics.push(...supplyDiagnostics);
       }
     }
+  }
+
+  // Constructor and initialization invariants of every declared contract.
+  diagnostics.push(
+    ...(await auditTomlConstructorInvariants(doc, fetchImpl, {
+      rpcUrl,
+      ...(options.rules !== undefined ? { rules: options.rules } : {}),
+    })),
+  );
+
+  // Opt-in storage TTL audit of every declared contract.
+  if (options.storageTtl !== undefined) {
+    diagnostics.push(
+      ...(await auditTomlStorageTtl(doc, fetchImpl, {
+        ...options.storageTtl,
+        rpcUrl,
+        ...(options.rules !== undefined ? { rules: options.rules } : {}),
+      })),
+    );
   }
 
   return diagnostics;

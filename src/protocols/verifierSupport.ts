@@ -4,7 +4,7 @@
  * runs in other people's CI.
  */
 
-import type { RuleOverrides, Severity } from '../types.js';
+import type { Diagnostic, RuleCategory, RuleOverrides, Severity } from '../types.js';
 
 /** Removes trailing slashes in linear time (no backtracking regular expression). */
 export function trimTrailingSlashes(value: string): string {
@@ -73,4 +73,24 @@ export function feePercentUnits(fee: string, amount: string): bigint | undefined
   const a = toScaled(amount);
   if (f === undefined || a === undefined || a === 0n) return undefined;
   return (f * 100n * 10000n) / a;
+}
+
+/** Builds a `push` that appends diagnostics, honouring rule overrides. */
+export function createReporter(
+  diagnostics: Diagnostic[],
+  rules: RuleOverrides | undefined,
+  helpUri: string,
+  category: RuleCategory,
+): (
+  rule: string,
+  fallback: 'error' | 'warning',
+  message: string,
+  path: string,
+  suggestion: string,
+) => void {
+  return (rule, fallback, message, path, suggestion) => {
+    const severity = severityFor(rule, fallback, rules);
+    if (severity === undefined) return;
+    diagnostics.push({ rule, severity, category, message, path, helpUri, suggestion });
+  };
 }

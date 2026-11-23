@@ -14,7 +14,7 @@
  */
 
 import { parse as parseToml } from 'smol-toml';
-import { trimTrailingSlashes } from './verifierSupport.js';
+import { trimTrailingSlashes } from '../strings.js';
 
 export type DirectorySyncStatus = 'in-sync' | 'drift' | 'expired' | 'unresolvable' | 'invalid-toml';
 

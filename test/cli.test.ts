@@ -65,8 +65,28 @@ describe('cli', () => {
     expect(stdout).toContain('USAGE');
     expect(stdout).toContain('EXIT CODES');
     expect(stdout).toContain('--check-contracts');
+    expect(stdout).toContain('--audit-events');
+    expect(stdout).toContain('--audit-opentelemetry');
     expect(stdout).toContain('--soroban-rpc');
     expect(stdout).toContain('checkstyle');
+    expect(stdout).toContain('verify-archive-gpg');
+  });
+
+  it('validates the required archive GPG command arguments', async () => {
+    const missing = await cli(['verify-archive-gpg', '--url', 'https://history.example.test/']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('--pubkey <key-file>');
+
+    const unknown = await cli([
+      'verify-archive-gpg',
+      '--url',
+      'https://history.example.test/',
+      '--pubkey',
+      'test-key.asc',
+      '--not-an-option',
+    ]);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option');
   });
 
   it('prints the version', async () => {
@@ -83,6 +103,7 @@ describe('cli', () => {
     expect(stdout).toContain('currencies/regulated-missing-auth-revocable-flag');
     expect(stdout).toContain('soroban/contract-ttl-expiring-soon');
     expect(stdout).toContain('soroban/contract-expired');
+    expect(stdout).toContain('telemetry/invalid-correlation');
     expect(stdout).toMatch(/^\d+ rules/);
   });
 
@@ -101,6 +122,31 @@ describe('cli', () => {
 
     const { code } = await cli([fixture('valid.toml'), '--audit-quotes']);
     expect(code).toBe(0);
+  });
+
+  it('documents --audit-sep38-spreads and accepts it without a network run', async () => {
+    const { stdout } = await cli(['--help']);
+    expect(stdout).toContain('--audit-sep38-spreads');
+
+    const { code, stdout: runOut } = await cli([fixture('valid.toml'), '--audit-sep38-spreads']);
+    expect(code).toBe(0);
+    expect(runOut).not.toContain('sep38/spread-exceeds-tolerance');
+  });
+
+  it('runs the OpenTelemetry trace audit with hermetic fixtures', async () => {
+    const { code, stderr } = await cli([
+      fixture('valid.toml'),
+      '--audit-opentelemetry',
+      '--mock-fixtures',
+      fixture('network'),
+    ]);
+    expect(code).toBe(0);
+    expect(stderr).toContain('OpenTelemetry trace context audit');
+    expect(stderr).toContain('COMPLIANT SEP-6 TRANSFER_SERVER');
+    expect(stderr).toContain('COMPLIANT SEP-24 TRANSFER_SERVER_SEP0024');
+    expect(stderr).toContain('COMPLIANT SEP-31 DIRECT_PAYMENT_SERVER');
+    expect(stderr).toContain('COMPLIANT SEP-38 ANCHOR_QUOTE_SERVER');
+    expect(stderr).toContain('cannot prove downstream propagation');
   });
 
   it('accepts severity overrides on the network-bound rules', async () => {
@@ -158,6 +204,24 @@ describe('cli', () => {
     ]);
     const rules = JSON.parse(stdout).diagnostics.map((d: { rule: string }) => d.rule);
     expect(rules).not.toContain('general/version');
+  });
+
+  it('honours --warn', async () => {
+    const { stdout } = await cli([
+      fixture('broken.toml'),
+      '-f',
+      'json',
+      '--warn',
+      'general/version',
+    ]);
+    const result = JSON.parse(stdout);
+    const lowered = result.diagnostics.find((d: { rule: string }) => d.rule === 'general/version');
+
+    // The flag says `--warn`; the severity it sets is `warning`. Storing the flag's
+    // own spelling filed the finding under a key no reporter counted, so `--strict`
+    // passed a file whose errors had merely been lowered and the summary lost one.
+    expect(lowered.severity).toBe('warning');
+    expect(Object.keys(result.counts).sort()).toEqual(['error', 'info', 'warning']);
   });
 
   it('fails a warning-only file under --strict', async () => {
@@ -315,6 +379,74 @@ describe('cli --completion', () => {
     const { code, stderr } = await cli(['--completion']);
     expect(code).toBe(2);
     expect(stderr).toContain('expects a value');
+  });
+});
+
+describe('cli security audits', () => {
+  it('documents the three audit flags and the key separation subcommand', async () => {
+    const { code, stdout } = await cli(['--help']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('--audit-cors');
+    expect(stdout).toContain('--audit-asset-security');
+    expect(stdout).toContain('--audit-clickjacking');
+    expect(stdout).toContain('audit-key-separation --domain <domain>');
+  });
+
+  it('lists every header, MIME, key separation and framing rule', async () => {
+    const { code, stdout } = await cli(['--list-rules']);
+    expect(code).toBe(0);
+    for (const rule of [
+      'cors/public-endpoint-missing-wildcard',
+      'cors/wildcard-origin-with-credentials',
+      'cors/unlisted-origin-echoed',
+      'mime/active-content-type',
+      'mime/missing-nosniff',
+      'svg/embedded-script',
+      'keys/signing-issuer-reuse',
+      'keys/validator-key-reuse',
+      'clickjacking/wildcard-frame-ancestors',
+      'clickjacking/missing-frame-protection',
+    ]) {
+      expect(stdout).toContain(rule);
+    }
+  });
+
+  it('accepts severity overrides for the new rule ids', async () => {
+    const { code, stderr } = await cli([
+      fixture('valid.toml'),
+      '--off',
+      'keys/signing-issuer-reuse',
+      '--warn',
+      'mime/missing-nosniff',
+      '--error',
+      'clickjacking/wildcard-frame-ancestors',
+    ]);
+    expect(stderr).not.toContain('Unknown rule');
+    expect(code).toBe(0);
+  });
+
+  it('requires a domain for the key separation subcommand', async () => {
+    const missing = await cli(['audit-key-separation']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('audit-key-separation --domain <domain>');
+
+    const unknown = await cli(['audit-key-separation', '--nope']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option --nope');
+  });
+
+  it('requires a domain for the SEP-31/SEP-12 consistency subcommand', async () => {
+    const missing = await cli(['verify-sep31-sep12']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('verify-sep31-sep12 --domain <domain>');
+
+    const unknown = await cli(['verify-sep31-sep12', '--nope']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option --nope');
+
+    const { stdout } = await cli(['--list-rules']);
+    expect(stdout).toContain('sep31/field-orphaned');
+    expect(stdout).toContain('sep12/field-type-incompatible');
   });
 });
 

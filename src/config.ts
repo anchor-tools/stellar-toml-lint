@@ -21,7 +21,7 @@ import type { RuleOverrides } from './types.js';
 export const CONFIG_FILENAME = '.stellartomlrc.json';
 
 /** The only top-level keys the file may carry; anything else is a typo. */
-const KNOWN_KEYS: readonly string[] = ['rules', 'strict', 'maxWarnings'];
+const KNOWN_KEYS: readonly string[] = ['rules', 'strict', 'maxWarnings', 'knownKeys'];
 
 /** Severities a `rules` entry may take. */
 const SEVERITIES: readonly string[] = ['off', 'error', 'warning', 'info'];
@@ -34,6 +34,13 @@ export interface ProjectConfig {
   strict: boolean;
   /** Fail when warnings exceed this count, like `--max-warnings`. */
   maxWarnings?: number;
+  /**
+   * Names accepted by `--detect-orphans` / `--prune-orphaned` as intentional,
+   * like a repeated `--allow-key`. A project's vendor section is known to the
+   * team, so the blessing belongs in the file next to the config rather than in
+   * every CI invocation.
+   */
+  knownKeys?: string[];
 }
 
 /** One config file's parse result. Failures are cached too, so they are stable. */
@@ -42,39 +49,59 @@ type ParsedEntry = { ok: true; config: ProjectConfig } | { ok: false; error: Err
 /** Directory → the config file a walk from it reaches (`null` = none exists). */
 const walkCache = new Map<string, string | null>();
 
-/** Config file path → its parse result, so each file is only read once. */
+/** Config file path + the run's plugin ids → its parse result, so each file is read once. */
 const parseCache = new Map<string, ParsedEntry>();
 
 /**
  * Loads the nearest `.stellartomlrc.json` for `startDir`, walking parents up
  * to the filesystem root. Resolves to an empty config when there is none.
  *
+ * `pluginRuleIds` are the ids a run's `--rules-dir`/`--plugin` sources
+ * contributed: a project should be able to set a third-party rule's severity in
+ * the same file it tunes the built-ins with, and the only way to know those ids
+ * exist is to have loaded them.
+ *
  * Throws (so the CLI exits 2) when the file is malformed or names an unknown
  * rule: a config that is silently ignored is worse than one that fails, since
  * the team believes the policy is recorded.
  */
-export async function loadConfig(startDir: string): Promise<ProjectConfig> {
+export async function loadConfig(
+  startDir: string,
+  pluginRuleIds: readonly string[] = [],
+): Promise<ProjectConfig> {
   const path = await findConfig(resolve(startDir));
   if (path === null) return { rules: {}, strict: false };
 
-  let entry = parseCache.get(path);
+  // The plugin ids are part of the key, not just an argument: the same file is a
+  // different verdict depending on which third-party rule ids exist this run.
+  const key = cacheKey(path, pluginRuleIds);
+  let entry = parseCache.get(key);
   if (entry === undefined) {
-    entry = await readAndParse(path);
-    parseCache.set(path, entry);
+    entry = await readAndParse(path, pluginRuleIds);
+    parseCache.set(key, entry);
   }
   if (!entry.ok) throw entry.error;
   return entry.config;
 }
 
+/** A cached parse is only reusable for the exact rule id set it was validated against. */
+function cacheKey(path: string, pluginRuleIds: readonly string[]): string {
+  return pluginRuleIds.length === 0 ? path : `${path}\u0000${[...pluginRuleIds].sort().join(',')}`;
+}
+
 /**
  * The same "did you mean" rejection `--off`/`--warn`/`--error` give, applied to
  * config file rule ids, so a typo there fails as loudly as a typo on the CLI.
- * `source` names the file when the id came from a config.
+ * `source` names the file when the id came from a config, and `pluginRuleIds`
+ * carries the ids loaded from plugins this run.
  */
-export function assertKnownRule(id: string, source?: string): void {
-  if (allRules.some((rule) => rule.id === id)) return;
-  const near = allRules
-    .map((rule) => rule.id)
+export function assertKnownRule(
+  id: string,
+  source?: string,
+  pluginRuleIds: readonly string[] = [],
+): void {
+  if (allRules.some((rule) => rule.id === id) || pluginRuleIds.includes(id)) return;
+  const near = [...allRules.map((rule) => rule.id), ...pluginRuleIds]
     .filter((candidate) => candidate.includes(id) || id.includes(candidate.split('/')[1] ?? ''))
     .slice(0, 3);
   const where = source === undefined ? '' : ` in ${source}`;
@@ -126,17 +153,17 @@ async function isFile(path: string): Promise<boolean> {
   }
 }
 
-async function readAndParse(path: string): Promise<ParsedEntry> {
+async function readAndParse(path: string, pluginRuleIds: readonly string[]): Promise<ParsedEntry> {
   try {
     const content = await readFile(path, 'utf8');
-    return { ok: true, config: validate(path, content) };
+    return { ok: true, config: validate(path, content, pluginRuleIds) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error : new Error(String(error)) };
   }
 }
 
 /** Parses and defensively validates one config file's contents. */
-function validate(path: string, content: string): ProjectConfig {
+function validate(path: string, content: string, pluginRuleIds: readonly string[]): ProjectConfig {
   let raw: unknown;
   try {
     raw = JSON.parse(content);
@@ -163,7 +190,7 @@ function validate(path: string, content: string): ProjectConfig {
       throw new Error(`${path}: "rules" must be an object mapping rule ids to severities.`);
     }
     for (const [id, value] of Object.entries(source.rules as Record<string, unknown>)) {
-      assertKnownRule(id, path);
+      assertKnownRule(id, path, pluginRuleIds);
       if (value === 'off' || value === 'error' || value === 'warning' || value === 'info') {
         rules[id] = value;
       } else {
@@ -191,13 +218,24 @@ function validate(path: string, content: string): ProjectConfig {
     maxWarnings = value;
   }
 
+  let knownKeys: string[] | undefined;
+  if (source.knownKeys !== undefined) {
+    const value = source.knownKeys;
+    if (!Array.isArray(value) || value.some((name) => typeof name !== 'string')) {
+      throw new Error(`${path}: "knownKeys" must be an array of key names.`);
+    }
+    knownKeys = [...(value as string[])];
+  }
+
   const config: ProjectConfig = {
     rules,
     strict,
     ...(maxWarnings === undefined ? {} : { maxWarnings }),
+    ...(knownKeys === undefined ? {} : { knownKeys }),
   };
   // Callers merge into fresh objects; freezing catches accidental mutation of
   // the cached instance that every file in a multi-file run shares.
   Object.freeze(config.rules);
+  if (config.knownKeys !== undefined) Object.freeze(config.knownKeys);
   return Object.freeze(config);
 }
