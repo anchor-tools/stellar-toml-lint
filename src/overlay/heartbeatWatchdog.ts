@@ -260,7 +260,13 @@ export class TcpHeartbeatChannel implements HeartbeatChannel {
     socket.setNoDelay(true);
     socket.setKeepAlive(true, keepAliveInitialDelayMs);
     socket.on('data', (chunk: Buffer) => this.onData(chunk));
-    socket.on('error', (error: Error) => this.fail(error));
+    socket.on('error', (error: Error) =>
+      this.fail(
+        error instanceof HeartbeatConnectionClosedError
+          ? error
+          : new HeartbeatConnectionClosedError(error.message),
+      ),
+    );
     socket.on('close', () => this.fail(new HeartbeatConnectionClosedError()));
     // A socket that only exists to be probed must never hold the process open.
     socket.unref();
