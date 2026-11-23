@@ -156,6 +156,14 @@ validation checks that no currency or non-conflicting value was lost; the diff i
 and only `--write` changes the file. `--split` instead emits modular partials grouped by table
 (`base`, `currencies`, `validators`, …), optionally written to `--out-dir`.
 
+### Bridge evidence audit options
+
+| Flag                              | Effect                                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `--audit-bridge-replays <file>`   | Match EVM lock event logs to Stellar mints and flag duplicate, unrecorded or replayable events                                        |
+| `--verify-attestations`           | Verify reserve attestation checksums and age; with `--check-network` download the PDFs (also `verify-attestations --domain <domain>`) |
+| `--audit-burn-redemptions <file>` | Verify wrapped-asset redemptions burn supply and flag pseudo-burns                                                                    |
+
 ### Options
 
 | Flag                          | Effect                                                                                                                              |
@@ -1346,6 +1354,42 @@ records are decoded, deduplicated, and crawled recursively with bounded depth an
 node with no peers emits `overlay/isolated-node-zero-peers` (error); a node with one to five
 peers emits `overlay/low-peer-count` (warning). The raw TCP transport is skipped in
 `--mock-fixtures` mode, which remains a no-network mode.
+
+**Tier-1 quorum alignment** (`--verify-tier1-alignment`) — reads the quorum configuration from
+the linted file, either an explicit `[QUORUM_SET]` (`THRESHOLD_PERCENT`, `VALIDATORS` as `G...` keys
+or `$NAME` references, nested `[QUORUM_SET.<name>]` inner sets) or stellar-core's automatic quorum
+from `QUALITY`-rated `[[VALIDATORS]]` / `[[HOME_DOMAINS]]`, and cross-references it against a catalog
+of Tier-1 organizations (SDF, SatoshiPay, LOBSTR, PublicNode, Blockdaemon, Franklin Templeton). It
+reports, with a bar per organization, how much of each Tier-1 organization and each quorum set is
+present, and computes the fewest Tier-1 organizations that must agree before the slice is satisfied
+(assuming every non-Tier-1 validator in it cooperates):
+
+| Rule                                 | Severity | When                                                                                                      |
+| ------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------- |
+| `overlay/tier1-independent-quorum`   | error    | The slice can agree with no Tier-1 organization at all                                                    |
+| `overlay/tier1-split-quorum`         | error    | The Tier-1 organizations needed cannot be guaranteed to overlap a core quorum (two thirds of the catalog) |
+| `overlay/tier1-narrow-agreement`     | warning  | A minority of Tier-1 organizations is enough                                                              |
+| `overlay/tier1-low-representation`   | warning  | Fewer than two thirds of Tier-1 organizations appear                                                      |
+| `overlay/tier1-partial-organization` | info     | An organization is listed with less than a majority of its nodes                                          |
+| `overlay/tier1-unverified-validator` | warning  | A key claims a Tier-1 `HOME_DOMAIN` but is not in the catalog (a new node or an impostor)                 |
+| `overlay/tier1-unresolved-validator` | warning  | A quorum entry is neither a valid key nor a known `$NAME`                                                 |
+| `overlay/tier1-threshold-invalid`    | error    | A threshold is out of range or can never be met                                                           |
+| `overlay/tier1-quorum-undeclared`    | info     | No quorum configuration was found                                                                         |
+
+The bundled catalog is a dated snapshot. When Tier-1 membership changes (for example a newly
+registered validator), pass an updated list with `--tier1-catalog <file.json>`; the format is
+described by [`docs/schemas/tier1-catalog.schema.json`](docs/schemas/tier1-catalog.schema.json).
+
+```text
+Tier-1 quorum alignment (catalog 2026-11-23, 6 organizations)
+  quorum source: explicit [QUORUM_SET]
+  ✔ Stellar Development Foundation ███ 3/3
+  ⚠ LOBSTR                         █░░░░ 1/5
+  ✘ SatoshiPay                     ░░░ 0/3
+  ...
+  agreement: needs 2 Tier-1 organization(s) to agree (core quorum: 4)
+  verdict: MISALIGNED
+```
 
 **Overlay cryptography** (used by the peer and session audits) — the auditor validates RFC 5869
 HKDF derivation, big-endian 4-byte message length framing, monotonic sequence numbers, and
