@@ -13,13 +13,6 @@ export function trimTrailingSlashes(value: string): string {
   return value.slice(0, end);
 }
 
-/** Removes trailing slashes in linear time (no backtracking regular expression). */
-export function trimTrailingSlashes(value: string): string {
-  let end = value.length;
-  while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
-  return value.slice(0, end);
-}
-
 export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
