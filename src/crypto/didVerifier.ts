@@ -199,6 +199,7 @@ export class DidResolutionVerifier {
 
     if (typeof toml === 'string') {
       try {
+        // parsed via the module-level smol-toml import
         parsed = parseToml(toml) as Record<string, unknown>;
       } catch {
         // Simple regex fallback if parser fails
@@ -564,11 +565,8 @@ export class DidResolutionVerifier {
    */
   public validateVerificationMethod(
     vm: VerificationMethod,
-    docId?: string,
+    _docId: string,
   ): VerificationMethodSummary {
-    if (docId && !docId.startsWith('did:')) {
-      // Document id format verification
-    }
     if (!vm.id || !vm.type || !vm.controller) {
       return {
         id: vm.id || 'unknown',

@@ -788,6 +788,64 @@ export type {
   EsgResult,
 } from './protocols/esgComplianceVerifier.js';
 export {
+  TlsCipherSecurityAuditor,
+  auditTlsCiphers,
+  hasForwardSecrecy,
+  isAeadCipher,
+  nodeTlsProbe,
+  renderCipherReport,
+  tlsCipherRuleIds,
+  tlsCipherRules,
+} from './security/tlsCipherAuditor.js';
+export type {
+  CipherGrade,
+  HandshakeProbe,
+  HandshakeResult,
+  TlsCipherOptions,
+  TlsCipherReport,
+  TlsCipherResult,
+  TlsVersion,
+} from './security/tlsCipherAuditor.js';
+export {
+  HstsSecurityVerifier,
+  auditHsts,
+  collectHosts,
+  hstsRuleIds,
+  hstsRules,
+  parseHsts,
+  renderHstsBadges,
+} from './security/hstsVerifier.js';
+export type {
+  HstsHostResult,
+  HstsOptions,
+  HstsPolicy,
+  HstsResult,
+} from './security/hstsVerifier.js';
+export {
+  BridgeEmergencyPauseValidator,
+  auditEmergencyPause,
+  emergencyPauseRuleIds,
+  emergencyPauseRules,
+} from './bridges/emergencyPauseValidator.js';
+export type {
+  EmergencyPauseOptions,
+  EmergencyPauseResult,
+} from './bridges/emergencyPauseValidator.js';
+export {
+  BridgeQuorumAuditor,
+  auditBridgeQuorum,
+  bridgeQuorumRuleIds,
+  bridgeQuorumRules,
+  requiredThreshold,
+  rotationContinuity,
+} from './bridges/bridgeQuorumAuditor.js';
+export type {
+  BridgeQuorumOptions,
+  BridgeQuorumResult,
+  BridgeQuorumSummary,
+  StakingEvidence,
+} from './bridges/bridgeQuorumAuditor.js';
+export {
   CorsSecurityAuditor,
   REQUESTING_ORIGIN as CORS_REQUESTING_ORIGIN,
   UNLISTED_ORIGIN as CORS_UNLISTED_ORIGIN,
@@ -1074,6 +1132,53 @@ export type {
   OverlayTransport,
   HandshakeTesterOptions,
 } from './overlay/handshakeTester.js';
+export {
+  FloodPropagationVerifier,
+  TransactionQueueModel,
+  analyzeSubmissions,
+  analyzeExchanges,
+  simulateBurst,
+  buildBurst,
+  defaultBurstProfile,
+  parseBurstProfile,
+  parseCoreMetrics,
+  parseCoreInfo,
+  compareFeeRate,
+  tierForFeeRate,
+  renderFloodPolicyReport,
+  floodPropagationRules,
+  floodPropagationRuleIds,
+  FEE_TIERS,
+  FEE_TIER_MULTIPLIERS,
+  DEFAULT_QUEUE_SIZE_MULTIPLIER,
+  FLOOD_PRIORITY_INVERSION,
+  FLOOD_PREMATURE_DROP,
+  FLOOD_QUEUE_SATURATED,
+  FLOOD_QUEUE_PRESSURE,
+  FLOOD_TXSET_UNAVAILABLE,
+  FLOOD_DONT_HAVE_MISMATCH,
+  FLOOD_DUPLICATE_OVERHEAD,
+  FLOOD_STALE_PENDING,
+  FLOOD_MALFORMED_FRAME,
+  FLOOD_METRICS_UNAVAILABLE,
+} from './overlay/floodVerifier.js';
+export type {
+  FeeTier,
+  QueuedTransaction,
+  SubmissionEvent,
+  SubmissionStatus,
+  RejectReason,
+  BurstProfile,
+  QueueAnalysis,
+  TierOutcome,
+  FairnessViolation,
+  PropagationMetrics,
+  OverlayExchange,
+  ExchangeAnalysis,
+  FloodPolicyInput,
+  FloodVerifierOptions,
+  FloodPolicyReport,
+} from './overlay/floodVerifier.js';
 
 // Validator Key Rotation Verifier (Issue #522)
 export {
@@ -1109,6 +1214,34 @@ export type {
   RotationPhase,
   KeyRotationReport,
 } from './overlay/keyRotationVerifier.js';
+export {
+  ConnectionFloodingDefenseTester,
+  renderFloodingDefenseReport,
+  tcpConnector,
+  helloHandshake,
+  floodingDefenseRules,
+  floodingDefenseRuleIds,
+  MAX_BURST_CONNECTIONS,
+  MIN_CONNECTION_INTERVAL_MS,
+  MAX_HOLD_MS,
+  MAX_RECOVERY_WINDOW_MS,
+  PEER_PORT_UNREACHABLE,
+  PEER_UNRESPONSIVE_AFTER_BURST,
+  PEER_SLOW_RECOVERY,
+  PEER_HANDSHAKE_DROPPED,
+  PEER_LATENCY_DEGRADED,
+  PEER_NO_THROTTLING_OBSERVED,
+  PEER_HANDSHAKE_UNVERIFIED,
+} from './overlay/floodingTester.js';
+export type {
+  ConnectStatus,
+  ConnectOutcome,
+  PeerConnector,
+  PeerHandshake,
+  FloodingTesterOptions,
+  BurstStats,
+  FloodingDefenseReport,
+} from './overlay/floodingTester.js';
 
 // Overlay Heartbeat Watchdog (Issue #523)
 export {

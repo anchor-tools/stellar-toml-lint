@@ -39,7 +39,7 @@ function anchorServer(options: {
   calls?: { prices: number; quote: number };
 }): typeof fetch {
   let quoteIndex = 0;
-  return (async (input: string | URL | Request, init?: RequestInit) => {
+  return (async (input: string | URL | Request) => {
     const url = new URL(String(input));
     if (url.pathname === '/info') {
       return jsonResponse({

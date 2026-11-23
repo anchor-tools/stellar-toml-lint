@@ -6,8 +6,8 @@
  * aggregated signature verification using optimal Ate / Tate pairings.
  */
 
-import { bls12_381 } from '@noble/curves/bls12-381';
 import { parse as parseToml } from 'smol-toml';
+import { bls12_381 } from '@noble/curves/bls12-381';
 
 export type BlsGroup = 'G1' | 'G2';
 export type SerializationFormat = 'compressed' | 'uncompressed';
@@ -465,6 +465,7 @@ export class BlsSignatureVerifier {
     let parsed: Record<string, unknown>;
     if (typeof toml === 'string') {
       try {
+        // parsed via the module-level smol-toml import
         parsed = parseToml(toml) as Record<string, unknown>;
       } catch {
         parsed = {};

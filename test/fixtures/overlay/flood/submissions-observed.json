@@ -1,0 +1,101 @@
+[
+  {
+    "tx": {
+      "id": "a",
+      "account": "a",
+      "operations": 1,
+      "fee": "100",
+      "tier": "low"
+    },
+    "status": "accepted",
+    "evicted": [],
+    "occupancyOps": 1
+  },
+  {
+    "tx": {
+      "id": "b",
+      "account": "b",
+      "operations": 1,
+      "fee": "1000",
+      "tier": "high"
+    },
+    "status": "accepted",
+    "evicted": [],
+    "occupancyOps": 2
+  },
+  {
+    "tx": {
+      "id": "c",
+      "account": "c",
+      "operations": 1,
+      "fee": "200",
+      "tier": "medium"
+    },
+    "status": "accepted",
+    "evicted": [],
+    "occupancyOps": 3
+  },
+  {
+    "tx": {
+      "id": "d",
+      "account": "d",
+      "operations": 1,
+      "fee": "10000",
+      "tier": "priority"
+    },
+    "status": "accepted",
+    "evicted": ["b"],
+    "occupancyOps": 3
+  },
+  {
+    "tx": {
+      "id": "e",
+      "account": "e",
+      "operations": 1,
+      "fee": "1000",
+      "tier": "high"
+    },
+    "status": "rejected",
+    "reason": "insufficient-fee",
+    "evicted": [],
+    "occupancyOps": 3
+  },
+  {
+    "tx": {
+      "id": "f",
+      "account": "f",
+      "operations": 1,
+      "fee": "200",
+      "tier": "medium"
+    },
+    "status": "accepted",
+    "evicted": [],
+    "occupancyOps": 4
+  },
+  {
+    "tx": {
+      "id": "g",
+      "account": "g",
+      "operations": 1,
+      "fee": "100",
+      "tier": "low"
+    },
+    "status": "rejected",
+    "reason": "insufficient-fee",
+    "evicted": [],
+    "occupancyOps": 4
+  },
+  {
+    "tx": {
+      "id": "h",
+      "account": "h",
+      "operations": 1,
+      "fee": "100",
+      "tier": "low"
+    },
+    "status": "accepted",
+    "evicted": [],
+    "removed": ["a", "c", "d", "f"],
+    "occupancyOps": 1
+  }
+]
