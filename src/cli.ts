@@ -16,6 +16,10 @@ import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
 import { allRules } from './rules/index.js';
+import {
+  SignerRotationStateMachine,
+  formatRotationPreview,
+} from './gitops/signerRotationStateMachine.js';
 import type { LintResult, RuleOverrides, Severity } from './types.js';
 
 const VERSION = '0.1.0';
@@ -45,6 +49,18 @@ USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
   stellar-toml-lint --domain <domain>    Fetch and lint https://<domain>/.well-known/stellar.toml
   cat stellar.toml | stellar-toml-lint - Lint stdin
+  stellar-toml-lint plan-rotation ...    Plan and simulate a multisig signer rotation
+
+PLAN-ROTATION
+  Fetches the live account from Horizon, compares it with a desired signer
+  file, and emits the ordered SetOptions operations that safely reach it.
+
+    --account <pubkey>       Root account to rotate (required)
+    --new-signers <file>     Desired signers/thresholds as JSON or TOML (required)
+    --horizon <url>          Horizon base URL (default: public network)
+    --soroban-rpc <url>      Simulate the envelope against Soroban RPC
+    --sequence <n>           Override the account sequence number
+    --json                   Emit the plan and simulation result as JSON
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -72,9 +88,12 @@ EXAMPLES
   stellar-toml-lint public/.well-known/stellar.toml
   stellar-toml-lint --domain example.com --strict
   stellar-toml-lint -f sarif > results.sarif
+  stellar-toml-lint plan-rotation --account G... --new-signers signers.json
 `;
 
 async function main(argv: string[]): Promise<number> {
+  if (argv[0] === 'plan-rotation') return planRotation(argv.slice(1));
+
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -183,6 +202,110 @@ function verdict(results: { result: LintResult }[], cli: Cli): boolean {
   if (cli.strict && totals.warning > 0) return false;
   if (cli.maxWarnings !== undefined && totals.warning > cli.maxWarnings) return false;
   return true;
+}
+
+interface PlanRotationCli {
+  account?: string;
+  newSigners?: string;
+  horizonUrl: string;
+  sorobanRpcUrl?: string;
+  sequence?: string;
+  json: boolean;
+}
+
+async function planRotation(argv: string[]): Promise<number> {
+  let cli: PlanRotationCli | 'handled';
+  try {
+    cli = parsePlanRotationArgs(argv);
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n\nRun with --help for usage.\n`);
+    return 2;
+  }
+  if (cli === 'handled') return 0;
+  if (cli.account === undefined || cli.newSigners === undefined) {
+    process.stderr.write('plan-rotation requires --account and --new-signers.\n');
+    return 2;
+  }
+
+  try {
+    const source = await readFile(cli.newSigners, 'utf8');
+    const horizonUrl = cli.horizonUrl.replace(/\/+$/, '');
+    const response = await fetch(`${horizonUrl}/accounts/${encodeURIComponent(cli.account)}`);
+    if (!response.ok) {
+      process.stderr.write(
+        `Horizon returned HTTP ${response.status} for account ${cli.account}.\n`,
+      );
+      return 2;
+    }
+    const body = (await response.json()) as Record<string, unknown>;
+    const machine = new SignerRotationStateMachine();
+    const current = machine.ingestHorizonAccount(body, cli.account);
+    const desired = machine.parseStateFile(source, cli.newSigners);
+    const plan = machine.plan(current, desired);
+    const sequence = cli.sequence ?? (typeof body.sequence === 'string' ? body.sequence : '0');
+    const simulation = await machine.simulate(plan, {
+      sourceAccount: cli.account,
+      sequence,
+      ...(cli.sorobanRpcUrl !== undefined ? { sorobanRpcUrl: cli.sorobanRpcUrl } : {}),
+    });
+
+    if (cli.json) {
+      process.stdout.write(`${JSON.stringify({ plan, simulation }, null, 2)}\n`);
+    } else {
+      process.stdout.write(formatRotationPreview(plan));
+      process.stdout.write(
+        simulation.success
+          ? 'Simulation: OK\n'
+          : `Simulation: FAILED — ${simulation.error ?? 'unknown error'}\n`,
+      );
+    }
+
+    return plan.valid && simulation.success ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+function parsePlanRotationArgs(argv: string[]): PlanRotationCli | 'handled' {
+  const cli: PlanRotationCli = {
+    horizonUrl: 'https://horizon.stellar.org',
+    json: false,
+  };
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    switch (arg) {
+      case '-h':
+      case '--help':
+        process.stdout.write(USAGE);
+        return 'handled';
+      case '-a':
+      case '--account':
+        cli.account = requireValue(argv, ++i, arg);
+        break;
+      case '--new-signers':
+      case '--desired':
+        cli.newSigners = requireValue(argv, ++i, arg);
+        break;
+      case '--horizon':
+        cli.horizonUrl = requireValue(argv, ++i, arg);
+        break;
+      case '--soroban-rpc':
+        cli.sorobanRpcUrl = requireValue(argv, ++i, arg);
+        break;
+      case '--sequence':
+        cli.sequence = requireValue(argv, ++i, arg);
+        break;
+      case '--json':
+        cli.json = true;
+        break;
+      default:
+        throw new Error(`Unknown plan-rotation option "${arg}".`);
+    }
+  }
+
+  return cli;
 }
 
 function parseArgs(argv: string[]): Cli | 'handled' {
