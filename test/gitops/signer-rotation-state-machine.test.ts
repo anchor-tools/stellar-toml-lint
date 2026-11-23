@@ -124,6 +124,41 @@ describe('parseDesiredSignerState / parseSignerStateFile', () => {
       'missing a signer key',
     );
   });
+
+  it('preserves non-syntax failures raised while parsing JSON files', () => {
+    expect(() =>
+      parseSignerStateFile(JSON.stringify({ signers: [{ weight: 1 }] }), 'x.json'),
+    ).toThrow('missing a signer key');
+  });
+
+  it('infers signer types from string keys and parses string weights', () => {
+    const preAuth = StrKey.encodePreAuthTx(Buffer.alloc(32, 1));
+    const hash = StrKey.encodeSha256Hash(Buffer.alloc(32, 2));
+    const signedPayload = new xdr.SignerKeyEd25519SignedPayload({
+      ed25519: Keypair.random().rawPublicKey(),
+      payload: Buffer.from('recovery'),
+    });
+    const payload = StrKey.encodeSignedPayload(signedPayload.toXDR());
+    const desired = parseDesiredSignerState({
+      signers: [preAuth, hash, payload, { key: key(1), weight: '2' }],
+    });
+    expect(desired.signers.map((entry) => entry.type)).toEqual([
+      'pre_auth_tx',
+      'sha256_hash',
+      'ed25519_signed_payload',
+      'ed25519_public_key',
+    ]);
+    expect(desired.signers[3]?.weight).toBe(2);
+  });
+
+  it('defaults to an empty signer list when none is provided', () => {
+    expect(parseDesiredSignerState({ thresholds: { high: 1 } }).signers).toEqual([]);
+  });
+
+  it('rejects malformed signer entries', () => {
+    expect(() => parseDesiredSignerState({ signers: [''] })).toThrow('empty signer key');
+    expect(() => parseDesiredSignerState({ signers: [42] })).toThrow('not a signer object');
+  });
 });
 
 describe('planSignerRotation', () => {
@@ -286,6 +321,88 @@ describe('planSignerRotation', () => {
     expect(plan.valid).toBe(true);
     expect(plan.operations).toEqual([{ type: 'setOptions', masterWeight: 2 }]);
   });
+
+  it('lowers the weight of a retained signer without removing it', () => {
+    const current = currentState({
+      thresholds: { low: 1, medium: 3, high: 3, masterWeight: 0 },
+      signers: [signer(1, 3), signer(2)],
+    });
+    const desired = desiredState({
+      thresholds: { low: 1, medium: 3, high: 3, masterWeight: 0 },
+      signers: [signer(1, 2), signer(2)],
+    });
+    const plan = planSignerRotation(current, desired);
+    expect(plan.valid).toBe(true);
+    expect(plan.operations).toContainEqual({
+      type: 'setOptions',
+      signer: signer(1, 2),
+    });
+  });
+
+  it('applies a master weight declared inside the desired signer list', () => {
+    const current = currentState({
+      thresholds: { low: 1, medium: 2, high: 2, masterWeight: 0 },
+      signers: [signer(1), signer(2)],
+    });
+    const plan = planSignerRotation(current, {
+      accountId: key(0),
+      thresholds: { low: 1, medium: 2, high: 2 },
+      signers: [signer(0, 2), signer(1), signer(2)],
+    });
+    expect(plan.valid).toBe(true);
+    expect(plan.desired.thresholds.masterWeight).toBe(2);
+    expect(plan.operations.at(-1)).toEqual({ type: 'setOptions', masterWeight: 2 });
+  });
+
+  it('rejects an invalid current signer state', () => {
+    const plan = planSignerRotation(
+      currentState({ signers: [signer(1), signer(1)] }),
+      desiredState(),
+    );
+    expect(plan.valid).toBe(false);
+    expect(plan.errors.join('\n')).toContain('more than once');
+  });
+
+  it('rejects out-of-range threshold weights', () => {
+    const plan = planSignerRotation(
+      currentState(),
+      desiredState({ thresholds: { low: -1, medium: 2.5, high: 300, masterWeight: 1 } }),
+    );
+    expect(plan.valid).toBe(false);
+    expect(plan.errors.join('\n')).toContain('low threshold must be');
+    expect(plan.errors.join('\n')).toContain('medium threshold must be');
+    expect(plan.errors.join('\n')).toContain('high threshold must be');
+  });
+
+  it('rejects an out-of-range master weight', () => {
+    const plan = planSignerRotation(
+      currentState(),
+      desiredState({ thresholds: { low: 0, medium: 0, high: 0, masterWeight: 1000 } }),
+    );
+    expect(plan.valid).toBe(false);
+    expect(plan.errors.join('\n')).toContain('master weight must be');
+  });
+
+  it('rejects signer weights outside the 0-255 range', () => {
+    const plan = planSignerRotation(
+      currentState(),
+      desiredState({ signers: [{ ...signer(1), weight: 300 }, signer(2)] }),
+    );
+    expect(plan.valid).toBe(false);
+    expect(plan.errors.join('\n')).toContain('invalid weight');
+  });
+
+  it('warns when both the high threshold and master weight are zero', () => {
+    const current = currentState({
+      thresholds: { low: 0, medium: 0, high: 0, masterWeight: 0 },
+      signers: [signer(1)],
+    });
+    const plan = planSignerRotation(current, {
+      thresholds: { low: 0, medium: 0, high: 0, masterWeight: 0 },
+      signers: current.signers,
+    });
+    expect(plan.warnings.join('\n')).toContain('any single signer can exercise');
+  });
 });
 
 describe('rotation envelope and simulation', () => {
@@ -303,6 +420,35 @@ describe('rotation envelope and simulation', () => {
     const parsed = TransactionBuilder.fromXDR(envelope, Networks.TESTNET);
     expect(parsed.operations).toHaveLength(plan.operations.length);
     expect(() => xdr.TransactionEnvelope.fromXDR(envelope, 'base64')).not.toThrow();
+  });
+
+  it('builds envelopes for pre-auth, hash, and signed-payload signers', () => {
+    const preAuthKey = StrKey.encodePreAuthTx(Buffer.alloc(32, 7));
+    const hashKey = StrKey.encodeSha256Hash(Buffer.alloc(32, 9));
+    const signedPayload = new xdr.SignerKeyEd25519SignedPayload({
+      ed25519: Keypair.random().rawPublicKey(),
+      payload: Buffer.from('recovery'),
+    });
+    const payloadKey = StrKey.encodeSignedPayload(signedPayload.toXDR());
+    const current = currentState({
+      thresholds: { low: 1, medium: 1, high: 1, masterWeight: 0 },
+      signers: [signer(1)],
+    });
+    const desired = desiredState({
+      thresholds: { low: 1, medium: 2, high: 2, masterWeight: 0 },
+      signers: [
+        signer(1),
+        { key: preAuthKey, weight: 1, type: 'pre_auth_tx' },
+        { key: hashKey, weight: 1, type: 'sha256_hash' },
+        { key: payloadKey, weight: 1, type: 'ed25519_signed_payload' },
+      ],
+    });
+
+    const plan = planSignerRotation(current, desired);
+    expect(plan.valid).toBe(true);
+    const envelope = buildRotationEnvelope(plan, { sourceAccount: account, sequence });
+    const parsed = TransactionBuilder.fromXDR(envelope, Networks.TESTNET);
+    expect(parsed.operations).toHaveLength(plan.operations.length);
   });
 
   it('refuses to build an unsafe plan', () => {
@@ -446,6 +592,28 @@ describe('rotation envelope and simulation', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBeTypeOf('string');
   });
+
+  it('rejects plans that skipped intermediate state verification', async () => {
+    const plan = planSignerRotation(currentState(), desiredState());
+    const result = await simulateRotationPlan({ ...plan, intermediateStates: [] });
+    expect(result).toEqual({
+      success: false,
+      error: 'Rotation plan is missing intermediate state verification',
+    });
+  });
+
+  it('honours a custom network passphrase', async () => {
+    const plan = planSignerRotation(currentState(), desiredState());
+    const result = await simulateRotationPlan(plan, {
+      sourceAccount: account,
+      sequence,
+      networkPassphrase: Networks.FUTURENET,
+    });
+    expect(result.success).toBe(true);
+    expect(() =>
+      TransactionBuilder.fromXDR(result.envelopeXdr ?? '', Networks.FUTURENET),
+    ).not.toThrow();
+  });
 });
 
 describe('formatRotationPreview', () => {
@@ -486,6 +654,13 @@ describe('SignerRotationStateMachine facade', () => {
       thresholds: { low: 1, medium: 3, high: 3, masterWeight: 1 },
       signers: [key(1), key(2), key(3), key(4)],
     });
+    const fromFile = machine.parseStateFile(
+      JSON.stringify({
+        thresholds: { low: 1, medium: 3, high: 3, masterWeight: 1 },
+        signers: [key(1), key(2), key(3), key(4)],
+      }),
+    );
+    expect(fromFile.signers).toHaveLength(4);
     const plan = machine.plan(current, desired);
     expect(plan.valid).toBe(true);
     expect(machine.preview(plan)).toContain('Operations');
