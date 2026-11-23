@@ -50,6 +50,7 @@ import { secp256k1BridgeRules } from '../crypto/secp256k1Verifier.js';
 import { kzgRules } from '../crypto/kzgVerifier.js';
 import { overlayHandshakeRules } from '../overlay/handshakeTester.js';
 import { validatorKeyRotationRules } from '../overlay/keyRotationVerifier.js';
+import { floodingDefenseRules } from '../overlay/floodingTester.js';
 import { overlayHeartbeatRules } from '../overlay/heartbeat-rules.js';
 import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
 
@@ -108,6 +109,7 @@ export const allRules: Rule[] = [
   ...kzgRules,
   ...overlayHandshakeRules,
   ...validatorKeyRotationRules,
+  ...floodingDefenseRules,
   ...overlayHeartbeatRules,
   ...sep31Sep12Rules,
 ];
@@ -165,6 +167,7 @@ export {
   kzgRules,
   overlayHandshakeRules,
   validatorKeyRotationRules,
+  floodingDefenseRules,
   overlayHeartbeatRules,
   sep31Sep12Rules,
 };
