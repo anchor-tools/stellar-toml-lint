@@ -11,6 +11,7 @@ import type {
 } from './types.js';
 import { allRules } from './rules/index.js';
 import { securityRuleIds } from './rules/security.js';
+import { SemanticRuleEngine } from './engine/semanticRuleEngine.js';
 import { SourceIndex } from './source-index.js';
 import { MAX_FILE_BYTES, isString } from './predicates.js';
 import { specUrl } from './spec.js';
@@ -94,6 +95,21 @@ export function lint(source: string, options: LintOptions = {}): LintResult {
         suggestion: 'Please report this file (with secrets removed) as a bug.',
       });
     }
+  }
+
+  const plugins = options.semanticRules;
+  if (plugins !== undefined && plugins.length > 0) {
+    // One traversal for the whole plugin set, after the catalog so a built-in's
+    // finding is never displaced by a rule the project added later.
+    diagnostics.push(
+      ...new SemanticRuleEngine(plugins).run({
+        doc: parsed,
+        source,
+        rules: overrides,
+        options,
+        locate: (path: string): Position | undefined => index.get(path),
+      }),
+    );
   }
 
   return finalize(diagnostics, options, parsed);

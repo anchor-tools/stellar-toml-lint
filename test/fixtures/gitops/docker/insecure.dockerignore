@@ -1,0 +1,4 @@
+# keep logs and build output out, but forget credentials and VCS history
+*.log
+coverage
+test-output.txt

@@ -77,9 +77,36 @@ const FLAGS: readonly FlagSpec[] = [
   { long: '--check-network', description: 'Verify accounts and endpoints online' },
   { long: '--verify-sep10', description: 'Verify SEP-10 nonce replay resistance' },
   { long: '--audit-quotes', description: 'Verify SEP-38 quote execution through SEP-6' },
+  {
+    long: '--audit-sep38-spreads',
+    description: 'Compare SEP-38 indicative and firm quote spreads across trade tiers',
+  },
+  {
+    long: '--audit-cors',
+    description: 'Audit endpoint CORS policies for wildcard and credential exposure',
+  },
+  {
+    long: '--audit-asset-security',
+    description: 'Audit linked asset content types and SVG script vectors',
+  },
+  {
+    long: '--audit-clickjacking',
+    description: 'Audit interactive endpoints for frame-ancestors framing defenses',
+  },
   { long: '--crawl-peers', description: 'Discover and audit overlay peers' },
+  { long: '--monitor-heartbeat', description: 'Monitor overlay heartbeat latency and jitter' },
+  { long: '--timeout', description: 'Heartbeat monitoring window in seconds', takesValue: true },
+  {
+    long: '--verify-tier1-alignment',
+    description: 'Check quorum slices against the Tier-1 validator catalog',
+  },
+  { long: '--tier1-catalog', description: 'Custom Tier-1 catalog JSON file', takesValue: true },
   { long: '--verify-dnssec', description: 'Compare DNSSEC-validating DNS resolvers' },
   { long: '--check-contracts', description: 'Verify Soroban contract TTL liveliness' },
+  {
+    long: '--audit-events',
+    description: 'Audit Soroban contract event schemas and indexing topics',
+  },
   { long: '--soroban-rpc', description: 'Soroban RPC endpoint', takesValue: true },
   { long: '--mock-fixtures', description: 'Serve network checks from fixtures', takesValue: true },
   { long: '--webhook-slack', description: 'Slack webhook URL', takesValue: true },
