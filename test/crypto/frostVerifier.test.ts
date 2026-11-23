@@ -14,18 +14,16 @@ import {
 import { ed25519 } from '@noble/curves/ed25519';
 
 function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const clean = hex.replace(/^0x/i, '');
-  const bytes = new Uint8Array(clean.length / 2);
-  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
-  return bytes;
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 /** Build a 2-of-3 FROST config with deterministic participant secrets */
-function buildTestConfig(threshold: number, numParticipants: number): {
+function buildTestConfig(
+  threshold: number,
+  numParticipants: number,
+): {
   config: FrostGroupConfig;
   secrets: bigint[];
 } {
@@ -55,10 +53,7 @@ function buildTestConfig(threshold: number, numParticipants: number): {
     participants.push({
       id: i,
       publicKeyShare: bytesToHex(sharePoint.toRawBytes()),
-      polynomialCommitments: [
-        bytesToHex(C0.toRawBytes()),
-        bytesToHex(C1.toRawBytes()),
-      ],
+      polynomialCommitments: [bytesToHex(C0.toRawBytes()), bytesToHex(C1.toRawBytes())],
     });
   }
 
@@ -181,7 +176,11 @@ describe('FrostThresholdVerifier', () => {
       const E = bytesToHex(G.multiply(456n).toRawBytes());
       const commitments = [
         { participantId: 1, bindingNonceCommitment: D, hidingNonceCommitment: E },
-        { participantId: 2, bindingNonceCommitment: bytesToHex(G.multiply(789n).toRawBytes()), hidingNonceCommitment: bytesToHex(G.multiply(1011n).toRawBytes()) },
+        {
+          participantId: 2,
+          bindingNonceCommitment: bytesToHex(G.multiply(789n).toRawBytes()),
+          hidingNonceCommitment: bytesToHex(G.multiply(1011n).toRawBytes()),
+        },
       ];
       const message = new Uint8Array(32).fill(0x42);
       const factors = FrostThresholdVerifier.computeBindingFactors(commitments, message);
@@ -204,7 +203,10 @@ describe('FrostThresholdVerifier', () => {
     it('simulates a 3-of-5 threshold signing', () => {
       const { config } = buildTestConfig(3, 5);
       const message = new Uint8Array(32).fill(0x77);
-      const { result, round1, round2 } = FrostThresholdVerifier.simulateThresholdSigning(config, message);
+      const { result, round1, round2 } = FrostThresholdVerifier.simulateThresholdSigning(
+        config,
+        message,
+      );
       expect(round1).toHaveLength(3);
       expect(round2).toHaveLength(3);
       expect(result).toBeDefined();
@@ -213,8 +215,8 @@ describe('FrostThresholdVerifier', () => {
     it('throws when insufficient signers provided', () => {
       const { config } = buildTestConfig(3, 5);
       const message = new Uint8Array(32).fill(0x01);
-      expect(() =>
-        FrostThresholdVerifier.simulateThresholdSigning(config, message, [1, 2]) // only 2, need 3
+      expect(
+        () => FrostThresholdVerifier.simulateThresholdSigning(config, message, [1, 2]), // only 2, need 3
       ).toThrow(/at least/i);
     });
   });
@@ -258,9 +260,7 @@ describe('FrostThresholdVerifier', () => {
     it('reports share mismatch for tampered participant', () => {
       const { config } = buildTestConfig(2, 3);
       const tampered = config.participants.map((p, i) =>
-        i === 0
-          ? { ...p, publicKeyShare: bytesToHex(ed25519.ExtendedPoint.BASE.toRawBytes()) }
-          : p,
+        i === 0 ? { ...p, publicKeyShare: bytesToHex(ed25519.ExtendedPoint.BASE.toRawBytes()) } : p,
       );
       const verifier = new FrostThresholdVerifier();
       const doc = {

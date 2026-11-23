@@ -50,7 +50,9 @@ describe('MerkleReserveValidator', () => {
     });
 
     it('throws for negative balance', () => {
-      expect(() => validator.hashLeafNode({ account: 'GTEST', balance: -1n })).toThrow(/Negative balance/);
+      expect(() => validator.hashLeafNode({ account: 'GTEST', balance: -1n })).toThrow(
+        /Negative balance/,
+      );
     });
   });
 
@@ -117,7 +119,9 @@ describe('MerkleReserveValidator', () => {
 
     it('throws when leaf index is out of range', () => {
       const { leafHashes } = validator.computeRoot(SAMPLE_LEAVES);
-      expect(() => validator.generateProof(leafHashes, SAMPLE_LEAVES.length)).toThrow(/out of range/i);
+      expect(() => validator.generateProof(leafHashes, SAMPLE_LEAVES.length)).toThrow(
+        /out of range/i,
+      );
     });
   });
 

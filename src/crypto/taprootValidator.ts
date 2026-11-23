@@ -51,7 +51,12 @@ function verifyChecksum(hrp: string, data: number[]): boolean {
   return polymod([...hrpExpand(hrp), ...data]) === BECH32M_CONST;
 }
 
-function convertBits(data: number[], fromBits: number, toBits: number, pad: boolean): number[] | null {
+function convertBits(
+  data: number[],
+  fromBits: number,
+  toBits: number,
+  pad: boolean,
+): number[] | null {
   let acc = 0;
   let bits = 0;
   const result: number[] = [];
@@ -147,13 +152,25 @@ export class Bip340TaprootValidator {
     const lower = address.toLowerCase();
     const upper = address.toUpperCase();
     if (address !== lower && address !== upper) {
-      return { valid: false, hrp: '', witnessVersion: -1, program: new Uint8Array(), error: 'Mixed-case address' };
+      return {
+        valid: false,
+        hrp: '',
+        witnessVersion: -1,
+        program: new Uint8Array(),
+        error: 'Mixed-case address',
+      };
     }
     const addr = lower;
 
     const sepIdx = addr.lastIndexOf('1');
     if (sepIdx < 1 || sepIdx + 7 > addr.length || addr.length > 90) {
-      return { valid: false, hrp: '', witnessVersion: -1, program: new Uint8Array(), error: 'Invalid address length or missing separator' };
+      return {
+        valid: false,
+        hrp: '',
+        witnessVersion: -1,
+        program: new Uint8Array(),
+        error: 'Invalid address length or missing separator',
+      };
     }
 
     const hrp = addr.slice(0, sepIdx);
@@ -161,19 +178,37 @@ export class Bip340TaprootValidator {
     for (let i = sepIdx + 1; i < addr.length; i++) {
       const d = CHARSET.indexOf(addr[i]!);
       if (d === -1) {
-        return { valid: false, hrp, witnessVersion: -1, program: new Uint8Array(), error: `Invalid character '${addr[i]}' at position ${i}` };
+        return {
+          valid: false,
+          hrp,
+          witnessVersion: -1,
+          program: new Uint8Array(),
+          error: `Invalid character '${addr[i]}' at position ${i}`,
+        };
       }
       data.push(d);
     }
 
     if (!verifyChecksum(hrp, data)) {
-      return { valid: false, hrp, witnessVersion: -1, program: new Uint8Array(), error: 'Invalid Bech32m checksum' };
+      return {
+        valid: false,
+        hrp,
+        witnessVersion: -1,
+        program: new Uint8Array(),
+        error: 'Invalid Bech32m checksum',
+      };
     }
 
     const witnessVersion = data[0]!;
     const decoded = convertBits(data.slice(1, -6), 5, 8, false);
     if (!decoded) {
-      return { valid: false, hrp, witnessVersion, program: new Uint8Array(), error: 'Failed to convert from 5-bit encoding' };
+      return {
+        valid: false,
+        hrp,
+        witnessVersion,
+        program: new Uint8Array(),
+        error: 'Failed to convert from 5-bit encoding',
+      };
     }
 
     return { valid: true, hrp, witnessVersion, program: new Uint8Array(decoded) };
@@ -182,7 +217,9 @@ export class Bip340TaprootValidator {
   /**
    * Validates a Taproot address: Bech32m, witness version 1, 32-byte x-only pubkey.
    */
-  private static _legacyBech32WitnessVersion(address: string): { hrp: string; witnessVersion: number } | null {
+  private static _legacyBech32WitnessVersion(
+    address: string,
+  ): { hrp: string; witnessVersion: number } | null {
     try {
       const addr = address.toLowerCase();
       const sepIdx = addr.lastIndexOf('1');
@@ -196,7 +233,9 @@ export class Bip340TaprootValidator {
       }
       if (polymod([...hrpExpand(hrp), ...data]) !== 1) return null;
       return { hrp, witnessVersion: data[0]! };
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
 
   static validateTaprootAddress(address: string): TaprootAddressValidationResult {
@@ -211,11 +250,19 @@ export class Bip340TaprootValidator {
             hrp: decoded.hrp || legacy.hrp,
             witnessVersion: 0,
             xOnlyPubkey: '',
-            error: 'Witness version must be 1 for Taproot (witness version 0 found); this is a legacy SegWit address',
+            error:
+              'Witness version must be 1 for Taproot (witness version 0 found); this is a legacy SegWit address',
           };
         }
       }
-      return { valid: false, address, hrp: decoded.hrp, witnessVersion: decoded.witnessVersion, xOnlyPubkey: '', error: decoded.error };
+      return {
+        valid: false,
+        address,
+        hrp: decoded.hrp,
+        witnessVersion: decoded.witnessVersion,
+        xOnlyPubkey: '',
+        error: decoded.error,
+      };
     }
 
     if (decoded.witnessVersion !== 1) {
@@ -240,20 +287,36 @@ export class Bip340TaprootValidator {
       };
     }
 
-    const xOnlyPubkey = Array.from(decoded.program).map((b) => b.toString(16).padStart(2, '0')).join('');
+    const xOnlyPubkey = Array.from(decoded.program)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
 
     // Verify the x-coordinate is on the secp256k1 curve by lifting_x
     try {
       const x = bytesToBigInt(decoded.program);
-      const p = secp256k1.CURVE.p;
+      const p = secp256k1.CURVE.Fp.ORDER;
       const y2 = (x * x * x + 7n) % p;
       // Modular sqrt via Tonelli-Shanks (p ≡ 3 mod 4 shortcut)
       const y = modPow(y2, (p + 1n) / 4n, p);
       if (modPow(y, 2n, p) !== y2) {
-        return { valid: false, address, hrp: decoded.hrp, witnessVersion: 1, xOnlyPubkey, error: 'x-only key has no corresponding point on secp256k1' };
+        return {
+          valid: false,
+          address,
+          hrp: decoded.hrp,
+          witnessVersion: 1,
+          xOnlyPubkey,
+          error: 'x-only key has no corresponding point on secp256k1',
+        };
       }
     } catch (err) {
-      return { valid: false, address, hrp: decoded.hrp, witnessVersion: 1, xOnlyPubkey, error: `Curve validation failed: ${err instanceof Error ? err.message : String(err)}` };
+      return {
+        valid: false,
+        address,
+        hrp: decoded.hrp,
+        witnessVersion: 1,
+        xOnlyPubkey,
+        error: `Curve validation failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
     }
 
     return { valid: true, address, hrp: decoded.hrp, witnessVersion: 1, xOnlyPubkey };
@@ -273,23 +336,28 @@ export class Bip340TaprootValidator {
       const msgBytes = typeof message === 'string' ? hexToBytes(message) : message;
       const pubBytes = typeof xOnlyPubkey === 'string' ? hexToBytes(xOnlyPubkey) : xOnlyPubkey;
 
-      if (sigBytes.length !== 64) return { valid: false, error: `Signature must be 64 bytes, got ${sigBytes.length}` };
-      if (msgBytes.length !== 32) return { valid: false, error: `Message must be 32 bytes, got ${msgBytes.length}` };
-      if (pubBytes.length !== 32) return { valid: false, error: `x-only pubkey must be 32 bytes, got ${pubBytes.length}` };
+      if (sigBytes.length !== 64)
+        return { valid: false, error: `Signature must be 64 bytes, got ${sigBytes.length}` };
+      if (msgBytes.length !== 32)
+        return { valid: false, error: `Message must be 32 bytes, got ${msgBytes.length}` };
+      if (pubBytes.length !== 32)
+        return { valid: false, error: `x-only pubkey must be 32 bytes, got ${pubBytes.length}` };
 
-      const p = secp256k1.CURVE.p;
+      const p = secp256k1.CURVE.Fp.ORDER;
       const n = secp256k1.CURVE.n;
 
       const Rx = bytesToBigInt(sigBytes.slice(0, 32));
       const s = bytesToBigInt(sigBytes.slice(32, 64));
       const Px = bytesToBigInt(pubBytes);
 
-      if (Rx >= p || s >= n || Px >= p) return { valid: false, error: 'Signature or key value out of range' };
+      if (Rx >= p || s >= n || Px >= p)
+        return { valid: false, error: 'Signature or key value out of range' };
 
       // Lift P from x-only
       const Py2 = (Px * Px * Px + 7n) % p;
       const Py_abs = modPow(Py2, (p + 1n) / 4n, p);
-      if (modPow(Py_abs, 2n, p) !== Py2) return { valid: false, error: 'x-only pubkey has no lift' };
+      if (modPow(Py_abs, 2n, p) !== Py2)
+        return { valid: false, error: 'x-only pubkey has no lift' };
       const Py = Py_abs % 2n === 0n ? Py_abs : p - Py_abs;
 
       // e = int(hashBIP0340/challenge(bytes(Rx) || bytes(Px) || msg)) mod n
@@ -304,10 +372,12 @@ export class Bip340TaprootValidator {
       const P = secp256k1.ProjectivePoint.fromAffine({ x: Px, y: Py });
       const R = G.multiply(s).subtract(P.multiply(e));
 
-      if (R.equals(secp256k1.ProjectivePoint.ZERO)) return { valid: false, error: 'R is the point at infinity' };
+      if (R.equals(secp256k1.ProjectivePoint.ZERO))
+        return { valid: false, error: 'R is the point at infinity' };
       const { x: Rx_check, y: Ry_check } = R.toAffine();
       if (Ry_check % 2n !== 0n) return { valid: false, error: 'R.y is odd (non-normalized)' };
-      if (Rx_check !== Rx) return { valid: false, error: 'Schnorr signature check failed: R.x mismatch' };
+      if (Rx_check !== Rx)
+        return { valid: false, error: 'Schnorr signature check failed: R.x mismatch' };
 
       return { valid: true };
     } catch (err) {
@@ -327,10 +397,10 @@ export class Bip340TaprootValidator {
     const privBytes = typeof privateKey === 'string' ? hexToBytes(privateKey) : privateKey;
 
     if (msgBytes.length !== 32) throw new Error(`Message must be 32 bytes, got ${msgBytes.length}`);
-    if (privBytes.length !== 32) throw new Error(`Private key must be 32 bytes, got ${privBytes.length}`);
+    if (privBytes.length !== 32)
+      throw new Error(`Private key must be 32 bytes, got ${privBytes.length}`);
 
     const n = secp256k1.CURVE.n;
-    const p = secp256k1.CURVE.p;
 
     let d = bytesToBigInt(privBytes);
     if (d === 0n || d >= n) throw new Error('Invalid private key');
@@ -344,7 +414,10 @@ export class Bip340TaprootValidator {
 
     const Px = bigIntToBytes32(P.toAffine().x);
     // Deterministic nonce: k = int(hash_BIP0340/nonce(bytes(d) || Px || msg)) mod n
-    const kHash = taggedHash('BIP0340/nonce', new Uint8Array([...bigIntToBytes32(d), ...Px, ...msgBytes]));
+    const kHash = taggedHash(
+      'BIP0340/nonce',
+      new Uint8Array([...bigIntToBytes32(d), ...Px, ...msgBytes]),
+    );
     let k = bytesToBigInt(kHash) % n;
     if (k === 0n) throw new Error('Nonce k is zero');
 
@@ -352,7 +425,10 @@ export class Bip340TaprootValidator {
     const { x: Rx, y: Ry } = R.toAffine();
     if (Ry % 2n !== 0n) k = n - k;
 
-    const eHash = taggedHash('BIP0340/challenge', new Uint8Array([...bigIntToBytes32(Rx), ...Px, ...msgBytes]));
+    const eHash = taggedHash(
+      'BIP0340/challenge',
+      new Uint8Array([...bigIntToBytes32(Rx), ...Px, ...msgBytes]),
+    );
     const e = bytesToBigInt(eHash) % n;
     const s = (k + e * d) % n;
 
@@ -360,13 +436,20 @@ export class Bip340TaprootValidator {
     sig.set(bigIntToBytes32(Rx), 0);
     sig.set(bigIntToBytes32(s), 32);
 
-    return { signature: sig, hex: Array.from(sig).map((b) => b.toString(16).padStart(2, '0')).join('') };
+    return {
+      signature: sig,
+      hex: Array.from(sig)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join(''),
+    };
   }
 
   /**
    * Extracts Taproot / Bitcoin reserve addresses from stellar.toml.
    */
-  static extractTaprootAddressesFromToml(doc: Record<string, unknown>): Array<{ address: string; field: string }> {
+  static extractTaprootAddressesFromToml(
+    doc: Record<string, unknown>,
+  ): Array<{ address: string; field: string }> {
     const results: Array<{ address: string; field: string }> = [];
 
     const isTaprootLike = (addr: unknown): addr is string =>
@@ -377,8 +460,10 @@ export class Bip340TaprootValidator {
         if (isTaprootLike(val)) results.push({ address: val.trim(), field: `${prefix}.${key}` });
         else if (Array.isArray(val)) {
           val.forEach((item, idx) => {
-            if (isTaprootLike(item)) results.push({ address: item.trim(), field: `${prefix}.${key}[${idx}]` });
-            else if (typeof item === 'object' && item !== null) scanObject(item as Record<string, unknown>, `${prefix}.${key}[${idx}]`);
+            if (isTaprootLike(item))
+              results.push({ address: item.trim(), field: `${prefix}.${key}[${idx}]` });
+            else if (typeof item === 'object' && item !== null)
+              scanObject(item as Record<string, unknown>, `${prefix}.${key}[${idx}]`);
           });
         } else if (typeof val === 'object' && val !== null) {
           scanObject(val as Record<string, unknown>, `${prefix}.${key}`);
@@ -393,7 +478,10 @@ export class Bip340TaprootValidator {
   /**
    * Audits stellar.toml for Taproot reserve address declarations.
    */
-  auditToml(doc: Record<string, unknown>): { report: TaprootAuditReport; diagnostics: Diagnostic[] } {
+  auditToml(doc: Record<string, unknown>): {
+    report: TaprootAuditReport;
+    diagnostics: Diagnostic[];
+  } {
     const declared = Bip340TaprootValidator.extractTaprootAddressesFromToml(doc);
     const findings: TaprootAuditFinding[] = [];
     const diagnostics: Diagnostic[] = [];
@@ -407,14 +495,17 @@ export class Bip340TaprootValidator {
 
       if (!result.valid) {
         diagnostics.push({
-          rule: result.error?.includes('Bech32m') ? TAPROOT_INVALID_BECH32M
-            : result.error?.includes('itness version') ? TAPROOT_INVALID_WITNESS_VERSION
-            : TAPROOT_INVALID_X_ONLY_KEY,
+          rule: result.error?.includes('Bech32m')
+            ? TAPROOT_INVALID_BECH32M
+            : result.error?.includes('itness version')
+              ? TAPROOT_INVALID_WITNESS_VERSION
+              : TAPROOT_INVALID_X_ONLY_KEY,
           severity: 'error',
           category: 'security',
           message: `Invalid Taproot reserve address at ${field}: ${result.error}`,
           path: field,
-          suggestion: 'Use a valid Bech32m Taproot address (bc1p...) with witness version 1 and a 32-byte x-only public key.',
+          suggestion:
+            'Use a valid Bech32m Taproot address (bc1p...) with witness version 1 and a 32-byte x-only public key.',
         });
       }
     }
@@ -426,11 +517,12 @@ export class Bip340TaprootValidator {
         validAddresses,
         findings,
         allValid: findings.length > 0 && validAddresses === findings.length,
-        summary: findings.length === 0
-          ? 'No Taproot / Bitcoin reserve addresses declared in stellar.toml'
-          : validAddresses === findings.length
-            ? `Verified ${findings.length} Taproot address(es)`
-            : `Found ${findings.length - validAddresses} invalid Taproot address(es) out of ${findings.length}`,
+        summary:
+          findings.length === 0
+            ? 'No Taproot / Bitcoin reserve addresses declared in stellar.toml'
+            : validAddresses === findings.length
+              ? `Verified ${findings.length} Taproot address(es)`
+              : `Found ${findings.length - validAddresses} invalid Taproot address(es) out of ${findings.length}`,
       },
       diagnostics,
     };
@@ -458,7 +550,8 @@ export const taprootRules: Rule[] = [
     id: TAPROOT_INVALID_X_ONLY_KEY,
     category: 'security',
     severity: 'error',
-    description: 'Taproot witness program must be a valid 32-byte x-only secp256k1 public key (BIP-340)',
+    description:
+      'Taproot witness program must be a valid 32-byte x-only secp256k1 public key (BIP-340)',
     run() {},
   },
   {

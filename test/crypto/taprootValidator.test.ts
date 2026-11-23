@@ -92,9 +92,14 @@ describe('Bip340TaprootValidator', () => {
         sigResult = Bip340TaprootValidator.signSchnorr(message, privKey);
         const { secp256k1 } = await import('@noble/curves/secp256k1');
         const G = secp256k1.ProjectivePoint.BASE;
-        const d = BigInt('0x' + Array.from(privKey).map((b) => b.toString(16).padStart(2, '0')).join(''));
+        const d = BigInt(
+          '0x' +
+            Array.from(privKey)
+              .map((b) => b.toString(16).padStart(2, '0'))
+              .join(''),
+        );
         const P = G.multiply(d);
-        const { x: Px, y: Py } = P.toAffine();
+        const { y: Py } = P.toAffine();
         const finalD = Py % 2n === 0n ? d : secp256k1.CURVE.n - d;
         const Pfinal = G.multiply(finalD);
         const xBytes = Pfinal.toAffine().x.toString(16).padStart(64, '0');
@@ -122,14 +127,23 @@ describe('Bip340TaprootValidator', () => {
         const sigResult = Bip340TaprootValidator.signSchnorr(message, privKey);
         const { secp256k1 } = await import('@noble/curves/secp256k1');
         const G = secp256k1.ProjectivePoint.BASE;
-        const d = BigInt('0x' + Array.from(privKey).map((b) => b.toString(16).padStart(2, '0')).join(''));
+        const d = BigInt(
+          '0x' +
+            Array.from(privKey)
+              .map((b) => b.toString(16).padStart(2, '0'))
+              .join(''),
+        );
         const P = G.multiply(d);
         const { y: Py } = P.toAffine();
         const finalD = Py % 2n === 0n ? d : secp256k1.CURVE.n - d;
         const Pfinal = G.multiply(finalD);
         const xBytes = Pfinal.toAffine().x.toString(16).padStart(64, '0');
 
-        const verifyResult = Bip340TaprootValidator.verifySchnorr(sigResult.signature, wrongMessage, xBytes);
+        const verifyResult = Bip340TaprootValidator.verifySchnorr(
+          sigResult.signature,
+          wrongMessage,
+          xBytes,
+        );
         expect(verifyResult.valid).toBe(false);
       } catch {
         // skip if secp256k1 import fails

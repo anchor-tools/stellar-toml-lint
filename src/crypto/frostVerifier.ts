@@ -44,7 +44,9 @@ function hexToBytes(hex: string): Uint8Array {
 }
 
 function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 function bytesToScalar(bytes: Uint8Array): bigint {
@@ -166,7 +168,10 @@ export class FrostThresholdVerifier {
 
       const actual = parsePoint(participant.publicKeyShare);
       if (!expected.equals(actual)) {
-        return { valid: false, error: `Share verification failed for participant ${participant.id}: polynomial evaluation mismatch` };
+        return {
+          valid: false,
+          error: `Share verification failed for participant ${participant.id}: polynomial evaluation mismatch`,
+        };
       }
       return { valid: true };
     } catch (err) {
@@ -177,7 +182,10 @@ export class FrostThresholdVerifier {
   /**
    * Validates Round-1 nonce commitments: each commitment must be a valid Ed25519 point.
    */
-  static validateRound1Commitments(commitments: FrostRound1Commitment[]): { valid: boolean; errors: string[] } {
+  static validateRound1Commitments(commitments: FrostRound1Commitment[]): {
+    valid: boolean;
+    errors: string[];
+  } {
     const errors: string[] = [];
     for (const c of commitments) {
       try {
@@ -186,7 +194,9 @@ export class FrostThresholdVerifier {
         const E = parsePoint(c.hidingNonceCommitment);
         E.assertValidity();
       } catch (err) {
-        errors.push(`Participant ${c.participantId}: ${err instanceof Error ? err.message : String(err)}`);
+        errors.push(
+          `Participant ${c.participantId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
     return { valid: errors.length === 0, errors };
@@ -281,7 +291,10 @@ export class FrostThresholdVerifier {
       const rhs = Ri.add(pubShare.multiply(mod(lambda * challenge)));
 
       if (!lhs.equals(rhs)) {
-        return { valid: false, error: `Signature share from participant ${share.participantId} failed verification` };
+        return {
+          valid: false,
+          error: `Signature share from participant ${share.participantId} failed verification`,
+        };
       }
       return { valid: true };
     } catch (err) {
@@ -391,7 +404,9 @@ export class FrostThresholdVerifier {
       const k = mod(d + mod(rho * e));
       const lambda = FrostThresholdVerifier.lagrangeCoefficient(p.id, signerIds);
       // Derive a mock secret scalar from the participant id and group key
-      const secretSeed = sha256(new Uint8Array([...new TextEncoder().encode(`secret-${p.id}`), ...groupPubBytes]));
+      const secretSeed = sha256(
+        new Uint8Array([...new TextEncoder().encode(`secret-${p.id}`), ...groupPubBytes]),
+      );
       const secret = bytesToScalar(secretSeed);
       const z = mod(k + mod(lambda * mod(c * secret)));
       return { participantId: p.id, sigShare: bytesToHex(scalarToBytes32(z)) };
@@ -417,7 +432,12 @@ export class FrostThresholdVerifier {
     threshold?: number;
     participants?: FrostParticipant[];
   }> {
-    const results: Array<{ field: string; groupPublicKey?: string; threshold?: number; participants?: FrostParticipant[] }> = [];
+    const results: Array<{
+      field: string;
+      groupPublicKey?: string;
+      threshold?: number;
+      participants?: FrostParticipant[];
+    }> = [];
 
     // Top-level FROST_THRESHOLD table
     const frostTable = doc.FROST_THRESHOLD as Record<string, unknown> | undefined;
@@ -488,7 +508,8 @@ export class FrostThresholdVerifier {
             category: 'security',
             message: `FROST participant ${participant.id} share mismatch at ${decl.field}: ${result.error}`,
             path: `${decl.field}.participants[${participant.id}]`,
-            suggestion: 'Verify that the participant\'s public key share is consistent with their polynomial commitments.',
+            suggestion:
+              "Verify that the participant's public key share is consistent with their polynomial commitments.",
           });
         }
       }
@@ -503,7 +524,8 @@ export class FrostThresholdVerifier {
             category: 'security',
             message: `Declared FROST group public key does not match key derived from participant commitments at ${decl.field}`,
             path: `${decl.field}.group_public_key`,
-            suggestion: 'The group_public_key must equal the sum of participant constant-term polynomial commitments.',
+            suggestion:
+              'The group_public_key must equal the sum of participant constant-term polynomial commitments.',
           });
         }
       } catch {
@@ -522,14 +544,16 @@ export const frostRules: Rule[] = [
     id: FROST_INVALID_GROUP_KEY,
     category: 'security',
     severity: 'error',
-    description: 'FROST group public key must be a valid Ed25519 point derived from participant commitments',
+    description:
+      'FROST group public key must be a valid Ed25519 point derived from participant commitments',
     run() {},
   },
   {
     id: FROST_SHARE_MISMATCH,
     category: 'security',
     severity: 'error',
-    description: 'FROST participant public key share must be consistent with their polynomial commitments (Feldman VSS)',
+    description:
+      'FROST participant public key share must be consistent with their polynomial commitments (Feldman VSS)',
     run() {},
   },
   {
@@ -543,7 +567,8 @@ export const frostRules: Rule[] = [
     id: FROST_INVALID_SIG_SHARE,
     category: 'security',
     severity: 'error',
-    description: 'FROST Round-2 signature share must satisfy the per-participant verification equation',
+    description:
+      'FROST Round-2 signature share must satisfy the per-participant verification equation',
     run() {},
   },
   {

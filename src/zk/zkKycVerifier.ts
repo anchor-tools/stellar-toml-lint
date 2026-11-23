@@ -82,7 +82,9 @@ function hexToBigInt(hex: string): bigint {
   return BigInt('0x' + clean);
 }
 
-function coordsToG1Point_bn254(coords: string[]): ReturnType<typeof bn254.G1.ProjectivePoint.BASE.add> {
+function coordsToG1Point_bn254(
+  coords: string[],
+): ReturnType<typeof bn254.G1.ProjectivePoint.BASE.add> {
   if (coords.length < 2) throw new Error('G1 point requires at least 2 coordinates');
   const x = hexToBigInt(coords[0]!);
   const y = hexToBigInt(coords[1]!);
@@ -92,7 +94,9 @@ function coordsToG1Point_bn254(coords: string[]): ReturnType<typeof bn254.G1.Pro
   return pt;
 }
 
-function coordsToG2Point_bn254(coords: string[][]): ReturnType<typeof bn254.G2.ProjectivePoint.BASE.add> {
+function coordsToG2Point_bn254(
+  coords: string[][],
+): ReturnType<typeof bn254.G2.ProjectivePoint.BASE.add> {
   if (coords.length < 2 || coords[0]!.length < 2 || coords[1]!.length < 2) {
     throw new Error('G2 point requires Fp2 coordinates [[x0, x1], [y0, y1]]');
   }
@@ -146,7 +150,9 @@ export class ZkKycAttestationVerifier {
           bls12_381.G1.ProjectivePoint.fromHex(hex).assertValidity();
         }
       } catch (err) {
-        issues.push(`${name}: invalid G1 point — ${err instanceof Error ? err.message : String(err)}`);
+        issues.push(
+          `${name}: invalid G1 point — ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
@@ -167,7 +173,9 @@ export class ZkKycAttestationVerifier {
           bls12_381.G2.ProjectivePoint.fromHex(x0 + x1).assertValidity();
         }
       } catch (err) {
-        issues.push(`${name}: invalid G2 point — ${err instanceof Error ? err.message : String(err)}`);
+        issues.push(
+          `${name}: invalid G2 point — ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
@@ -206,8 +214,12 @@ export class ZkKycAttestationVerifier {
     } else {
       const G1 = bls12_381.G1.ProjectivePoint.BASE.toRawBytes(true);
       const G2 = bls12_381.G2.ProjectivePoint.BASE.toRawBytes(true);
-      const g1Hex = Array.from(G1).map((b) => b.toString(16).padStart(2, '0')).join('');
-      const g2Hex = Array.from(G2).map((b) => b.toString(16).padStart(2, '0')).join('');
+      const g1Hex = Array.from(G1)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      const g2Hex = Array.from(G2)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
       return {
         pi_a: [g1Hex],
         pi_b: [[g2Hex.slice(0, 96), g2Hex.slice(96)]],
@@ -232,7 +244,12 @@ export class ZkKycAttestationVerifier {
     const curve = vk.curve ?? 'bn254';
 
     if (!['bn254', 'bls12-381'].includes(curve)) {
-      return { valid: false, provingSystem: 'groth16', curve, error: `Unsupported curve: ${curve}` };
+      return {
+        valid: false,
+        provingSystem: 'groth16',
+        curve,
+        error: `Unsupported curve: ${curve}`,
+      };
     }
 
     if (publicInputs.length !== vk.nPublic) {
@@ -251,7 +268,12 @@ export class ZkKycAttestationVerifier {
         return this._verifyGroth16Bls12381(proof, vk, publicInputs);
       }
     } catch (err) {
-      return { valid: false, provingSystem: 'groth16', curve, error: err instanceof Error ? err.message : String(err) };
+      return {
+        valid: false,
+        provingSystem: 'groth16',
+        curve,
+        error: err instanceof Error ? err.message : String(err),
+      };
     }
   }
 
@@ -265,7 +287,7 @@ export class ZkKycAttestationVerifier {
     const C = coordsToG1Point_bn254(proof.pi_c);
 
     const alpha = coordsToG1Point_bn254(vk.vk_alpha_1);
-    const beta  = coordsToG2Point_bn254(vk.vk_beta_2);
+    const beta = coordsToG2Point_bn254(vk.vk_beta_2);
     const gamma = coordsToG2Point_bn254(vk.vk_gamma_2);
     const delta = coordsToG2Point_bn254(vk.vk_delta_2);
 
@@ -285,7 +307,12 @@ export class ZkKycAttestationVerifier {
     );
 
     const valid = bn254.fields.Fp12.eql(lhs, rhs);
-    return { valid, provingSystem: 'groth16', curve: 'bn254', error: valid ? undefined : 'Groth16 BN254 pairing equation failed' };
+    return {
+      valid,
+      provingSystem: 'groth16',
+      curve: 'bn254',
+      error: valid ? undefined : 'Groth16 BN254 pairing equation failed',
+    };
   }
 
   private _verifyGroth16Bls12381(
@@ -293,9 +320,12 @@ export class ZkKycAttestationVerifier {
     vk: Groth16VerificationKey,
     publicInputs: (bigint | string)[],
   ): ZkProofVerifyResult {
-    const toG1 = (c: string[]) => bls12_381.G1.ProjectivePoint.fromHex(c[0]!.replace(/^0x/i, '').padStart(96, '0'));
+    const toG1 = (c: string[]) =>
+      bls12_381.G1.ProjectivePoint.fromHex(c[0]!.replace(/^0x/i, '').padStart(96, '0'));
     const toG2 = (c: string[][]) => {
-      const x = (c[0]?.[0] ?? '').replace(/^0x/i, '').padStart(96, '0') + (c[0]?.[1] ?? '').replace(/^0x/i, '').padStart(96, '0');
+      const x =
+        (c[0]?.[0] ?? '').replace(/^0x/i, '').padStart(96, '0') +
+        (c[0]?.[1] ?? '').replace(/^0x/i, '').padStart(96, '0');
       return bls12_381.G2.ProjectivePoint.fromHex(x);
     };
 
@@ -304,7 +334,7 @@ export class ZkKycAttestationVerifier {
     const C = toG1(proof.pi_c);
 
     const alpha = toG1(vk.vk_alpha_1);
-    const beta  = toG2(vk.vk_beta_2);
+    const beta = toG2(vk.vk_beta_2);
     const gamma = toG2(vk.vk_gamma_2);
     const delta = toG2(vk.vk_delta_2);
 
@@ -321,7 +351,12 @@ export class ZkKycAttestationVerifier {
     );
 
     const valid = bls12_381.fields.Fp12.eql(lhs, rhs);
-    return { valid, provingSystem: 'groth16', curve: 'bls12-381', error: valid ? undefined : 'Groth16 BLS12-381 pairing equation failed' };
+    return {
+      valid,
+      provingSystem: 'groth16',
+      curve: 'bls12-381',
+      error: valid ? undefined : 'Groth16 BLS12-381 pairing equation failed',
+    };
   }
 
   /**
@@ -352,9 +387,11 @@ export class ZkKycAttestationVerifier {
         rule: ZK_KYC_MISSING_ENDPOINT,
         severity: 'warning',
         category: 'security',
-        message: 'ZK_VERIFICATION section is missing both verification_endpoint and verification_key_uri',
+        message:
+          'ZK_VERIFICATION section is missing both verification_endpoint and verification_key_uri',
         path: field,
-        suggestion: 'Provide a verification_endpoint URL or a verification_key_uri to allow auditors to verify proofs.',
+        suggestion:
+          'Provide a verification_endpoint URL or a verification_key_uri to allow auditors to verify proofs.',
       });
     }
 
@@ -368,7 +405,8 @@ export class ZkKycAttestationVerifier {
           category: 'security',
           message: `ZK_VERIFICATION verification_key: ${issue}`,
           path: `${field}.verification_key`,
-          suggestion: 'Ensure all curve points in the verification key are valid, and IC.length == nPublic + 1.',
+          suggestion:
+            'Ensure all curve points in the verification key are valid, and IC.length == nPublic + 1.',
         });
       });
     }
@@ -382,9 +420,10 @@ export class ZkKycAttestationVerifier {
   static hashClaimToFieldElement(claim: Record<string, unknown>, curve: ZkCurve = 'bn254'): bigint {
     const json = JSON.stringify(claim, Object.keys(claim).sort());
     const hash = sha256(new TextEncoder().encode(json));
-    const p = curve === 'bn254'
-      ? 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n
-      : 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001n;
+    const p =
+      curve === 'bn254'
+        ? 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n
+        : 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001n;
     let n = 0n;
     for (const b of hash) n = (n << 8n) | BigInt(b);
     return n % p;
@@ -426,7 +465,8 @@ export const zkKycRules: Rule[] = [
     id: ZK_KYC_MISSING_ENDPOINT,
     category: 'security',
     severity: 'warning',
-    description: 'ZK_VERIFICATION section should declare a verification_endpoint or verification_key_uri',
+    description:
+      'ZK_VERIFICATION section should declare a verification_endpoint or verification_key_uri',
     run() {},
   },
 ];

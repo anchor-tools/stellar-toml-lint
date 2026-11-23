@@ -12,14 +12,17 @@ import {
   type Groth16Proof,
 } from '../../src/zk/zkKycVerifier.js';
 import { bn254 } from '@noble/curves/bn254';
-import { bls12_381 } from '@noble/curves/bls12-381';
 
-function pointToCoords_G1_bn254(point: ReturnType<typeof bn254.G1.ProjectivePoint.fromHex>): string[] {
+function pointToCoords_G1_bn254(
+  point: ReturnType<typeof bn254.G1.ProjectivePoint.fromHex>,
+): string[] {
   const { x, y } = point.toAffine();
   return [x.toString(16).padStart(64, '0'), y.toString(16).padStart(64, '0')];
 }
 
-function pointToCoords_G2_bn254(point: ReturnType<typeof bn254.G2.ProjectivePoint.fromHex>): string[][] {
+function pointToCoords_G2_bn254(
+  point: ReturnType<typeof bn254.G2.ProjectivePoint.fromHex>,
+): string[][] {
   const aff = point.toAffine();
   // BN254 G2 uses Fp2 elements; expose raw values
   const xFp2 = aff.x as unknown as { c0: bigint; c1: bigint };

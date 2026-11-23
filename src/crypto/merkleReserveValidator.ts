@@ -92,7 +92,9 @@ function hexToBytes(hex: string): Uint8Array {
 }
 
 function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 function hashLeaf(algo: HashAlgorithm, data: Uint8Array): string {
@@ -165,7 +167,11 @@ export class MerkleReserveValidator {
   /**
    * Computes the Merkle root from an array of MerkleLeaf objects.
    */
-  computeRoot(leaves: MerkleLeaf[]): { root: string; leafHashes: string[]; totalLiability: bigint } {
+  computeRoot(leaves: MerkleLeaf[]): {
+    root: string;
+    leafHashes: string[];
+    totalLiability: bigint;
+  } {
     let totalLiability = 0n;
     const leafHashes = leaves.map((leaf) => {
       totalLiability += BigInt(leaf.balance);
@@ -208,9 +214,10 @@ export class MerkleReserveValidator {
   verifyProof(proof: MerkleInclusionProof, declaredRoot?: string): boolean {
     let current = proof.leafHash;
     for (const step of proof.path) {
-      current = step.position === 'right'
-        ? hashPair(this.algo, current, step.sibling)
-        : hashPair(this.algo, step.sibling, current);
+      current =
+        step.position === 'right'
+          ? hashPair(this.algo, current, step.sibling)
+          : hashPair(this.algo, step.sibling, current);
     }
     const expectedRoot = declaredRoot ?? proof.root;
     return current === expectedRoot;
@@ -224,7 +231,8 @@ export class MerkleReserveValidator {
       const issues: string[] = [];
       let balance = 0n;
 
-      if (!leaf.account || leaf.account.trim().length === 0) issues.push('Account identifier is empty');
+      if (!leaf.account || leaf.account.trim().length === 0)
+        issues.push('Account identifier is empty');
 
       try {
         balance = BigInt(leaf.balance);
@@ -240,7 +248,14 @@ export class MerkleReserveValidator {
         issues.push(`Hash failed: ${err instanceof Error ? err.message : String(err)}`);
       }
 
-      return { valid: issues.length === 0, leafIndex: idx, account: leaf.account, balance, hash, issues };
+      return {
+        valid: issues.length === 0,
+        leafIndex: idx,
+        account: leaf.account,
+        balance,
+        hash,
+        issues,
+      };
     });
   }
 
@@ -293,9 +308,10 @@ export class MerkleReserveValidator {
       totalLiability,
       leafValidations,
       findings,
-      summary: findings.length === 0
-        ? `Merkle reserve proof valid: ${leaves.length} leaves, root ${computedRoot.slice(0, 12)}…`
-        : `Merkle reserve proof failed: ${findings.length} issue(s) found`,
+      summary:
+        findings.length === 0
+          ? `Merkle reserve proof valid: ${leaves.length} leaves, root ${computedRoot.slice(0, 12)}…`
+          : `Merkle reserve proof failed: ${findings.length} issue(s) found`,
     };
   }
 
@@ -320,28 +336,38 @@ export class MerkleReserveValidator {
         rule: MERKLE_MALFORMED_LEAF,
         severity: 'warning',
         category: 'documentation',
-        message: 'DOCUMENTATION.ORG_PROOF_OF_RESERVE.merkle_root is declared but no "leaves" array provided for verification',
+        message:
+          'DOCUMENTATION.ORG_PROOF_OF_RESERVE.merkle_root is declared but no "leaves" array provided for verification',
         path: 'DOCUMENTATION.ORG_PROOF_OF_RESERVE',
-        suggestion: 'Provide a "leaves" array with account hashes and balances to enable Merkle root verification.',
+        suggestion:
+          'Provide a "leaves" array with account hashes and balances to enable Merkle root verification.',
       });
       return diagnostics;
     }
 
     const algo = (por['hash_algorithm'] as HashAlgorithm | undefined) ?? 'sha256';
     const validator = new MerkleReserveValidator(algo);
-    const report = validator.audit(leaves, merkleRoot, por['total_liability'] as string | undefined);
+    const report = validator.audit(
+      leaves,
+      merkleRoot,
+      por['total_liability'] as string | undefined,
+    );
 
     report.findings.forEach((f) => {
       diagnostics.push({
-        rule: f.field.includes('root') ? MERKLE_INVALID_ROOT
-          : f.message.includes('negative') ? MERKLE_NEGATIVE_BALANCE
-          : f.message.includes('liability') ? MERKLE_SUM_MISMATCH
-          : MERKLE_MALFORMED_LEAF,
+        rule: f.field.includes('root')
+          ? MERKLE_INVALID_ROOT
+          : f.message.includes('negative')
+            ? MERKLE_NEGATIVE_BALANCE
+            : f.message.includes('liability')
+              ? MERKLE_SUM_MISMATCH
+              : MERKLE_MALFORMED_LEAF,
         severity: f.severity,
         category: 'documentation',
         message: f.message,
         path: `DOCUMENTATION.ORG_PROOF_OF_RESERVE.${f.field}`,
-        suggestion: 'Ensure the declared Merkle root and leaf set are consistent with the published liabilities.',
+        suggestion:
+          'Ensure the declared Merkle root and leaf set are consistent with the published liabilities.',
       });
     });
 
@@ -356,7 +382,8 @@ export const merkleRules: Rule[] = [
     id: MERKLE_INVALID_ROOT,
     category: 'documentation',
     severity: 'error',
-    description: 'Computed Merkle root must match the hash declared in DOCUMENTATION.ORG_PROOF_OF_RESERVE',
+    description:
+      'Computed Merkle root must match the hash declared in DOCUMENTATION.ORG_PROOF_OF_RESERVE',
     run() {},
   },
   {
