@@ -39,7 +39,8 @@
         "toml"
       ],
       "highlights": "queries/highlights.scm",
-      "folds": "queries/folds.scm"
+      "folds": "queries/folds.scm",
+      "tags": "queries/tags.scm"
     }
   ]
 }

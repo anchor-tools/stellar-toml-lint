@@ -1,0 +1,42 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "stellar-toml",
+      "camelcase": "StellarTOML",
+      "title": "Stellar TOML",
+      "scope": "source.stellar-toml",
+      "path": ".",
+      "file-types": ["toml"],
+      "highlights": ["queries/highlights.scm"],
+      "tags": ["queries/tags.scm"],
+      "injection-regex": "^stellar-toml$"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "Apache-2.0",
+    "description": "Tree-sitter grammar for Stellar SEP-1 stellar.toml files",
+    "authors": [
+      {
+        "name": "anchor-tools",
+        "email": "anchortools23@gmail.com",
+        "url": "https://github.com/anchor-tools"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/anchor-tools/stellar-toml-lint"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": false,
+    "java": false,
+    "kotlin": false,
+    "node": true,
+    "python": false,
+    "rust": false,
+    "swift": false,
+    "zig": false
+  }
+}

@@ -256,7 +256,8 @@ export class EdgeRuntimeVerifier {
           code: 'edge/missing-web-api',
           severity: 'error',
           message: `required Edge Web API ${name} is missing from the isolate scope`,
-          suggestion: 'Run this check on a platform that implements the standard Edge runtime APIs.',
+          suggestion:
+            'Run this check on a platform that implements the standard Edge runtime APIs.',
         });
       }
     }
