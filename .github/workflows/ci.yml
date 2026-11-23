@@ -165,8 +165,7 @@ jobs:
   scorecard:
     name: OSSF Scorecard supply-chain analysis
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    permissions:
+        permissions:
       security-events: write
       id-token: write
       contents: read
