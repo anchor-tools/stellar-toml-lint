@@ -1116,6 +1116,34 @@ export type {
   RotationPhase,
   KeyRotationReport,
 } from './overlay/keyRotationVerifier.js';
+export {
+  ConnectionFloodingDefenseTester,
+  renderFloodingDefenseReport,
+  tcpConnector,
+  helloHandshake,
+  floodingDefenseRules,
+  floodingDefenseRuleIds,
+  MAX_BURST_CONNECTIONS,
+  MIN_CONNECTION_INTERVAL_MS,
+  MAX_HOLD_MS,
+  MAX_RECOVERY_WINDOW_MS,
+  PEER_PORT_UNREACHABLE,
+  PEER_UNRESPONSIVE_AFTER_BURST,
+  PEER_SLOW_RECOVERY,
+  PEER_HANDSHAKE_DROPPED,
+  PEER_LATENCY_DEGRADED,
+  PEER_NO_THROTTLING_OBSERVED,
+  PEER_HANDSHAKE_UNVERIFIED,
+} from './overlay/floodingTester.js';
+export type {
+  ConnectStatus,
+  ConnectOutcome,
+  PeerConnector,
+  PeerHandshake,
+  FloodingTesterOptions,
+  BurstStats,
+  FloodingDefenseReport,
+} from './overlay/floodingTester.js';
 
 // Overlay Heartbeat Watchdog (Issue #523)
 export {

@@ -117,6 +117,14 @@ import {
   type QuorumPeerConfig,
 } from './overlay/keyRotationVerifier.js';
 import {
+  ConnectionFloodingDefenseTester,
+  DEFAULT_BURST_CONNECTIONS,
+  DEFAULT_CONNECTION_INTERVAL_MS,
+  MAX_BURST_CONNECTIONS,
+  MIN_CONNECTION_INTERVAL_MS,
+  renderFloodingDefenseReport,
+} from './overlay/floodingTester.js';
+import {
   HEARTBEAT_ERRATIC,
   HEARTBEAT_SUDDEN_CLOSURE,
   HEARTBEAT_UNRESPONSIVE,
@@ -369,6 +377,7 @@ USAGE
                                          and report reused signing, issuer, account and
                                          validator keys
   stellar-toml-lint audit-validator-rotation --domain <domain>
+  stellar-toml-lint test-peer-defense --host <host> [--port <port>] [--burst <n>]
                                          [--previous-signature <sig>]
                                          [--replacement-signature <sig>]
                                          [--peers <quorum.json>] [--format text|json]
@@ -1589,6 +1598,69 @@ function parseQuorumPeers(value: unknown): QuorumPeerConfig[] {
   });
 }
 
+const TEST_PEER_DEFENSE_USAGE = `Usage: stellar-toml-lint test-peer-defense --host <host> [--port <port>] [options]
+
+Tests connection rate limiting and flooding defenses of a Stellar Core overlay
+port you operate. Every synthetic connection is throttled: at most
+${MAX_BURST_CONNECTIONS} connections per burst, at least ${MIN_CONNECTION_INTERVAL_MS}ms apart.
+
+Options:
+  --host <host>          Overlay host to test (required)
+  --port <port>          Overlay port (default: 11625)
+  --burst <n>            Connections in the burst, 1-${MAX_BURST_CONNECTIONS} (default: ${DEFAULT_BURST_CONNECTIONS})
+  --interval-ms <ms>     Pause between attempts, >= ${MIN_CONNECTION_INTERVAL_MS} (default: ${DEFAULT_CONNECTION_INTERVAL_MS})
+  --hold-ms <ms>         How long accepted sockets stay open, <= 2000 (default: 250)
+  --timeout-ms <ms>      Per-connection timeout (default: 2000)
+  --recovery-ms <ms>     Recovery polling window, <= 15000 (default: 10000)
+  --no-handshake         Skip the authenticated HELLO handshake checks
+  --format text|json     Output format (default: text)
+`;
+
+/** `stellar-toml-lint test-peer-defense --host <host> [--port <port>]` */
+async function testPeerDefenseCommand(args: string[]): Promise<number> {
+  let host: string | undefined;
+  let port = 11625;
+  let format = 'text';
+  let checkHandshake = true;
+  const numbers: Record<string, number> = {};
+  const numeric: Record<string, string> = {
+    '--burst': 'burst',
+    '--interval-ms': 'intervalMs',
+    '--hold-ms': 'holdMs',
+    '--timeout-ms': 'connectTimeoutMs',
+    '--recovery-ms': 'recoveryWindowMs',
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--host') host = requireValue(args, ++i, arg);
+    else if (arg === '--port') port = Number(requireValue(args, ++i, arg));
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else if (arg === '--no-handshake') checkHandshake = false;
+    else if (arg === '--help' || arg === '-h') {
+      process.stdout.write(TEST_PEER_DEFENSE_USAGE);
+      return 0;
+    } else if (numeric[arg] !== undefined) {
+      const raw = requireValue(args, ++i, arg);
+      const value = Number(raw);
+      if (!Number.isFinite(value)) {
+        process.stderr.write(`${arg} expects a number, got "${raw}"\n`);
+        return 2;
+      }
+      numbers[numeric[arg] as string] = value;
+    } else {
+      process.stderr.write(`Unknown option ${arg} for test-peer-defense\n`);
+      return 2;
+    }
+  }
+  if (host === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(TEST_PEER_DEFENSE_USAGE);
+    return 2;
+  }
+
+  let tester: ConnectionFloodingDefenseTester;
+  try {
+    tester = new ConnectionFloodingDefenseTester({ ...numbers, checkHandshake });
 const AUDIT_FLOOD_POLICY_USAGE = `Usage: stellar-toml-lint audit-flood-policy [--host <host>] [options]
 
 Checks transaction flood propagation and mempool eviction policy. Metrics come
@@ -1689,6 +1761,12 @@ async function auditFloodPolicyCommand(args: string[]): Promise<number> {
     process.stderr.write(`${message(error)}\n`);
     return 2;
   }
+  try {
+    const report = await tester.run(host, port);
+    process.stdout.write(
+      format === 'json'
+        ? `${JSON.stringify(report, null, 2)}\n`
+        : renderFloodingDefenseReport(report),
   if (
     (format !== 'text' && format !== 'json') ||
     !Number.isInteger(adminPort) ||
@@ -2641,6 +2719,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
   if (argv[0] === 'audit-validator-rotation') return auditValidatorRotationCommand(argv.slice(1));
+  if (argv[0] === 'test-peer-defense') return testPeerDefenseCommand(argv.slice(1));
   if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
   if (argv[0] === 'audit-flood-policy') return auditFloodPolicyCommand(argv.slice(1));
   if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));

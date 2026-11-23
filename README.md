@@ -1339,6 +1339,39 @@ HMAC authentication tags. A malformed frame or replayed sequence emits
 `overlay/invalid-crypto-framing` (error); a failed MAC emits
 `overlay/mac-authentication-failure` (error).
 
+**Peer connection flooding defenses** (`stellar-toml-lint test-peer-defense --host <host> [--port <port>]`)
+— checks that an overlay port you operate sheds connection bursts without locking out real peers.
+`ConnectionFloodingDefenseTester` opens a baseline connection and an authenticated overlay `HELLO`
+handshake, then a paced burst of TCP connections, polls until the port accepts again, and repeats the
+handshake and a latency check:
+
+| Rule                                    | Severity | When                                                                                           |
+| --------------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `overlay/peer-port-unreachable`         | error    | The baseline connection is refused or times out                                                |
+| `overlay/peer-unresponsive-after-burst` | error    | The port stops accepting after the burst and does not recover (crash or descriptor exhaustion) |
+| `overlay/peer-handshake-dropped`        | error    | A handshake that worked before the burst fails after it                                        |
+| `overlay/peer-slow-recovery`            | warning  | Recovery takes longer than 3 s                                                                 |
+| `overlay/peer-latency-degraded`         | warning  | Connect latency rises more than 5× (and above 200 ms)                                          |
+| `overlay/peer-no-throttling-observed`   | info     | Every burst connection was accepted                                                            |
+| `overlay/peer-handshake-unverified`     | info     | The baseline handshake failed, so preservation was not checked                                 |
+
+The tester is deliberately not a load generator and its limits cannot be raised: at most **32**
+connections per burst (default 16), at least **20 ms** between attempts (≤ 50 per second), accepted
+sockets held for at most 2 s, and recovery polled with single connections every 250 ms for at most
+15 s. It reports how many of its own sockets were left open (always 0 unless the platform failed to
+close one). Only run it against nodes you operate.
+
+```text
+Peer defense test core.example.com:11625
+  limits: 16 connections, 50ms apart (<= 20/s), held 250ms
+  baseline: accepted in 31ms, handshake accepted
+  burst: 12/16 accepted, 4 refused, 0 reset, 0 timed out, 0 errors (rejection 25%)
+  throttling: first rejection at attempt 13
+  recovery: accepting again after 512ms (3 poll(s)), latency 33ms, handshake accepted
+  tester sockets left open: 0
+  verdict: PASS
+```
+
 **DNS integrity** (with `--check-network --verify-dnssec`) — A and AAAA answers are queried from
 Cloudflare (`1.1.1.1`), Google (`8.8.8.8`), and Quad9 (`9.9.9.9`) through their DNS-over-HTTPS
 endpoints. Resolver sets are normalized and compared; disagreement emits

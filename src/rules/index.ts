@@ -51,6 +51,7 @@ import { kzgRules } from '../crypto/kzgVerifier.js';
 import { overlayHandshakeRules } from '../overlay/handshakeTester.js';
 import { floodPropagationRules } from '../overlay/floodVerifier.js';
 import { validatorKeyRotationRules } from '../overlay/keyRotationVerifier.js';
+import { floodingDefenseRules } from '../overlay/floodingTester.js';
 import { overlayHeartbeatRules } from '../overlay/heartbeat-rules.js';
 import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
 
@@ -110,6 +111,7 @@ export const allRules: Rule[] = [
   ...overlayHandshakeRules,
   ...floodPropagationRules,
   ...validatorKeyRotationRules,
+  ...floodingDefenseRules,
   ...overlayHeartbeatRules,
   ...sep31Sep12Rules,
 ];
@@ -168,6 +170,7 @@ export {
   overlayHandshakeRules,
   floodPropagationRules,
   validatorKeyRotationRules,
+  floodingDefenseRules,
   overlayHeartbeatRules,
   sep31Sep12Rules,
 };
