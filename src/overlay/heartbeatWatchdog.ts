@@ -260,7 +260,16 @@ export class TcpHeartbeatChannel implements HeartbeatChannel {
     socket.setNoDelay(true);
     socket.setKeepAlive(true, keepAliveInitialDelayMs);
     socket.on('data', (chunk: Buffer) => this.onData(chunk));
-    socket.on('error', (error: Error) => this.fail(error));
+    // Once connected, any socket error means the session is gone. Linux usually
+    // reports a peer that drops the connection as a plain close, while macOS and
+    // Windows surface the same event as ECONNRESET; both are a sudden closure.
+    socket.on('error', (error: Error) =>
+      this.fail(
+        new HeartbeatConnectionClosedError(
+          `overlay connection to ${endpoint.host}:${endpoint.port} failed: ${error.message}`,
+        ),
+      ),
+    );
     socket.on('close', () => this.fail(new HeartbeatConnectionClosedError()));
     // A socket that only exists to be probed must never hold the process open.
     socket.unref();
@@ -578,18 +587,18 @@ export class OverlayHeartbeatWatchdog {
     const warnings: string[] = [];
     let suddenClosure: string | undefined;
     let channelClosed = false;
-    let beforeClose: SocketKeepaliveSnapshot = channel.keepalive();
-    let closedCleanly = false;
+    let beforeClose: SocketKeepaliveSnapshot;
+    let closedCleanly: boolean;
 
     try {
       while (Date.now() < deadline) {
         const sequence = probes.length + 1;
         const sentAt = Date.now();
         try {
-          const acknowledgedAt = await withProbeTimeout(
-            channel.probe(sequence),
-            Math.min(probeTimeoutMs, Math.max(1, deadline - Date.now())),
-          );
+          // The window bounds when probes start, not how long a started probe
+          // may take: truncating the last probe's timeout to the time left in
+          // the window would count a healthy peer's final pong as missed.
+          const acknowledgedAt = await withProbeTimeout(channel.probe(sequence), probeTimeoutMs);
           probes.push({
             sequence,
             sentAt,
@@ -788,4 +797,3 @@ export function renderHeartbeatReport(report: HeartbeatReport): string {
   }
   return `${lines.join('\n')}\n`;
 }
-
