@@ -167,6 +167,12 @@ export interface AuthTreeEntry {
   credentialAddress?: string;
   /** True when the transaction source account authorizes the entry. */
   sourceAccount: boolean;
+  /** Nonce carried by address credentials, as a decimal string, when there are any. */
+  credentialNonce?: string;
+  /** Ledger after which the signature stops being valid. */
+  signatureExpirationLedger?: number;
+  /** True when the credentials carry a non-empty signature. */
+  hasSignature?: boolean;
   /** Root invocation of the entry. */
   root: AuthTreeNode;
   /** Every address the tree asks to be authorized. */
@@ -187,6 +193,8 @@ export interface AuthTreeContext {
   authorizedIdentities: readonly string[];
   /** Contracts the tree may delegate into. */
   allowedContracts: readonly string[];
+  /** Contracts the caller has explicitly approved for delegation. */
+  approvedContracts?: readonly string[];
   /** Account that signed the simulated envelope. */
   sourceAccount?: string;
 }
@@ -290,15 +298,37 @@ export function parseAuthEntry(entry: xdr.SorobanAuthorizationEntry): AuthTreeEn
     ? undefined
     : scAddressToString(credentials.address().address());
 
+  let credentialNonce: string | undefined;
+  let signatureExpirationLedger: number | undefined;
+  let hasSignature = false;
+  if (!sourceAccount) {
+    const addressCredentials = credentials.address();
+    credentialNonce = addressCredentials.nonce().toString();
+    signatureExpirationLedger = addressCredentials.signatureExpirationLedger();
+    hasSignature = hasSignatureValue(addressCredentials.signature());
+  }
+
   const root = parseInvocation(entry.rootInvocation());
   const requiredAddresses = collectRequiredAddresses(root);
 
   return {
     ...(credentialAddress !== undefined ? { credentialAddress } : {}),
     sourceAccount,
+    ...(credentialNonce !== undefined ? { credentialNonce } : {}),
+    ...(signatureExpirationLedger !== undefined ? { signatureExpirationLedger } : {}),
+    hasSignature,
     root,
     requiredAddresses,
   };
+}
+
+/** True when a signature `ScVal` actually carries a signature. */
+function hasSignatureValue(signature: xdr.ScVal): boolean {
+  const kind = signature.switch().name;
+  if (kind === 'scvVoid') return false;
+  if (kind === 'scvVec') return (signature.vec()?.length ?? 0) > 0;
+  if (kind === 'scvBytes') return (signature.bytes()?.length ?? 0) > 0;
+  return true;
 }
 
 /**
@@ -461,6 +491,11 @@ export function analyzeAuthTree(
       .map(canonicalIdentity)
       .filter((value): value is string => value !== undefined),
   );
+  const approvedContracts = new Set(
+    (context.approvedContracts ?? [])
+      .map(canonicalIdentity)
+      .filter((value): value is string => value !== undefined),
+  );
   // With nothing to compare against, the tree cannot be judged.
   const canVerifyIdentity = authorized.size > 0 || allowedContracts.size > 0;
 
@@ -537,6 +572,7 @@ export function analyzeAuthTree(
       if (node === call) return;
 
       if (node.contract !== undefined && node.contract !== call.contract) {
+        if (approvedContracts.has(canonicalIdentity(node.contract) ?? '')) return;
         const declared = allowedContracts.has(canonicalIdentity(node.contract) ?? '');
         findings.push({
           rule: UNAUTHORIZED_CROSS_CONTRACT_RULE,

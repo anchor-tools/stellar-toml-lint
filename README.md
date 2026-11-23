@@ -134,6 +134,44 @@ each transaction memo carries an audit reference (a URL, a 64-hex hash, a hash m
 exact 7-decimal amounts. It exits 1 when any clawback lacks a reference. Claimable-balance
 clawbacks carry no amount on the operation, so their amount is reported as `n/a`.
 
+### Cross-chain bridge and reserve verifiers
+
+Anchors whose Stellar assets are backed or bridged from other chains can declare that backing in
+`stellar.toml` and have it checked. Declarations are validated offline; the chains and Horizon are
+only queried with `--check-network`. RPC errors and rate limits (retried once) become warnings, and
+all amounts are compared as exact integers across decimal scales.
+
+```toml
+[DOCUMENTATION.PROOF_OF_RESERVES]
+CHAINLINK_FEEDS = [
+  { asset = "USDX", chain = "ethereum", aggregator = "0x...", heartbeat = 86400 },
+]
+
+[[CURRENCIES]]
+code = "USDS"
+issuer = "G..."
+solana_bridge = { spl_mint = "EPjF...", escrow_program = "worm...", escrow_token_account = "..." }
+collateral_vaults = [
+  { chain = "base", vault = "0x...", shares = "1000000", share_price = "1.04", tolerance_bps = 50 },
+]
+```
+
+- `--verify-por-feed` (or `verify-por-feed --domain <domain>`) reads `latestRoundData()` from each
+  Chainlink Proof of Reserve aggregator, requires a complete round updated within its heartbeat (at
+  most 24 hours), and checks the reserve covers the Stellar supply, reporting the collateralization
+  ratio. Feeds can also be declared per currency as `chainlink_por = { chain, aggregator }`.
+- `--verify-solana-bridge` (or `verify-solana-bridge --domain <domain>`) confirms the escrow is an
+  SPL token account for `spl_mint`, reads its balance with `getTokenAccountBalance`, and enforces
+  `locked on Solana >= minted on Stellar` with exact 9-to-7 decimal normalization.
+- `--audit-erc4626-vaults` calls `asset()`, `totalAssets()` and `convertToAssets()` on each vault,
+  flags held shares worth more than `totalAssets()`, share prices below par or drifting from the
+  declared `share_price`, and vault NAV that does not cover the Stellar supply.
+- `stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> [--guardian-set <file.json>]
+[--format text|json]` parses a Wormhole VAA with bounds-checked slices, decodes token transfer
+  payloads, recovers every guardian signature (secp256k1, Keccak-256, no native dependencies) and
+  requires a two-thirds quorum of the guardian set (`{ "index": 4, "keys": ["0x..."] }`). It exits 1
+  on any error.
+
 ### TLS cipher audit
 
 `stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]` handshakes with each of TLS 1.0,
@@ -155,6 +193,14 @@ both recorded in the summary and preserved as `# refactor: conflict` comments. A
 validation checks that no currency or non-conflicting value was lost; the diff is printed for review
 and only `--write` changes the file. `--split` instead emits modular partials grouped by table
 (`base`, `currencies`, `validators`, …), optionally written to `--out-dir`.
+
+### Bridge evidence audit options
+
+| Flag                              | Effect                                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `--audit-bridge-replays <file>`   | Match EVM lock event logs to Stellar mints and flag duplicate, unrecorded or replayable events                                        |
+| `--verify-attestations`           | Verify reserve attestation checksums and age; with `--check-network` download the PDFs (also `verify-attestations --domain <domain>`) |
+| `--audit-burn-redemptions <file>` | Verify wrapped-asset redemptions burn supply and flag pseudo-burns                                                                    |
 
 ### Options
 

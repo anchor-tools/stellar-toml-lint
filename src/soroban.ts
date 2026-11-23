@@ -23,6 +23,7 @@ import type { BudgetOptions } from './soroban/budget-estimator.js';
 import { eventVerifierRules } from './soroban/eventVerifier.js';
 import { contractCodeKey, contractDataInstanceKey, wasmHashOf } from './soroban/ledgerKeys.js';
 import { auditTomlStorageTtl, SorobanTtlAuditor, ttlAuditorRules } from './soroban/ttlAuditor.js';
+import { reentrancyValidatorRules } from './soroban/reentrancyValidator.js';
 import {
   auditConstructorInvariants,
   auditTomlConstructorInvariants,
@@ -479,6 +480,7 @@ export const sorobanRules: Rule[] = [
   ...budgetEstimatorRules,
   ...eventVerifierRules,
   ...ttlAuditorRules,
+  ...reentrancyValidatorRules,
   ...constructorVerifierRules,
 ];
 
@@ -499,6 +501,17 @@ export type {
   TtlAuditReport,
   TtlAuditorOptions,
 } from './soroban/ttlAuditor.js';
+export {
+  reentrancyValidatorRules,
+  CrossContractReentrancyValidator,
+  auditWasmReentrancy,
+} from './soroban/reentrancyValidator.js';
+export type {
+  CallGraphEdge,
+  FunctionAnalysis,
+  ReentrancyAnalysis,
+  ReentrancyOptions,
+} from './soroban/reentrancyValidator.js';
 export {
   auditConstructorInvariants,
   auditTomlConstructorInvariants,
