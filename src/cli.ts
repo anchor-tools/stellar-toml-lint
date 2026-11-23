@@ -9,8 +9,14 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import process from 'node:process';
+import { parse } from 'smol-toml';
 import { lint, lintDomain, finalize } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
+import {
+  HotWalletBalanceMonitor,
+  formatWalletReport,
+  parseWalletDeclarations,
+} from './gitops/walletBalanceMonitor.js';
 import { formatGithub, formatJson, formatJunit, formatSarif, formatText } from './reporters.js';
 import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
@@ -45,6 +51,25 @@ USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
   stellar-toml-lint --domain <domain>    Fetch and lint https://<domain>/.well-known/stellar.toml
   cat stellar.toml | stellar-toml-lint - Lint stdin
+  stellar-toml-lint monitor-wallet ...   Monitor operational hot wallet balances
+
+MONITOR-WALLET
+  Polls Horizon for operational balances, computes the required reserve from
+  subentries and trustlines, projects runway from recent outbound payments, and
+  alerts when a wallet crosses its low-watermark.
+
+    --account <pubkey>     Account to monitor (repeatable)
+    --toml <path>          Read hot/distribution accounts from a stellar.toml
+    --min-xlm <n>          Spendable XLM low-watermark (default: 0)
+    --warn-xlm <n>         Early warning threshold (default: --min-xlm)
+    --min-runway-hours <n> Alert when projected runway falls below this
+    --horizon <url>        Horizon base URL (default: public network)
+    --interval <seconds>   Poll interval (default: 60)
+    --lookback-hours <n>   Activity window for burn rate (default: 168)
+    --base-reserve <xlm>   Stellar base reserve (default: 0.5)
+    --webhook <url>        POST alerts as JSON to this URL
+    --once                 Check once and exit instead of running as a daemon
+    --json                 Emit machine-readable reports
 
 OPTIONS
   -d, --domain <domain>   Domain serving the file. Enables CORS, content-type and
@@ -72,9 +97,12 @@ EXAMPLES
   stellar-toml-lint public/.well-known/stellar.toml
   stellar-toml-lint --domain example.com --strict
   stellar-toml-lint -f sarif > results.sarif
+  stellar-toml-lint monitor-wallet --account G... --min-xlm 100 --once
 `;
 
 async function main(argv: string[]): Promise<number> {
+  if (argv[0] === 'monitor-wallet') return monitorWallet(argv.slice(1));
+
   let cli: Cli;
   try {
     const parsed = parseArgs(argv);
@@ -183,6 +211,164 @@ function verdict(results: { result: LintResult }[], cli: Cli): boolean {
   if (cli.strict && totals.warning > 0) return false;
   if (cli.maxWarnings !== undefined && totals.warning > cli.maxWarnings) return false;
   return true;
+}
+
+interface MonitorWalletCli {
+  accounts: string[];
+  toml?: string;
+  minXlm: number;
+  warnXlm?: number;
+  minRunwayHours?: number;
+  horizonUrl?: string;
+  intervalMs: number;
+  lookbackHours?: number;
+  baseReserveXlm?: number;
+  webhookUrl?: string;
+  once: boolean;
+  json: boolean;
+}
+
+async function monitorWallet(argv: string[]): Promise<number> {
+  let cli: MonitorWalletCli | 'handled';
+  try {
+    cli = parseMonitorWalletArgs(argv);
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n\nRun with --help for usage.\n`);
+    return 2;
+  }
+  if (cli === 'handled') return 0;
+
+  try {
+    if (cli.toml !== undefined) {
+      const source = await readFile(cli.toml, 'utf8');
+      const doc = parse(source) as Record<string, unknown>;
+      for (const declaration of parseWalletDeclarations(doc)) {
+        if (!cli.accounts.includes(declaration.account)) cli.accounts.push(declaration.account);
+      }
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  if (cli.accounts.length === 0) {
+    process.stderr.write(
+      'monitor-wallet needs at least one --account, or --toml pointing at a file declaring wallets.\n',
+    );
+    return 2;
+  }
+
+  const monitor = new HotWalletBalanceMonitor({
+    minXlm: cli.minXlm,
+    ...(cli.warnXlm !== undefined ? { warnXlm: cli.warnXlm } : {}),
+    ...(cli.minRunwayHours !== undefined ? { minRunwayHours: cli.minRunwayHours } : {}),
+    ...(cli.horizonUrl !== undefined ? { horizonUrl: cli.horizonUrl } : {}),
+    ...(cli.lookbackHours !== undefined ? { lookbackHours: cli.lookbackHours } : {}),
+    ...(cli.baseReserveXlm !== undefined ? { baseReserveXlm: cli.baseReserveXlm } : {}),
+    ...(cli.webhookUrl !== undefined ? { webhookUrl: cli.webhookUrl } : {}),
+    pollIntervalMs: cli.intervalMs,
+    logger: (line) => process.stderr.write(`${line}\n`),
+  });
+
+  let interrupted = false;
+  const stop = (): void => {
+    interrupted = true;
+    monitor.stop();
+  };
+  process.once('SIGINT', stop);
+  process.once('SIGTERM', stop);
+
+  try {
+    const reports = await monitor.monitor(cli.accounts, {
+      once: cli.once,
+      onReport: (report) => {
+        process.stdout.write(
+          cli.json ? `${JSON.stringify(report)}\n` : `${formatWalletReport(report)}\n`,
+        );
+      },
+    });
+
+    if (interrupted) return 0;
+    return reports.some((report) => report.alerts.length > 0) ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  } finally {
+    process.removeListener('SIGINT', stop);
+    process.removeListener('SIGTERM', stop);
+  }
+}
+
+function parseMonitorWalletArgs(argv: string[]): MonitorWalletCli | 'handled' {
+  const cli: MonitorWalletCli = {
+    accounts: [],
+    minXlm: 0,
+    intervalMs: 60_000,
+    once: false,
+    json: false,
+  };
+
+  const numeric = (index: number, flag: string, minimum: number): number => {
+    const value = Number(requireValue(argv, index, flag));
+    if (!Number.isFinite(value) || value < minimum) {
+      throw new Error(`${flag} expects a number greater than or equal to ${minimum}.`);
+    }
+    return value;
+  };
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    switch (arg) {
+      case '-h':
+      case '--help':
+        process.stdout.write(USAGE);
+        return 'handled';
+      case '-a':
+      case '--account': {
+        const account = requireValue(argv, ++i, arg).trim();
+        if (account === '') throw new Error(`${arg} expects a non-empty account ID.`);
+        cli.accounts.push(account);
+        break;
+      }
+      case '--toml':
+        cli.toml = requireValue(argv, ++i, arg);
+        break;
+      case '--min-xlm':
+        cli.minXlm = numeric(++i, arg, 0);
+        break;
+      case '--warn-xlm':
+        cli.warnXlm = numeric(++i, arg, 0);
+        break;
+      case '--min-runway-hours':
+        cli.minRunwayHours = numeric(++i, arg, 0);
+        break;
+      case '--horizon':
+        cli.horizonUrl = requireValue(argv, ++i, arg);
+        break;
+      case '--interval':
+        cli.intervalMs = numeric(++i, arg, 0) * 1000;
+        break;
+      case '--lookback-hours':
+        cli.lookbackHours = numeric(++i, arg, 1);
+        break;
+      case '--base-reserve':
+        cli.baseReserveXlm = numeric(++i, arg, 0);
+        break;
+      case '--webhook':
+        cli.webhookUrl = requireValue(argv, ++i, arg);
+        break;
+      case '--once':
+        cli.once = true;
+        break;
+      case '--json':
+        cli.json = true;
+        break;
+      default:
+        throw new Error(`Unknown monitor-wallet option "${arg}".`);
+    }
+  }
+
+  return cli;
 }
 
 function parseArgs(argv: string[]): Cli | 'handled' {
