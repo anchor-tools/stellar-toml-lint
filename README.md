@@ -1398,7 +1398,7 @@ HMAC authentication tags. A malformed frame or replayed sequence emits
 `overlay/invalid-crypto-framing` (error); a failed MAC emits
 `overlay/mac-authentication-failure` (error).
 
-**Peer connection flooding defenses** (`stellar-toml-lint test-peer-defense --host <host> [--port <port>]`)
+**Peer connection flooding defenses** (`ConnectionFloodingDefenseTester`)
 — checks that an overlay port you operate sheds connection bursts without locking out real peers.
 `ConnectionFloodingDefenseTester` opens a baseline connection and an authenticated overlay `HELLO`
 handshake, then a paced burst of TCP connections, polls until the port accepts again, and repeats the

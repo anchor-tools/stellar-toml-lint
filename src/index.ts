@@ -845,6 +845,7 @@ export type {
   BridgeQuorumSummary,
   StakingEvidence,
 } from './bridges/bridgeQuorumAuditor.js';
+export {
   CorsSecurityAuditor,
   REQUESTING_ORIGIN as CORS_REQUESTING_ORIGIN,
   UNLISTED_ORIGIN as CORS_UNLISTED_ORIGIN,
