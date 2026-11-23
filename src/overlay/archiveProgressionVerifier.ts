@@ -51,6 +51,12 @@ export interface ArchiveProgressionVerifierOptions {
   timeoutMs?: number;
 }
 
+function trimTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === '/') end--;
+  return url.slice(0, end);
+}
+
 /**
  * Calculates hex path components for a ledger sequence in history archive format.
  * E.g. ledger 63 -> 00/00/00/history-0000003f.json
@@ -123,7 +129,7 @@ export class ArchiveProgressionVerifier {
       for (const val of validators) {
         const history = val['HISTORY'] ?? val['history'];
         if (typeof history === 'string' && history.trim().length > 0) {
-          urls.add(history.trim().replace(/\/+$/, ''));
+          urls.add(trimTrailingSlashes(history.trim()));
         }
       }
     }
@@ -131,11 +137,11 @@ export class ArchiveProgressionVerifier {
     // Inspect top-level HISTORY or HISTORY_ARCHIVES
     const topHistory = doc['HISTORY'] ?? doc['history'];
     if (typeof topHistory === 'string' && topHistory.trim().length > 0) {
-      urls.add(topHistory.trim().replace(/\/+$/, ''));
+      urls.add(trimTrailingSlashes(topHistory.trim()));
     } else if (Array.isArray(topHistory)) {
       for (const h of topHistory) {
         if (typeof h === 'string' && h.trim().length > 0) {
-          urls.add(h.trim().replace(/\/+$/, ''));
+          urls.add(trimTrailingSlashes(h.trim()));
         }
       }
     }
@@ -144,7 +150,7 @@ export class ArchiveProgressionVerifier {
     if (Array.isArray(historyArchives)) {
       for (const h of historyArchives) {
         if (typeof h === 'string' && h.trim().length > 0) {
-          urls.add(h.trim().replace(/\/+$/, ''));
+          urls.add(trimTrailingSlashes(h.trim()));
         }
       }
     }
@@ -167,7 +173,7 @@ export class ArchiveProgressionVerifier {
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
-      const url = targetUrl.replace(/\/+$/, '');
+      const url = trimTrailingSlashes(targetUrl);
       const response = await this.fetchImpl(url, { signal: controller.signal });
       if (!response.ok) {
         throw new Error(`Horizon responded with HTTP ${response.status}`);
@@ -213,7 +219,7 @@ export class ArchiveProgressionVerifier {
     archiveUrl: string,
     liveLedger?: number,
   ): Promise<ArchiveProgressionStatus> {
-    const cleanUrl = archiveUrl.replace(/\/+$/, '');
+    const cleanUrl = trimTrailingSlashes(archiveUrl);
     const manifestUrl = `${cleanUrl}/${MANIFEST_PATH}`;
 
     const controller = new AbortController();
@@ -315,7 +321,7 @@ export class ArchiveProgressionVerifier {
     options: { horizonUrl?: string; liveLedger?: number } = {},
   ): Promise<ArchiveProgressionReport> {
     const urls: string[] = Array.isArray(input)
-      ? input.map((u) => u.replace(/\/+$/, ''))
+      ? input.map(trimTrailingSlashes)
       : this.parseHistoryUrls(input);
 
     const targetHorizon = options.horizonUrl ?? this.horizonUrl;
