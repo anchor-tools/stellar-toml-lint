@@ -134,6 +134,44 @@ each transaction memo carries an audit reference (a URL, a 64-hex hash, a hash m
 exact 7-decimal amounts. It exits 1 when any clawback lacks a reference. Claimable-balance
 clawbacks carry no amount on the operation, so their amount is reported as `n/a`.
 
+### Cross-chain bridge and reserve verifiers
+
+Anchors whose Stellar assets are backed or bridged from other chains can declare that backing in
+`stellar.toml` and have it checked. Declarations are validated offline; the chains and Horizon are
+only queried with `--check-network`. RPC errors and rate limits (retried once) become warnings, and
+all amounts are compared as exact integers across decimal scales.
+
+```toml
+[DOCUMENTATION.PROOF_OF_RESERVES]
+CHAINLINK_FEEDS = [
+  { asset = "USDX", chain = "ethereum", aggregator = "0x...", heartbeat = 86400 },
+]
+
+[[CURRENCIES]]
+code = "USDS"
+issuer = "G..."
+solana_bridge = { spl_mint = "EPjF...", escrow_program = "worm...", escrow_token_account = "..." }
+collateral_vaults = [
+  { chain = "base", vault = "0x...", shares = "1000000", share_price = "1.04", tolerance_bps = 50 },
+]
+```
+
+- `--verify-por-feed` (or `verify-por-feed --domain <domain>`) reads `latestRoundData()` from each
+  Chainlink Proof of Reserve aggregator, requires a complete round updated within its heartbeat (at
+  most 24 hours), and checks the reserve covers the Stellar supply, reporting the collateralization
+  ratio. Feeds can also be declared per currency as `chainlink_por = { chain, aggregator }`.
+- `--verify-solana-bridge` (or `verify-solana-bridge --domain <domain>`) confirms the escrow is an
+  SPL token account for `spl_mint`, reads its balance with `getTokenAccountBalance`, and enforces
+  `locked on Solana >= minted on Stellar` with exact 9-to-7 decimal normalization.
+- `--audit-erc4626-vaults` calls `asset()`, `totalAssets()` and `convertToAssets()` on each vault,
+  flags held shares worth more than `totalAssets()`, share prices below par or drifting from the
+  declared `share_price`, and vault NAV that does not cover the Stellar supply.
+- `stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> [--guardian-set <file.json>]
+[--format text|json]` parses a Wormhole VAA with bounds-checked slices, decodes token transfer
+  payloads, recovers every guardian signature (secp256k1, Keccak-256, no native dependencies) and
+  requires a two-thirds quorum of the guardian set (`{ "index": 4, "keys": ["0x..."] }`). It exits 1
+  on any error.
+
 ### TLS cipher audit
 
 `stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]` handshakes with each of TLS 1.0,
@@ -155,6 +193,14 @@ both recorded in the summary and preserved as `# refactor: conflict` comments. A
 validation checks that no currency or non-conflicting value was lost; the diff is printed for review
 and only `--write` changes the file. `--split` instead emits modular partials grouped by table
 (`base`, `currencies`, `validators`, …), optionally written to `--out-dir`.
+
+### Bridge evidence audit options
+
+| Flag                              | Effect                                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `--audit-bridge-replays <file>`   | Match EVM lock event logs to Stellar mints and flag duplicate, unrecorded or replayable events                                        |
+| `--verify-attestations`           | Verify reserve attestation checksums and age; with `--check-network` download the PDFs (also `verify-attestations --domain <domain>`) |
+| `--audit-burn-redemptions <file>` | Verify wrapped-asset redemptions burn supply and flag pseudo-burns                                                                    |
 
 ### Options
 
@@ -1346,6 +1392,42 @@ records are decoded, deduplicated, and crawled recursively with bounded depth an
 node with no peers emits `overlay/isolated-node-zero-peers` (error); a node with one to five
 peers emits `overlay/low-peer-count` (warning). The raw TCP transport is skipped in
 `--mock-fixtures` mode, which remains a no-network mode.
+
+**Tier-1 quorum alignment** (`--verify-tier1-alignment`) — reads the quorum configuration from
+the linted file, either an explicit `[QUORUM_SET]` (`THRESHOLD_PERCENT`, `VALIDATORS` as `G...` keys
+or `$NAME` references, nested `[QUORUM_SET.<name>]` inner sets) or stellar-core's automatic quorum
+from `QUALITY`-rated `[[VALIDATORS]]` / `[[HOME_DOMAINS]]`, and cross-references it against a catalog
+of Tier-1 organizations (SDF, SatoshiPay, LOBSTR, PublicNode, Blockdaemon, Franklin Templeton). It
+reports, with a bar per organization, how much of each Tier-1 organization and each quorum set is
+present, and computes the fewest Tier-1 organizations that must agree before the slice is satisfied
+(assuming every non-Tier-1 validator in it cooperates):
+
+| Rule                                 | Severity | When                                                                                                      |
+| ------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------- |
+| `overlay/tier1-independent-quorum`   | error    | The slice can agree with no Tier-1 organization at all                                                    |
+| `overlay/tier1-split-quorum`         | error    | The Tier-1 organizations needed cannot be guaranteed to overlap a core quorum (two thirds of the catalog) |
+| `overlay/tier1-narrow-agreement`     | warning  | A minority of Tier-1 organizations is enough                                                              |
+| `overlay/tier1-low-representation`   | warning  | Fewer than two thirds of Tier-1 organizations appear                                                      |
+| `overlay/tier1-partial-organization` | info     | An organization is listed with less than a majority of its nodes                                          |
+| `overlay/tier1-unverified-validator` | warning  | A key claims a Tier-1 `HOME_DOMAIN` but is not in the catalog (a new node or an impostor)                 |
+| `overlay/tier1-unresolved-validator` | warning  | A quorum entry is neither a valid key nor a known `$NAME`                                                 |
+| `overlay/tier1-threshold-invalid`    | error    | A threshold is out of range or can never be met                                                           |
+| `overlay/tier1-quorum-undeclared`    | info     | No quorum configuration was found                                                                         |
+
+The bundled catalog is a dated snapshot. When Tier-1 membership changes (for example a newly
+registered validator), pass an updated list with `--tier1-catalog <file.json>`; the format is
+described by [`docs/schemas/tier1-catalog.schema.json`](docs/schemas/tier1-catalog.schema.json).
+
+```text
+Tier-1 quorum alignment (catalog 2026-11-23, 6 organizations)
+  quorum source: explicit [QUORUM_SET]
+  ✔ Stellar Development Foundation ███ 3/3
+  ⚠ LOBSTR                         █░░░░ 1/5
+  ✘ SatoshiPay                     ░░░ 0/3
+  ...
+  agreement: needs 2 Tier-1 organization(s) to agree (core quorum: 4)
+  verdict: MISALIGNED
+```
 
 **Overlay cryptography** (used by the peer and session audits) — the auditor validates RFC 5869
 HKDF derivation, big-endian 4-byte message length framing, monotonic sequence numbers, and

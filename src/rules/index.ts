@@ -14,6 +14,9 @@ import { orgUrlRules } from './org-url-check.js';
 import { sep38Rules } from './sep38-endpoints.js';
 import { sorobanRules } from './soroban.js';
 import { authTreeSimulatorRules } from '../soroban/auth-tree-simulator.js';
+import { authTreeCredentialRules } from '../soroban/authTreeSimulator.js';
+import { wasmMemoryRules } from '../soroban/wasmMemoryAnalyzer.js';
+import { signatureReplayRules } from '../soroban/signatureReplayAuditor.js';
 import { sep12Rules } from './sep12-schema.js';
 import { sep6Rules } from '../cross-sep/sep6.js';
 import { corsPreflightRules } from '../network/cors-preflight.js';
@@ -37,6 +40,14 @@ import { sep10JwtRules } from '../protocols/sep10JwtAuditor.js';
 import { sep12FileUploadRules } from '../protocols/sep12FileUpload.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
+import { chainlinkPorRules } from '../bridges/chainlinkPorVerifier.js';
+import { wormholeRules } from '../bridges/wormholeVaaAuditor.js';
+import { solanaEscrowRules } from '../bridges/solanaEscrowVerifier.js';
+import { erc4626Rules } from '../bridges/erc4626VaultAuditor.js';
+import { bridgeLatencyRules } from '../bridges/latencyBenchmark.js';
+import { bridgeReplayRules } from '../bridges/eventReplayDetector.js';
+import { bankAttestationRules } from '../bridges/bankAttestationVerifier.js';
+import { proofOfBurnRules } from '../bridges/proofOfBurnValidator.js';
 import { tlsCipherRules } from '../security/tlsCipherAuditor.js';
 import { hstsRules } from '../security/hstsVerifier.js';
 import { emergencyPauseRules } from '../bridges/emergencyPauseValidator.js';
@@ -57,6 +68,7 @@ import { floodPropagationRules } from '../overlay/floodVerifier.js';
 import { validatorKeyRotationRules } from '../overlay/keyRotationVerifier.js';
 import { floodingDefenseRules } from '../overlay/floodingTester.js';
 import { overlayHeartbeatRules } from '../overlay/heartbeat-rules.js';
+import { tier1AlignmentRules } from '../overlay/tier1AlignmentVerifier.js';
 import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
 
 /** Every rule, in report order. */
@@ -78,6 +90,9 @@ export const allRules: Rule[] = [
   ...sep38Rules,
   ...sorobanRules,
   ...authTreeSimulatorRules,
+  ...authTreeCredentialRules,
+  ...wasmMemoryRules,
+  ...signatureReplayRules,
   ...sep12Rules,
   ...sep6Rules,
   ...corsPreflightRules,
@@ -101,6 +116,14 @@ export const allRules: Rule[] = [
   ...sep12FileUploadRules,
   ...federationSrvRules,
   ...esgRules,
+  ...chainlinkPorRules,
+  ...wormholeRules,
+  ...solanaEscrowRules,
+  ...erc4626Rules,
+  ...bridgeLatencyRules,
+  ...bridgeReplayRules,
+  ...bankAttestationRules,
+  ...proofOfBurnRules,
   ...tlsCipherRules,
   ...hstsRules,
   ...emergencyPauseRules,
@@ -121,6 +144,7 @@ export const allRules: Rule[] = [
   ...validatorKeyRotationRules,
   ...floodingDefenseRules,
   ...overlayHeartbeatRules,
+  ...tier1AlignmentRules,
   ...sep31Sep12Rules,
 ];
 
@@ -141,6 +165,9 @@ export {
   sep38Rules,
   sorobanRules,
   authTreeSimulatorRules,
+  authTreeCredentialRules,
+  wasmMemoryRules,
+  signatureReplayRules,
   sep12Rules,
   sep6Rules,
   corsPreflightRules,
@@ -164,6 +191,14 @@ export {
   sep12FileUploadRules,
   federationSrvRules,
   esgRules,
+  chainlinkPorRules,
+  wormholeRules,
+  solanaEscrowRules,
+  erc4626Rules,
+  bridgeLatencyRules,
+  bridgeReplayRules,
+  bankAttestationRules,
+  proofOfBurnRules,
   tlsCipherRules,
   hstsRules,
   emergencyPauseRules,
@@ -184,5 +219,6 @@ export {
   validatorKeyRotationRules,
   floodingDefenseRules,
   overlayHeartbeatRules,
+  tier1AlignmentRules,
   sep31Sep12Rules,
 };
