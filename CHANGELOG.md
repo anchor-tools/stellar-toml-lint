@@ -9,6 +9,36 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--verify-por-feed` / `stellar-toml-lint verify-por-feed --domain <domain>`
+  (`src/bridges/chainlinkPorVerifier.ts`): validates Chainlink Proof of Reserve feeds declared in
+  `[DOCUMENTATION.PROOF_OF_RESERVES]` or `CURRENCIES[].chainlink_por` (`por/invalid-feed`) and, under
+  `--check-network`, reads `decimals()` and `latestRoundData()` over EVM JSON-RPC
+  (`por/rpc-unavailable`, `por/invalid-answer`, `por/incomplete-round`, `por/stale-feed` beyond a
+  heartbeat of at most 86400s), compares the reserve with the Horizon supply
+  (`por/supply-unavailable`, `por/undercollateralized`) and reports the ratio
+  (`por/collateralization`).
+
+- `stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> [--guardian-set <file.json>]`
+  (`src/bridges/wormholeVaaAuditor.ts`): parses VAA headers, signatures, bodies and token transfer
+  payloads (`wormhole/malformed-vaa`, `wormhole/unsupported-version`, `wormhole/malformed-payload`),
+  recovers each guardian signature with a dependency-free Keccak-256 / secp256k1 implementation
+  (`src/bridges/evmCrypto.ts`) and enforces the two-thirds quorum (`wormhole/invalid-guardian-index`,
+  `wormhole/invalid-signature`, `wormhole/insufficient-quorum`, `wormhole/guardian-set-mismatch`,
+  `wormhole/expired-guardian-set`, `wormhole/unverified-signatures`).
+
+- `--verify-solana-bridge` / `stellar-toml-lint verify-solana-bridge --domain <domain>`
+  (`src/bridges/solanaEscrowVerifier.ts`): validates `CURRENCIES[].solana_bridge` base58 addresses
+  (`solbridge/invalid-config`) and, under `--check-network`, checks the escrow is an SPL token account
+  for the declared mint (`solbridge/escrow-mismatch`), reads `getTokenAccountBalance`
+  (`solbridge/rpc-unavailable`) and requires locked >= minted with exact decimal normalization
+  (`solbridge/supply-unavailable`, `solbridge/reserve-deficit`).
+
+- `--audit-erc4626-vaults` (`src/bridges/erc4626VaultAuditor.ts`): validates
+  `CURRENCIES[].collateral_vaults` (`erc4626/invalid-vault`) and, under `--check-network`, calls
+  `asset()`, `decimals()`, `totalAssets()` and `convertToAssets()` (`erc4626/rpc-unavailable`) to flag
+  inconsistent accounting (`erc4626/inconsistent-accounting`), share prices below par or drifting from
+  the declared `share_price` (`erc4626/share-price-below-par`, `erc4626/share-price-drift`) and NAV
+  that does not cover the Stellar supply (`erc4626/supply-unavailable`, `erc4626/insufficient-nav`).
 - `stellar-toml-lint benchmark-bridge-latency --receipts <file> [--corridor <source-dest>]`
   (`src/bridges/latencyBenchmark.ts`): pairs origin-chain lock/burn receipts with Stellar
   mint/release receipts, normalises every timestamp to UTC (zone-less times are rejected, block
@@ -38,7 +68,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   supply falls by exactly the redeemed amount, and flags pseudo-burns (`burn/pseudo-burn`,
   `burn/supply-mismatch`, `burn/invalid-redemption`, `burn/undeclared-asset`,
   `burn/missing-withdraw-endpoint`).
-  225d
 - `stellar-toml-lint audit-ciphers --domain <domain>` (`src/security/tlsCipherAuditor.ts`): pins a
   native `node:tls` handshake to each of TLS 1.0, 1.1, 1.2 and 1.3, requires TLS 1.0/1.1 to be
   rejected, checks the negotiated suites for forward secrecy and AEAD and prints an A+/A/B/F grade

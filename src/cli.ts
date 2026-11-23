@@ -91,6 +91,14 @@ import {
   Sep31Sep12ConsistencyEngine,
 } from './protocols/sep31Sep12Consistency.js';
 import { auditEsgDisclosures, renderEsgReport } from './protocols/esgComplianceVerifier.js';
+import { verifyPorFeeds } from './bridges/chainlinkPorVerifier.js';
+import { verifySolanaBridges } from './bridges/solanaEscrowVerifier.js';
+import { auditErc4626Vaults } from './bridges/erc4626VaultAuditor.js';
+import {
+  WormholeVaaAuditor,
+  parseGuardianSet,
+  renderVaaReport,
+} from './bridges/wormholeVaaAuditor.js';
 import { benchmarkBridgeLatency, renderLatencyReport } from './bridges/latencyBenchmark.js';
 import { auditBridgeReplays } from './bridges/eventReplayDetector.js';
 import { verifyBankAttestations } from './bridges/bankAttestationVerifier.js';
@@ -270,6 +278,9 @@ interface Cli {
   transactionId?: string;
   verifyFederationSrv: boolean;
   auditEsgDisclosures: boolean;
+  verifyPorFeed: boolean;
+  verifySolanaBridge: boolean;
+  auditErc4626Vaults: boolean;
   auditBridgeReplays?: string;
   verifyAttestations: boolean;
   auditBurnRedemptions?: string;
@@ -367,6 +378,13 @@ USAGE
   stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]
                                          Audit a WASM binary for SIMD opcodes and
                                          unbounded memory growth
+  stellar-toml-lint verify-por-feed --domain <domain>
+                                         Check Chainlink Proof of Reserve feeds
+  stellar-toml-lint verify-solana-bridge --domain <domain>
+                                         Check Solana escrow covers Stellar supply
+  stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> [--guardian-set <file.json>]
+                                         [--format text|json]
+                                         Verify a Wormhole VAA's guardian quorum
   stellar-toml-lint audit-wasm-memory --file <path.wasm> [--format text|json]
                                          Audit a Soroban contract WASM for memory
                                          growth, recursion, unbounded loops and
@@ -538,6 +556,15 @@ OPTIONS
                           Verify DOCUMENTATION.ORG_ESG disclosures, check the
                           attestation signature with --check-network, and print
                           a sustainability rating
+      --verify-por-feed   Check Chainlink Proof of Reserve feeds declared in
+                          DOCUMENTATION.PROOF_OF_RESERVES for freshness and
+                          collateralization (queries with --check-network)
+      --verify-solana-bridge
+                          Check that Solana escrow balances cover the Stellar
+                          supply of CURRENCIES[].solana_bridge assets
+      --audit-erc4626-vaults
+                          Audit CURRENCIES[].collateral_vaults ERC-4626 share
+                          prices and NAV backing (queries with --check-network)
       --audit-hsts        Check Strict-Transport-Security on the domain and every
                           host stellar.toml declares, against the Chromium
                           preload criteria (use with --domain)
@@ -818,6 +845,24 @@ async function runExtraAudits(
     });
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
+  }
+  if (cli.verifyPorFeed) {
+    const result = await verifyPorFeeds(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
+    out.push(...result.diagnostics);
+  }
+  if (cli.verifySolanaBridge) {
+    const result = await verifySolanaBridges(parsed, fetchImpl, {
+      rules,
+      probe: cli.checkNetwork,
+    });
+    out.push(...result.diagnostics);
+  }
+  if (cli.auditErc4626Vaults) {
+    const result = await auditErc4626Vaults(parsed, fetchImpl, {
+      rules,
+      probe: cli.checkNetwork,
+    });
+    out.push(...result.diagnostics);
   }
   if (cli.auditBridgeReplays !== undefined) {
     out.push(
@@ -2399,6 +2444,59 @@ async function verifyBrowserBundleCommand(args: string[]): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> [--guardian-set <file>] [--format text|json]` */
+async function auditWormholeVaaCommand(args: string[]): Promise<number> {
+  let vaa: string | undefined;
+  let setFile: string | undefined;
+  let format = 'text';
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--vaa') vaa = requireValue(args, ++i, arg);
+    else if (arg === '--guardian-set') setFile = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-wormhole-vaa\n`);
+      return 2;
+    }
+  }
+  if (vaa === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> ' +
+        '[--guardian-set <file.json>] [--format text|json]\n',
+    );
+    return 2;
+  }
+  let guardianSet;
+  if (setFile !== undefined) {
+    try {
+      guardianSet = parseGuardianSet(JSON.parse(await readFile(resolve(setFile), 'utf8')));
+    } catch (error) {
+      process.stderr.write(`${message(error)}\n`);
+      return 2;
+    }
+    if (guardianSet === undefined) {
+      process.stderr.write('Guardian set must be { "index": n, "keys": ["0x..."] }\n');
+      return 2;
+    }
+  }
+  const result = new WormholeVaaAuditor(guardianSet ? { guardianSet } : {}).audit(vaa);
+  if (format === 'json') {
+    const replacer = (_key: string, value: unknown): unknown =>
+      typeof value === 'bigint'
+        ? value.toString()
+        : value instanceof Uint8Array
+          ? `0x${Buffer.from(value).toString('hex')}`
+          : value;
+    process.stdout.write(`${JSON.stringify(result, replacer, 2)}\n`);
+  } else {
+    process.stdout.write(renderVaaReport(result));
+    for (const d of result.diagnostics) {
+      process.stdout.write(`${d.severity}: ${d.message} [${d.rule}]\n`);
+    }
+  }
+  return result.diagnostics.some((d) => d.severity === 'error') ? 1 : 0;
+}
+
 /**
  * `--sort-keys` rewrites files into canonical key order; `--dry-run` prints the
  * diff and leaves the tree alone. Both go through this one pass so a preview can
@@ -3159,6 +3257,12 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-promotions') {
     argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
   }
+  // `verify-por-feed` / `verify-solana-bridge --domain <domain>` are the flag forms with RPC queries.
+  if (argv[0] === 'verify-por-feed' || argv[0] === 'verify-solana-bridge') {
+    const flag = argv[0] === 'verify-por-feed' ? '--verify-por-feed' : '--verify-solana-bridge';
+    argv = [flag, '--check-network', ...argv.slice(1)];
+  }
+  if (argv[0] === 'audit-wormhole-vaa') return auditWormholeVaaCommand(argv.slice(1));
   if (argv[0] === 'verify-attestations') {
     argv = ['--verify-attestations', '--check-network', ...argv.slice(1)];
   }
@@ -3989,6 +4093,9 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     sep10Tokens: [],
     verifyFederationSrv: false,
     auditEsgDisclosures: false,
+    verifyPorFeed: false,
+    verifySolanaBridge: false,
+    auditErc4626Vaults: false,
     verifyAttestations: false,
     auditHsts: false,
     auditEmergencyPause: false,
@@ -4198,6 +4305,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-esg-disclosures':
         cli.auditEsgDisclosures = true;
+        break;
+
+      case '--verify-por-feed':
+        cli.verifyPorFeed = true;
+        break;
+
+      case '--verify-solana-bridge':
+        cli.verifySolanaBridge = true;
+        break;
+
+      case '--audit-erc4626-vaults':
+        cli.auditErc4626Vaults = true;
         break;
 
       case '--audit-hsts':

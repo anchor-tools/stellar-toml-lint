@@ -40,6 +40,10 @@ import { sep10JwtRules } from '../protocols/sep10JwtAuditor.js';
 import { sep12FileUploadRules } from '../protocols/sep12FileUpload.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
+import { chainlinkPorRules } from '../bridges/chainlinkPorVerifier.js';
+import { wormholeRules } from '../bridges/wormholeVaaAuditor.js';
+import { solanaEscrowRules } from '../bridges/solanaEscrowVerifier.js';
+import { erc4626Rules } from '../bridges/erc4626VaultAuditor.js';
 import { bridgeLatencyRules } from '../bridges/latencyBenchmark.js';
 import { bridgeReplayRules } from '../bridges/eventReplayDetector.js';
 import { bankAttestationRules } from '../bridges/bankAttestationVerifier.js';
@@ -112,6 +116,10 @@ export const allRules: Rule[] = [
   ...sep12FileUploadRules,
   ...federationSrvRules,
   ...esgRules,
+  ...chainlinkPorRules,
+  ...wormholeRules,
+  ...solanaEscrowRules,
+  ...erc4626Rules,
   ...bridgeLatencyRules,
   ...bridgeReplayRules,
   ...bankAttestationRules,
@@ -183,6 +191,10 @@ export {
   sep12FileUploadRules,
   federationSrvRules,
   esgRules,
+  chainlinkPorRules,
+  wormholeRules,
+  solanaEscrowRules,
+  erc4626Rules,
   bridgeLatencyRules,
   bridgeReplayRules,
   bankAttestationRules,
