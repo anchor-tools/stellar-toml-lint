@@ -69,6 +69,14 @@ fixed_number=1000000
 is_asset_anchored=false
 status="live"
 
+[[CURRENCIES]]
+# Native XLM with no display_decimals — the protocol fixes its scale.
+code="native"
+name="Stellar Lumens"
+desc="The network's native asset."
+is_asset_anchored=false
+status="live"
+
 [[VALIDATORS]]
 ALIAS="example-us"
 DISPLAY_NAME="Example United States"

@@ -1,0 +1,68 @@
+VERSION="2.7.0"
+NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"
+
+FEDERATION_SERVER="https://api.example.com/federation"
+TRANSFER_SERVER="https://api.example.com/sep6"
+TRANSFER_SERVER_SEP0024="https://api.example.com/sep24"
+KYC_SERVER="https://kyc.example.com/v2"
+WEB_AUTH_ENDPOINT="https://api.example.com/auth"
+DIRECT_PAYMENT_SERVER="https://api.example.com/sep31"
+SIGNING_KEY="GA3TONZXG43TONZXG43TONZXG43TONZXG43TONZXG43TONZXG43TO5MU"
+HORIZON_URL="https://horizon.example.com"
+
+ACCOUNTS=[
+"GC7T6T56DX23PT7Q6WGCTIJT5O6TP6SJ47RP73JCA3ISLVCCVMGHNSDI",
+"GBXHQL5SHDWJJ2WQXJZOVQBVVIFXLFQQFIKVWMU6XA7YZVMVMB5APS5D"
+]
+
+# The candidate keeps its tables in canonical order and its endpoints on new
+# hosts. None of that reordering is a change; the signing key, the delisted
+# loyalty token, the retired EU validator and the moved USDX issuer are.
+
+[DOCUMENTATION]
+ORG_NAME="Example Anchor Ltd"
+ORG_URL="https://example.com"
+ORG_DESCRIPTION="A regulated on- and off-ramp between the Stellar network and local currency."
+ORG_TWITTER="example_anchor"
+ORG_OFFICIAL_EMAIL="partners@example.com"
+ORG_SUPPORT_EMAIL="support@example.com"
+
+[[PRINCIPALS]]
+name="Jane Jedidiah Johnson"
+email="jane.doe@example.com"
+keybase="crypto_jane"
+
+[[CURRENCIES]]
+status="live"
+is_asset_anchored=false
+name="Stellar Lumens"
+desc="The network's own asset, so it needs no issuer."
+code="native"
+
+[[CURRENCIES]]
+status="live"
+anchor_asset="EUR"
+anchor_asset_type="fiat"
+is_asset_anchored=true
+name="Example Euro"
+code="EURX"
+issuer="GAZ3V7WDE3TADF6UQWU3TAWQPVSW6ZV3NCCW6A7UN6HUDI5WXPMLQDFY"
+display_decimals=2
+
+[[CURRENCIES]]
+status="live"
+anchor_asset="USD"
+anchor_asset_type="fiat"
+is_asset_anchored=true
+desc="One USDX is redeemable for one United States dollar held in reserve."
+name="Example US Dollar"
+display_decimals=4
+issuer="GC7T6T56DX23PT7Q6WGCTIJT5O6TP6SJ47RP73JCA3ISLVCCVMGHNSDI"
+code="USDX"
+
+[[VALIDATORS]]
+ALIAS="example-us"
+DISPLAY_NAME="Example United States"
+HOST="core-us-fra.example.com:11625"
+PUBLIC_KEY="GC7T6T56DX23PT7Q6WGCTIJT5O6TP6SJ47RP73JCA3ISLVCCVMGHNSDI"
+HISTORY="https://history.example.com/prd/core-live/core_live_001/"

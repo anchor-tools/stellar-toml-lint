@@ -160,6 +160,7 @@ export const principalRules: Rule[] = [
             position: ctx.locate(`${path}.${field}`),
             helpUri: specUrl('point-of-contact-documentation'),
             suggestion: `Use "${handle}".`,
+            fix: { value: handle },
           });
         }
       });

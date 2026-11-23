@@ -1,0 +1,36 @@
+name: Performance Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Run Benchmarks
+        run: npx tsx benchmarks/runner.ts
+
+      - name: Compare against main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Comparing performance against main branch..."
+          npx tsx benchmarks/runner.ts

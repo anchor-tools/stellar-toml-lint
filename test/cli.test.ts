@@ -64,6 +64,29 @@ describe('cli', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('USAGE');
     expect(stdout).toContain('EXIT CODES');
+    expect(stdout).toContain('--check-contracts');
+    expect(stdout).toContain('--audit-events');
+    expect(stdout).toContain('--audit-opentelemetry');
+    expect(stdout).toContain('--soroban-rpc');
+    expect(stdout).toContain('checkstyle');
+    expect(stdout).toContain('verify-archive-gpg');
+  });
+
+  it('validates the required archive GPG command arguments', async () => {
+    const missing = await cli(['verify-archive-gpg', '--url', 'https://history.example.test/']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('--pubkey <key-file>');
+
+    const unknown = await cli([
+      'verify-archive-gpg',
+      '--url',
+      'https://history.example.test/',
+      '--pubkey',
+      'test-key.asc',
+      '--not-an-option',
+    ]);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option');
   });
 
   it('prints the version', async () => {
@@ -76,7 +99,71 @@ describe('cli', () => {
     const { code, stdout } = await cli(['--list-rules']);
     expect(code).toBe(0);
     expect(stdout).toContain('currencies/issuance-exclusive');
+    expect(stdout).toContain('currencies/regulated-missing-auth-required-flag');
+    expect(stdout).toContain('currencies/regulated-missing-auth-revocable-flag');
+    expect(stdout).toContain('soroban/contract-ttl-expiring-soon');
+    expect(stdout).toContain('soroban/contract-expired');
+    expect(stdout).toContain('telemetry/invalid-correlation');
     expect(stdout).toMatch(/^\d+ rules/);
+  });
+
+  it('lists the client domain attribution and quote binding rules', async () => {
+    const { code, stdout } = await cli(['--list-rules']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('sep10/missing-client-domain-claim');
+    expect(stdout).toContain('sep10/invalid-client-domain-operation');
+    expect(stdout).toContain('quotes/mismatched-quote-fee');
+    expect(stdout).toContain('quotes/quote-binding-unsupported');
+  });
+
+  it('documents --audit-quotes and accepts it without a network run', async () => {
+    const { stdout } = await cli(['--help']);
+    expect(stdout).toContain('--audit-quotes');
+
+    const { code } = await cli([fixture('valid.toml'), '--audit-quotes']);
+    expect(code).toBe(0);
+  });
+
+  it('documents --audit-sep38-spreads and accepts it without a network run', async () => {
+    const { stdout } = await cli(['--help']);
+    expect(stdout).toContain('--audit-sep38-spreads');
+
+    const { code, stdout: runOut } = await cli([fixture('valid.toml'), '--audit-sep38-spreads']);
+    expect(code).toBe(0);
+    expect(runOut).not.toContain('sep38/spread-exceeds-tolerance');
+  });
+
+  it('runs the OpenTelemetry trace audit with hermetic fixtures', async () => {
+    const { code, stderr } = await cli([
+      fixture('valid.toml'),
+      '--audit-opentelemetry',
+      '--mock-fixtures',
+      fixture('network'),
+    ]);
+    expect(code).toBe(0);
+    expect(stderr).toContain('OpenTelemetry trace context audit');
+    expect(stderr).toContain('COMPLIANT SEP-6 TRANSFER_SERVER');
+    expect(stderr).toContain('COMPLIANT SEP-24 TRANSFER_SERVER_SEP0024');
+    expect(stderr).toContain('COMPLIANT SEP-31 DIRECT_PAYMENT_SERVER');
+    expect(stderr).toContain('COMPLIANT SEP-38 ANCHOR_QUOTE_SERVER');
+    expect(stderr).toContain('cannot prove downstream propagation');
+  });
+
+  it('accepts severity overrides on the network-bound rules', async () => {
+    const accepted = await cli([
+      fixture('valid.toml'),
+      '--off',
+      'soroban/contract-expired',
+      '--error',
+      'currencies/regulated-missing-auth-revocable-flag',
+    ]);
+    expect(accepted.code).toBe(0);
+  });
+
+  it('rejects --soroban-rpc without a value', async () => {
+    const { code, stderr } = await cli(['--check-contracts', '--soroban-rpc']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('expects a value');
   });
 
   it('emits parseable JSON', async () => {
@@ -96,6 +183,17 @@ describe('cli', () => {
     expect(stdout).toContain('<failure');
   });
 
+  it('emits parseable Checkstyle XML', async () => {
+    const { stdout, code } = await cli([fixture('broken.toml'), '-f', 'checkstyle']);
+    expect(XMLValidator.validate(stdout)).toBe(true);
+    expect(stdout).toContain('<checkstyle');
+    expect(stdout).toContain('<file name=');
+    expect(stdout).toContain('severity="error"');
+    expect(stdout).toContain('source="');
+    // The format flag never changes the verdict: broken file still exits 1.
+    expect(code).toBe(1);
+  });
+
   it('honours --off', async () => {
     const { stdout } = await cli([
       fixture('broken.toml'),
@@ -106,6 +204,24 @@ describe('cli', () => {
     ]);
     const rules = JSON.parse(stdout).diagnostics.map((d: { rule: string }) => d.rule);
     expect(rules).not.toContain('general/version');
+  });
+
+  it('honours --warn', async () => {
+    const { stdout } = await cli([
+      fixture('broken.toml'),
+      '-f',
+      'json',
+      '--warn',
+      'general/version',
+    ]);
+    const result = JSON.parse(stdout);
+    const lowered = result.diagnostics.find((d: { rule: string }) => d.rule === 'general/version');
+
+    // The flag says `--warn`; the severity it sets is `warning`. Storing the flag's
+    // own spelling filed the finding under a key no reporter counted, so `--strict`
+    // passed a file whose errors had merely been lowered and the summary lost one.
+    expect(lowered.severity).toBe('warning');
+    expect(Object.keys(result.counts).sort()).toEqual(['error', 'info', 'warning']);
   });
 
   it('fails a warning-only file under --strict', async () => {
@@ -132,5 +248,251 @@ describe('cli', () => {
     const { stdout } = await cli([fixture('broken.toml'), '--quiet', '-f', 'json']);
     const severities = JSON.parse(stdout).diagnostics.map((d: { severity: string }) => d.severity);
     expect(new Set(severities)).toEqual(new Set(['error']));
+  });
+
+  it('serves network checks from --mock-fixtures', async () => {
+    const { code, stdout } = await cli([
+      fixture('network/offline-anchor.toml'),
+      '--check-network',
+      '--mock-fixtures',
+      fixture('network'),
+      '-f',
+      'json',
+    ]);
+
+    expect(code).toBe(0);
+    const rules = JSON.parse(stdout).diagnostics.map((d: { rule: string }) => d.rule);
+    expect(rules.filter((rule: string) => rule.startsWith('network/'))).toEqual([]);
+  });
+
+  it('rejects a --mock-fixtures directory that does not exist', async () => {
+    const { code, stderr } = await cli([
+      fixture('network/offline-anchor.toml'),
+      '--check-network',
+      '--mock-fixtures',
+      './definitely-not-here',
+    ]);
+    expect(code).toBe(2);
+    expect(stderr).toContain('--mock-fixtures directory');
+  });
+});
+
+describe('cli --json-schema', () => {
+  it('exits 0 and emits a JSON schema to stdout', async () => {
+    const { code, stdout } = await cli(['--json-schema']);
+    expect(code).toBe(0);
+
+    const schema = JSON.parse(stdout) as Record<string, unknown>;
+    expect(schema.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
+    expect(schema.type).toBe('object');
+
+    const properties = schema.properties as Record<string, unknown>;
+    for (const section of ['DOCUMENTATION', 'PRINCIPALS', 'CURRENCIES', 'VALIDATORS']) {
+      expect(properties[section], `missing ${section}`).toBeDefined();
+    }
+  });
+});
+
+// ── globs and the multi-file summary ───────────────────────────────────────
+
+describe('glob patterns and multi-file summaries', () => {
+  /** Windows prints paths with backslashes; the assertions read either way. */
+  const forward = (s: string): string => s.replace(/\\/g, '/');
+
+  it('expands a quoted glob to every file it matches', async () => {
+    const { code, stdout } = await cli([fixture('tenants/*/stellar.toml')]);
+    const out = forward(stdout);
+
+    expect(code).toBe(0);
+    expect(out).toContain('tenants/acme/stellar.toml');
+    expect(out).toContain('tenants/globex/stellar.toml');
+    expect(out).toContain('Checked 2 files: 2 passed, 0 failed (0 errors, 0 warnings)');
+  });
+
+  it('expands a recursive glob across directories', async () => {
+    const { stdout } = await cli([fixture('**/*.toml')]);
+    expect(stdout).toMatch(/Checked \d+ files: \d+ passed, 1 failed/);
+  });
+
+  it('exits 1 when one file fails and the others pass', async () => {
+    const { code, stdout } = await cli([fixture('*.toml')]);
+
+    expect(code).toBe(1);
+    expect(stdout).toContain('Checked 3 files: 2 passed, 1 failed');
+    // Per-file reporting is still there — the summary only appends to it.
+    expect(stdout).toContain('broken.toml');
+    expect(stdout).toContain('No SEP-1 issues found');
+  });
+
+  it('exits 0 when every file passes', async () => {
+    const { code, stdout } = await cli([fixture('tenants/*/*.toml')]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain('Checked 2 files: 2 passed, 0 failed');
+  });
+
+  it('keeps single-file output free of the summary', async () => {
+    const { stdout } = await cli([fixture('valid.toml')]);
+    expect(stdout).not.toContain('Checked');
+  });
+
+  it('keeps machine-readable formats machine-readable', async () => {
+    const { stdout } = await cli([fixture('tenants/*/*.toml'), '-f', 'json']);
+
+    // The summary belongs to the text reporter; prose appended to JSON, SARIF,
+    // or XML would break the parser it exists for.
+    expect(stdout).not.toContain('Checked');
+    expect(stdout).not.toContain('passed');
+  });
+
+  it('exits 2 with a clear message when a glob matches nothing', async () => {
+    const { code, stderr } = await cli([fixture('no-such-*.toml')]);
+
+    expect(code).toBe(2);
+    expect(stderr).toContain('No files matched');
+    expect(stderr).toContain('no-such-*.toml');
+    expect(stderr).toContain('quote the pattern');
+  });
+});
+
+describe('cli --completion', () => {
+  it('prints a bash completion script and exits 0', async () => {
+    const { code, stdout } = await cli(['--completion', 'bash']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('complete -F _stellar_toml_lint');
+    expect(stdout).toContain('--check-contracts');
+  });
+
+  it('prints a zsh completion script and exits 0', async () => {
+    const { code, stdout } = await cli(['--completion', 'zsh']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('#compdef stellar-toml-lint');
+  });
+
+  it('exits 2 for an unsupported shell', async () => {
+    const { code, stderr } = await cli(['--completion', 'unknown']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('Unknown shell');
+  });
+
+  it('exits 2 when --completion has no value', async () => {
+    const { code, stderr } = await cli(['--completion']);
+    expect(code).toBe(2);
+    expect(stderr).toContain('expects a value');
+  });
+});
+
+describe('cli security audits', () => {
+  it('documents the three audit flags and the key separation subcommand', async () => {
+    const { code, stdout } = await cli(['--help']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('--audit-cors');
+    expect(stdout).toContain('--audit-asset-security');
+    expect(stdout).toContain('--audit-clickjacking');
+    expect(stdout).toContain('audit-key-separation --domain <domain>');
+  });
+
+  it('lists every header, MIME, key separation and framing rule', async () => {
+    const { code, stdout } = await cli(['--list-rules']);
+    expect(code).toBe(0);
+    for (const rule of [
+      'cors/public-endpoint-missing-wildcard',
+      'cors/wildcard-origin-with-credentials',
+      'cors/unlisted-origin-echoed',
+      'mime/active-content-type',
+      'mime/missing-nosniff',
+      'svg/embedded-script',
+      'keys/signing-issuer-reuse',
+      'keys/validator-key-reuse',
+      'clickjacking/wildcard-frame-ancestors',
+      'clickjacking/missing-frame-protection',
+    ]) {
+      expect(stdout).toContain(rule);
+    }
+  });
+
+  it('accepts severity overrides for the new rule ids', async () => {
+    const { code, stderr } = await cli([
+      fixture('valid.toml'),
+      '--off',
+      'keys/signing-issuer-reuse',
+      '--warn',
+      'mime/missing-nosniff',
+      '--error',
+      'clickjacking/wildcard-frame-ancestors',
+    ]);
+    expect(stderr).not.toContain('Unknown rule');
+    expect(code).toBe(0);
+  });
+
+  it('requires a domain for the key separation subcommand', async () => {
+    const missing = await cli(['audit-key-separation']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('audit-key-separation --domain <domain>');
+
+    const unknown = await cli(['audit-key-separation', '--nope']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option --nope');
+  });
+
+  it('requires a domain for the SEP-31/SEP-12 consistency subcommand', async () => {
+    const missing = await cli(['verify-sep31-sep12']);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain('verify-sep31-sep12 --domain <domain>');
+
+    const unknown = await cli(['verify-sep31-sep12', '--nope']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('Unknown option --nope');
+
+    const { stdout } = await cli(['--list-rules']);
+    expect(stdout).toContain('sep31/field-orphaned');
+    expect(stdout).toContain('sep12/field-type-incompatible');
+  });
+});
+
+describe('cli -f markdown', () => {
+  it('emits a step-summary table for a broken file and still exits 1', async () => {
+    const { code, stdout } = await cli([fixture('broken.toml'), '-f', 'markdown']);
+    expect(code).toBe(1);
+    expect(stdout).toContain('### ❌ Failed');
+    expect(stdout).toContain('| Location | Severity | Rule | Message |');
+    expect(stdout).toContain('<details>');
+  });
+
+  it('emits a green pass header for a clean file', async () => {
+    const { code, stdout } = await cli([fixture('valid.toml'), '-f', 'markdown']);
+    expect(code).toBe(0);
+    expect(stdout).toContain('No SEP-1 issues found');
+  });
+
+  it('wires the cross-chain bridge verifiers', async () => {
+    const { stdout } = await cli(['--help']);
+    for (const flag of [
+      '--verify-por-feed',
+      '--verify-solana-bridge',
+      '--audit-erc4626-vaults',
+      'audit-wormhole-vaa',
+    ]) {
+      expect(stdout).toContain(flag);
+    }
+    const rules = await cli(['--list-rules']);
+    expect(rules.stdout).toContain('por/stale-feed');
+    expect(rules.stdout).toContain('wormhole/insufficient-quorum');
+    const clean = await cli([
+      fixture('valid.toml'),
+      '--verify-por-feed',
+      '--verify-solana-bridge',
+      '--audit-erc4626-vaults',
+    ]);
+    expect(clean.code).toBe(0);
+  });
+
+  it('audits a truncated Wormhole VAA and rejects bad usage', async () => {
+    const truncated = await cli(['audit-wormhole-vaa', '--vaa', '0x0100000004']);
+    expect(truncated.code).toBe(1);
+    expect(truncated.stdout).toContain('wormhole/malformed-vaa');
+    const json = await cli(['audit-wormhole-vaa', '--vaa', '0x01', '--format', 'json']);
+    expect(JSON.parse(json.stdout).diagnostics[0].rule).toBe('wormhole/malformed-vaa');
+    expect((await cli(['audit-wormhole-vaa'])).code).toBe(2);
   });
 });

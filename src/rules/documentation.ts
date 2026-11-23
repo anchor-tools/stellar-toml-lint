@@ -263,6 +263,7 @@ export const documentationRules: Rule[] = [
         suggestion: digits
           ? `Use a leading + and digits only, e.g. "+${digits}".`
           : 'Use a leading + followed by country code and number, e.g. "+14155552671".',
+        ...(isE164(`+${digits}`) ? { fix: { value: `+${digits}` } } : {}),
       });
     },
   },
@@ -276,7 +277,9 @@ export const documentationRules: Rule[] = [
       const documentation = documentationOf(ctx.doc);
       if (!documentation) return;
 
-      for (const field of ['ORG_TWITTER', 'ORG_GITHUB', 'ORG_KEYBASE']) {
+      // ORG_GITHUB is deliberately absent: a github.com profile URL is an
+      // accepted form, so `general/invalid-github-handle` owns that field.
+      for (const field of ['ORG_TWITTER', 'ORG_KEYBASE']) {
         const value = documentation[field];
         if (!isString(value)) continue;
 
@@ -290,6 +293,7 @@ export const documentationRules: Rule[] = [
             position: ctx.locate(`DOCUMENTATION.${field}`),
             helpUri: specUrl('organization-documentation'),
             suggestion: `Use the bare handle, e.g. "${handle}".`,
+            fix: { value: handle },
           });
         } else if (value.startsWith('@')) {
           ctx.report({
@@ -300,6 +304,7 @@ export const documentationRules: Rule[] = [
             position: ctx.locate(`DOCUMENTATION.${field}`),
             helpUri: specUrl('organization-documentation'),
             suggestion: `Use "${value.slice(1)}".`,
+            fix: { value: value.slice(1) },
           });
         }
       }

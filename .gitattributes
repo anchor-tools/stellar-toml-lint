@@ -1,0 +1,3 @@
+# Signed and hashed fixtures: their exact bytes are verified, so Git must
+# never convert their line endings (Windows runners check out with CRLF).
+test/fixtures/gitops/slsa/** -text

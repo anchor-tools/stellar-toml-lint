@@ -1,0 +1,14 @@
+{
+  "command": "stellar-toml-lint --lsp",
+  "args": [],
+  "selector": "source.stellar-toml",
+  "syntax": "Packages/LSP-stellar-toml/syntaxes/stellar-toml.sublime-syntax",
+  "enabled": true,
+  "initializationCommands": [],
+  "run_on_event": ["load", "modified"],
+  "run_on_save": true,
+  "debug": false,
+  "settings": {
+    "users": [],
+  },
+}

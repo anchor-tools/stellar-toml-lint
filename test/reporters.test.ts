@@ -2,8 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
 import { lint } from '../src/lint.js';
-import { formatGithub, formatJson, formatSarif, formatText } from '../src/reporters.js';
+import {
+  formatCheckstyle,
+  formatGithub,
+  formatJson,
+  formatSarif,
+  formatText,
+} from '../src/reporters.js';
+import type { LintResult } from '../src/types.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 /** A file that produces zero diagnostics, for the empty-output cases. */
@@ -48,7 +56,7 @@ describe('formatJson', () => {
 });
 
 describe('formatSarif', () => {
-  const sarif = JSON.parse(formatSarif(lint(BROKEN), 'stellar.toml', '0.1.0'));
+  const sarif = JSON.parse(formatSarif(lint(BROKEN), 'stellar.toml', '0.1.0', BROKEN));
 
   it('declares SARIF 2.1.0', () => {
     expect(sarif.version).toBe('2.1.0');
@@ -75,6 +83,38 @@ describe('formatSarif', () => {
       expect(region.startColumn).toBeGreaterThanOrEqual(1);
     }
   });
+
+  it('includes CWE taxonomy tags, Markdown help, and source snippets', () => {
+    const result = lint(BROKEN);
+    const resultWithTlsFinding = {
+      ...result,
+      diagnostics: [
+        ...result.diagnostics,
+        {
+          rule: 'security/weak-cipher-suite',
+          severity: 'warning' as const,
+          category: 'network' as const,
+          message: 'Host negotiated a weak cipher suite',
+          position: { line: 1, column: 1 },
+        },
+      ],
+    };
+    const enriched = JSON.parse(formatSarif(resultWithTlsFinding, 'stellar.toml', '0.1.0', BROKEN));
+    const rules = enriched.runs[0].tool.driver.rules;
+    expect(enriched.runs[0].taxonomies[0].taxa).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'CWE-295' })]),
+    );
+    expect(
+      rules.some((rule: { properties: { tags?: string[] } }) =>
+        rule.properties.tags?.includes('external/cwe/cwe-326'),
+      ),
+    ).toBe(true);
+    expect(
+      rules.find((rule: { id: string }) => rule.id === 'security/weak-cipher-suite').help.markdown,
+    ).toContain('### security/weak-cipher-suite');
+    const firstRegion = enriched.runs[0].results[0].locations[0].physicalLocation.region;
+    expect(firstRegion.snippet.text).toBe(BROKEN.split(/\r?\n/)[firstRegion.startLine - 1]);
+  });
 });
 
 describe('formatGithub', () => {
@@ -93,6 +133,101 @@ describe('formatGithub', () => {
 
   it('produces nothing for a clean file', () => {
     expect(formatGithub(lint(CLEAN), 'a.toml')).toBe('');
+  });
+});
+
+describe('formatCheckstyle', () => {
+  /** Parses the report the way a CI dashboard's Checkstyle reader would. */
+  const parse = (xml: string): any =>
+    new XMLParser({
+      ignoreAttributes: false,
+      attributeNamePrefix: '@_',
+      parseAttributeValue: true,
+      isArray: (name: string) => name === 'error',
+    }).parse(xml);
+
+  it('emits well-formed XML that a standard parser accepts', () => {
+    expect(XMLValidator.validate(formatCheckstyle(lint(BROKEN), 'stellar.toml'))).toBe(true);
+    expect(XMLValidator.validate(formatCheckstyle(lint(CLEAN), 'stellar.toml'))).toBe(true);
+    expect(
+      XMLValidator.validate(formatCheckstyle(lint('[[CURRENCIES]]\ncode = "<&>"\n'), 'a.toml')),
+    ).toBe(true);
+  });
+
+  it('wraps the run in one <file> element per linted file', () => {
+    const result = lint(BROKEN);
+    const doc = parse(formatCheckstyle(result, 'public/.well-known/stellar.toml'));
+
+    expect(doc.checkstyle['@_version']).toBeDefined();
+    expect(doc.checkstyle.file['@_name']).toBe('public/.well-known/stellar.toml');
+    expect(doc.checkstyle.file.error).toHaveLength(result.diagnostics.length);
+  });
+
+  it('carries line, column, severity, message and the rule id as source', () => {
+    const result = lint(BROKEN);
+    const file = parse(formatCheckstyle(result, 'stellar.toml')).checkstyle.file;
+
+    for (const diagnostic of result.diagnostics) {
+      const match = file.error.find((e: any) => e['@_source'] === diagnostic.rule);
+      expect(match).toBeDefined();
+      expect(match['@_severity']).toBe(diagnostic.severity);
+      expect(match['@_message']).toBe(diagnostic.message);
+      if (diagnostic.position) {
+        expect(match['@_line']).toBe(diagnostic.position.line);
+        expect(match['@_column']).toBe(diagnostic.position.column);
+      } else {
+        // The format wants both attributes even when the finding has no
+        // position of its own; 1 is the compromise SARIF already makes.
+        expect(match['@_line']).toBeGreaterThanOrEqual(1);
+        expect(match['@_column']).toBeGreaterThanOrEqual(1);
+      }
+    }
+  });
+
+  it('defaults positionless findings to 1:1 and maps severity straight across', () => {
+    const result: LintResult = {
+      diagnostics: [
+        { rule: 'general/version', severity: 'info', category: 'general', message: 'no position' },
+      ],
+      ok: true,
+      counts: { error: 0, warning: 0, info: 1 },
+    };
+    const file = parse(formatCheckstyle(result, 'a.toml')).checkstyle.file;
+
+    expect(file.error[0]['@_line']).toBe(1);
+    expect(file.error[0]['@_column']).toBe(1);
+    expect(file.error[0]['@_severity']).toBe('info');
+    expect(file.error[0]['@_source']).toBe('general/version');
+  });
+
+  it('escapes markup in messages quoted out of the file', () => {
+    const result = lint('[[CURRENCIES]]\ncode = "<&>"\n');
+    const offending = result.diagnostics.find((d) => d.message.includes('<&>'));
+    expect(offending).toBeDefined();
+
+    const xml = formatCheckstyle(result, 'stellar.toml');
+    expect(XMLValidator.validate(xml)).toBe(true);
+    expect(xml).toContain('&lt;&amp;&gt;');
+
+    // The value survives the round trip intact rather than becoming markup.
+    const file = parse(xml).checkstyle.file;
+    const messages = file.error.map((e: any) => String(e['@_message']));
+    expect(messages).toContain(offending?.message);
+  });
+
+  it('reports a clean file as an empty <file> element', () => {
+    const xml = formatCheckstyle(lint(CLEAN), 'a.toml');
+    expect(XMLValidator.validate(xml)).toBe(true);
+
+    const file = parse(xml).checkstyle.file;
+    expect(file['@_name']).toBe('a.toml');
+    expect(file.error).toBeUndefined();
+  });
+
+  it('defaults the filename and ends with a newline', () => {
+    const xml = formatCheckstyle(lint(BROKEN));
+    expect(xml).toContain('<file name="stellar.toml"');
+    expect(xml.endsWith('\n')).toBe(true);
   });
 });
 

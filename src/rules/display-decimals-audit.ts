@@ -42,6 +42,7 @@ function rpcUrlFor(passphrase: string | undefined): string | undefined {
       return undefined;
   }
 }
+export { rpcUrlFor };
 
 function severityFor(rule: string, fallback: 'error' | 'warning', rules?: RuleOverrides) {
   const override = rules?.[rule];
