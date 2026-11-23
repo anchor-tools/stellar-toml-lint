@@ -2,6 +2,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import * as http from 'node:http';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -55,7 +56,7 @@ describe('Health Check', () => {
 WEB_AUTH_ENDPOINT="${serverUrl}/auth"
 KYC_SERVER="${serverUrl}/broken"
 `;
-    tomlPath = path.join(here, 'fixtures', 'health.toml');
+    tomlPath = path.join(os.tmpdir(), `health-${process.pid}.toml`);
     await fs.writeFile(tomlPath, tomlContent);
   });
 
