@@ -85,6 +85,10 @@ import {
   Sep31Sep12ConsistencyEngine,
 } from './protocols/sep31Sep12Consistency.js';
 import { auditEsgDisclosures, renderEsgReport } from './protocols/esgComplianceVerifier.js';
+import { auditTlsCiphers, renderCipherReport } from './security/tlsCipherAuditor.js';
+import { auditHsts, renderHstsBadges } from './security/hstsVerifier.js';
+import { auditEmergencyPause } from './bridges/emergencyPauseValidator.js';
+import { auditBridgeQuorum } from './bridges/bridgeQuorumAuditor.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { auditCors, renderCorsReport } from './security/corsAuditor.js';
 import { auditAssetSecurity, renderMimeReport } from './security/mimeScanner.js';
@@ -102,10 +106,14 @@ import { scanSsrf, renderSsrfReport, ssrfDiagnostics } from './security/ssrfScan
 import { StructuralRefactoringEngine, renderRefactorSummary } from './cst/structuralRefactoring.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
-import { RangeProofVerifier } from './zk/rangeProofVerifier.js';
-import { Secp256k1BridgeVerifier } from './crypto/secp256k1Verifier.js';
-import { KzgCommitmentVerifier } from './crypto/kzgVerifier.js';
-import { OverlayHandshakeTester, parseValidatorEndpoints } from './overlay/handshakeTester.js';
+import { parseValidatorEndpoints } from './overlay/handshakeTester.js';
+import {
+  FloodPropagationVerifier,
+  parseBurstProfile,
+  renderFloodPolicyReport,
+  type OverlayExchange,
+  type SubmissionEvent,
+} from './overlay/floodVerifier.js';
 import {
   ValidatorKeyRotationVerifier,
   renderKeyRotationReport,
@@ -243,6 +251,9 @@ interface Cli {
   transactionId?: string;
   verifyFederationSrv: boolean;
   auditEsgDisclosures: boolean;
+  auditHsts: boolean;
+  auditEmergencyPause: boolean;
+  auditBridgeQuorum: boolean;
   auditOpenTelemetry: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
@@ -287,6 +298,7 @@ Validate a Stellar Info File (stellar.toml) against SEP-1 — offline.
 
 USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
+  stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]
   stellar-toml-lint test-kms-signer --key-id <arn> --envelope <xdr>
                                          Sign a transaction envelope with a cloud
                                          KMS key and verify the signature and
@@ -357,6 +369,7 @@ USAGE
                                          exit 1 when any entry is expiring,
                                          critical, or archived
   stellar-toml-lint audit-tls --domain <domain> [--format text|json]
+  stellar-toml-lint audit-flood-policy --host <host> [--admin-port <port>] [--format text|json]
                                          Audit SSL/TLS renewal and OCSP stapling health
   stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>]
                                          [--format text|json]
@@ -477,6 +490,16 @@ OPTIONS
                           Verify DOCUMENTATION.ORG_ESG disclosures, check the
                           attestation signature with --check-network, and print
                           a sustainability rating
+      --audit-hsts        Check Strict-Transport-Security on the domain and every
+                          host stellar.toml declares, against the Chromium
+                          preload criteria (use with --domain)
+      --audit-emergency-pause
+                          Check [[BRIDGES]] export pause methods, restrict pause
+                          authority and publish a 24/7 security contact
+      --audit-bridge-quorum
+                          Check [[BRIDGES]] relayer thresholds against the 2/3 BFT
+                          supermajority and staking evidence; also available as
+                          'audit-bridge-quorum --domain <domain>'
       --audit-opentelemetry
                           Probe declared SEP-6, SEP-24, SEP-31 and SEP-38 /info
                           endpoints with W3C trace context and inspect response evidence
@@ -738,6 +761,16 @@ async function runExtraAudits(
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
   }
+  if (cli.auditHsts) {
+    const result = await auditHsts(parsed, fetchImpl, { rules, ...(domain ? { domain } : {}) });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderHstsBadges(result));
+  }
+  if (cli.auditEmergencyPause) out.push(...auditEmergencyPause(parsed, { rules }).diagnostics);
+  if (cli.auditBridgeQuorum) {
+    const result = await auditBridgeQuorum(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
+    out.push(...result.diagnostics);
+  }
   if (cli.auditDnsTakeover) {
     const report = await scanSubdomainTakeover(parsed, { rules, fetchImpl, domain });
     out.push(...takeoverDiagnostics(report, rules));
@@ -811,6 +844,32 @@ async function runExtraAudits(
     }
   }
   return out;
+}
+
+/** `stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]` */
+async function auditCiphersCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let port: number | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--port') port = Number(requireValue(args, ++i, arg));
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-ciphers\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined || (port !== undefined && !Number.isInteger(port))) {
+    process.stderr.write('Usage: stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]\n');
+    return 2;
+  }
+  const host = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  const result = await auditTlsCiphers(host, port === undefined ? {} : { port });
+  process.stdout.write(renderCipherReport(result.report));
+  for (const d of result.diagnostics) {
+    process.stdout.write(`${d.severity}: ${d.message} [${d.rule}]\n`);
+  }
+  return result.report.grade === 'F' || result.report.grade === null ? 1 : 0;
 }
 
 /**
@@ -1582,6 +1641,159 @@ function parseQuorumPeers(value: unknown): QuorumPeerConfig[] {
     const kind = peer.kind === 'anchor' ? 'anchor' : 'peer';
     return { name, validatorKeys: keys, kind };
   });
+}
+
+const AUDIT_FLOOD_POLICY_USAGE = `Usage: stellar-toml-lint audit-flood-policy [--host <host>] [options]
+
+Checks transaction flood propagation and mempool eviction policy. Metrics come
+from a stellar-core admin endpoint (--host) or saved files; transaction bursts
+are simulated locally against the node's configured queue, never submitted.
+
+Options:
+  --host <host>             stellar-core admin host; reads /info and /metrics over HTTP
+  --admin-port <port>       Admin HTTP port (default: 11626)
+  --metrics-file <file>     Saved stellar-core /metrics JSON (instead of --host)
+  --info-file <file>        Saved stellar-core /info JSON (instead of --host)
+  --exchanges-file <file>   JSON array of {request, response} base64 StellarMessage XDR
+                            (GET_TX_SET / TX_SET / DONT_HAVE / TRANSACTION frames)
+  --submissions-file <file> Observed submission log to check for fair queueing
+  --profile <spec>          Burst per fee tier, e.g. low=300,medium=150,high=60,priority=15
+                            (default: 150% of queue capacity)
+  --capacity <ops>          Queue capacity in operations (default: maxTxSetSize x 2)
+  --seed <n>                Burst shuffle seed (default: 1)
+  --format text|json        Output format (default: text)
+`;
+
+function parseSubmissionLog(input: unknown): SubmissionEvent[] {
+  if (!Array.isArray(input)) throw new Error('submissions file must be a JSON array');
+  return input.map((raw: unknown, index) => {
+    const entry = raw as Record<string, unknown>;
+    const tx = (entry?.tx ?? {}) as Record<string, unknown>;
+    if (
+      typeof tx.id !== 'string' ||
+      typeof tx.account !== 'string' ||
+      typeof tx.operations !== 'number' ||
+      (typeof tx.fee !== 'string' && typeof tx.fee !== 'number') ||
+      (entry.status !== 'accepted' && entry.status !== 'rejected') ||
+      typeof entry.occupancyOps !== 'number'
+    ) {
+      throw new Error(`submissions[${index}] is not a valid submission event`);
+    }
+    return {
+      tx: {
+        id: tx.id,
+        account: tx.account,
+        operations: tx.operations,
+        fee: BigInt(tx.fee),
+        ...(typeof tx.tier === 'string' ? { tier: tx.tier as 'low' } : {}),
+      },
+      status: entry.status,
+      ...(typeof entry.reason === 'string' ? { reason: entry.reason as 'insufficient-fee' } : {}),
+      evicted: Array.isArray(entry.evicted) ? entry.evicted.map(String) : [],
+      ...(typeof entry.replaced === 'string' ? { replaced: entry.replaced } : {}),
+      ...(Array.isArray(entry.removed) ? { removed: entry.removed.map(String) } : {}),
+      occupancyOps: entry.occupancyOps,
+    };
+  });
+}
+
+async function fetchJson(url: string): Promise<unknown> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status} from ${url}`);
+  return (await response.json()) as unknown;
+}
+
+/** `stellar-toml-lint audit-flood-policy --host <host>` */
+async function auditFloodPolicyCommand(args: string[]): Promise<number> {
+  let host: string | undefined;
+  let adminPort = 11626;
+  let format = 'text';
+  const files: Record<string, string> = {};
+  const options: {
+    capacityOps?: number;
+    seed?: number;
+    profile?: ReturnType<typeof parseBurstProfile>;
+  } = {};
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] as string;
+      if (arg === '--host') host = requireValue(args, ++i, arg);
+      else if (arg === '--admin-port') adminPort = Number(requireValue(args, ++i, arg));
+      else if (arg === '--format') format = requireValue(args, ++i, arg);
+      else if (
+        arg === '--metrics-file' ||
+        arg === '--info-file' ||
+        arg === '--exchanges-file' ||
+        arg === '--submissions-file'
+      ) {
+        files[arg] = requireValue(args, ++i, arg);
+      } else if (arg === '--profile')
+        options.profile = parseBurstProfile(requireValue(args, ++i, arg));
+      else if (arg === '--capacity') options.capacityOps = Number(requireValue(args, ++i, arg));
+      else if (arg === '--seed') options.seed = Number(requireValue(args, ++i, arg));
+      else if (arg === '--help' || arg === '-h') {
+        process.stdout.write(AUDIT_FLOOD_POLICY_USAGE);
+        return 0;
+      } else {
+        process.stderr.write(`Unknown option ${arg} for audit-flood-policy\n`);
+        return 2;
+      }
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+  if (
+    (format !== 'text' && format !== 'json') ||
+    !Number.isInteger(adminPort) ||
+    adminPort < 1 ||
+    adminPort > 65535
+  ) {
+    process.stderr.write(AUDIT_FLOOD_POLICY_USAGE);
+    return 2;
+  }
+
+  try {
+    const readJson = async (flag: string) =>
+      files[flag] === undefined
+        ? undefined
+        : (JSON.parse(await readFile(resolve(files[flag] as string), 'utf8')) as unknown);
+    let metrics = await readJson('--metrics-file');
+    let info = await readJson('--info-file');
+    if (host !== undefined) {
+      const base = `http://${host}:${adminPort}`;
+      for (const [name, assign] of [
+        ['metrics', (value: unknown) => (metrics ??= value)],
+        ['info', (value: unknown) => (info ??= value)],
+      ] as const) {
+        try {
+          assign(await fetchJson(`${base}/${name}`));
+        } catch (error) {
+          process.stderr.write(`Could not read ${base}/${name}: ${message(error)}\n`);
+        }
+      }
+    }
+    const exchanges = (await readJson('--exchanges-file')) as OverlayExchange[] | undefined;
+    if (exchanges !== undefined && !Array.isArray(exchanges)) {
+      throw new Error('exchanges file must be a JSON array of {request, response}');
+    }
+    const submissions = await readJson('--submissions-file');
+    const report = new FloodPropagationVerifier(options).verify({
+      ...(metrics === undefined ? {} : { metrics }),
+      ...(info === undefined ? {} : { info }),
+      ...(exchanges === undefined ? {} : { exchanges }),
+      ...(submissions === undefined ? {} : { observed: parseSubmissionLog(submissions) }),
+    });
+    process.stdout.write(
+      format === 'json'
+        ? `${JSON.stringify(report, (_key, value: unknown) => (typeof value === 'bigint' ? value.toString() : value), 2)}\n`
+        : renderFloodPolicyReport(report),
+    );
+    return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
 }
 
 /** `stellar-toml-lint audit-validator-rotation --domain <domain> [--format text|json]` */
@@ -2453,6 +2665,10 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-promotions') {
     argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
   }
+  if (argv[0] === 'audit-bridge-quorum') {
+    argv = ['--audit-bridge-quorum', '--check-network', ...argv.slice(1)];
+  }
+  if (argv[0] === 'audit-ciphers') return auditCiphersCommand(argv.slice(1));
   // `sep38-volatility --domain <domain>` books live quotes, so network is implied.
   if (argv[0] === 'sep38-volatility') {
     argv = ['--audit-sep38-volatility', '--check-network', ...argv.slice(1)];
@@ -2472,7 +2688,8 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'verify-archive-gpg') return verifyArchiveGpgCommand(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
-  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
+  if (argv[0] === 'verify-provenance') return verifyProvenance(argv.slice(1));
+  if (argv[0] === 'audit-dockerfile') return auditContainer(argv.slice(1));
   if (argv[0] === 'migrate') return migrateCommand(argv.slice(1), shouldUseColor());
   if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
   if (argv[0] === 'probe-sla') return probeSlaCommand(argv.slice(1));
@@ -2482,6 +2699,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
   if (argv[0] === 'audit-validator-rotation') return auditValidatorRotationCommand(argv.slice(1));
   if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
+  if (argv[0] === 'audit-flood-policy') return auditFloodPolicyCommand(argv.slice(1));
   if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
   if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
   if (argv[0] === 'soroban-ttl') return sorobanTtlCommand(argv.slice(1));
@@ -3249,6 +3467,9 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     sep10Tokens: [],
     verifyFederationSrv: false,
     auditEsgDisclosures: false,
+    auditHsts: false,
+    auditEmergencyPause: false,
+    auditBridgeQuorum: false,
     auditOpenTelemetry: false,
     crawlPeers: false,
     monitorHeartbeat: false,
@@ -3440,6 +3661,18 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-esg-disclosures':
         cli.auditEsgDisclosures = true;
+        break;
+
+      case '--audit-hsts':
+        cli.auditHsts = true;
+        break;
+
+      case '--audit-emergency-pause':
+        cli.auditEmergencyPause = true;
+        break;
+
+      case '--audit-bridge-quorum':
+        cli.auditBridgeQuorum = true;
         break;
 
       case '--audit-opentelemetry':

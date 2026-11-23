@@ -42,11 +42,10 @@ describe('RangeProofVerifier', () => {
 
   it('reconciles anchor reserve declarations with commitments', () => {
     const declaration: AnchorReserveDeclaration = {
-      asset_code: 'USDC',
+      code: 'USDC',
       public_reserve_amount: '1000000',
       pedersen_commitment: '02' + '11'.repeat(32),
       curve: 'secp256k1',
-      bitLength: 64,
     };
 
     const reconciliation = verifier.reconcileReserves(declaration);

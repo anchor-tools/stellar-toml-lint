@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  DidResolutionVerifier,
-  decodeBase58,
-  encodeBase58,
-} from '../../src/crypto/didVerifier.js';
+import { DidResolutionVerifier, decodeBase58, encodeBase58 } from '../../src/crypto/didVerifier.js';
 
 describe('DidResolutionVerifier', () => {
   it('encodes and decodes base58 accurately', () => {
@@ -31,7 +27,7 @@ describe('DidResolutionVerifier', () => {
     expect(resolution.resolved).toBe(true);
     expect(resolution.didDocument?.id).toBe(didUri);
     expect(resolution.verificationMethods.length).toBeGreaterThanOrEqual(1);
-    expect(resolution.verificationMethods[0].type).toBe('Ed25519VerificationKey2020');
+    expect(resolution.verificationMethods[0]?.type).toBe('Ed25519VerificationKey2020');
   });
 
   it('validates Verifiable Credential integrity and expiration', async () => {

@@ -150,8 +150,7 @@ export interface Sep12SchemaResult {
 }
 
 export type SchemaLookup =
-  | ReadonlyMap<string, Sep12SchemaResult>
-  | Record<string, Sep12SchemaResult>;
+  ReadonlyMap<string, Sep12SchemaResult> | Record<string, Sep12SchemaResult>;
 
 export interface ConsistencyServers {
   directPaymentServer: string;
@@ -360,7 +359,8 @@ export function extractSep31Corridors(info: unknown): Sep31Corridor[] {
       transactionFields: parseTransactionFields(fields?.transaction),
     };
     if (isString(raw.sender_sep12_type)) corridor.deprecatedSenderType = raw.sender_sep12_type;
-    if (isString(raw.receiver_sep12_type)) corridor.deprecatedReceiverType = raw.receiver_sep12_type;
+    if (isString(raw.receiver_sep12_type))
+      corridor.deprecatedReceiverType = raw.receiver_sep12_type;
     corridors.push(corridor);
   }
   return corridors;
@@ -1162,10 +1162,7 @@ export class Sep31Sep12ConsistencyEngine {
     return finalize([], [], emptyCounts());
   }
 
-  private async fetchCustomerSchema(
-    kycServer: string,
-    type: string,
-  ): Promise<Sep12SchemaResult> {
+  private async fetchCustomerSchema(kycServer: string, type: string): Promise<Sep12SchemaResult> {
     const url = `${kycServer}/customer?type=${encodeURIComponent(type)}`;
     try {
       const response = await fetchWithTimeout(this.fetchImpl, url, {}, this.timeoutMs);

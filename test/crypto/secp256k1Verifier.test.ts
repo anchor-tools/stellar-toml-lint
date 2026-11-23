@@ -31,10 +31,17 @@ describe('Secp256k1BridgeVerifier', () => {
 
     const { hex: sigHex } = Secp256k1BridgeVerifier.sign(message, privateKey, 'eip191');
     const recovered = Secp256k1BridgeVerifier.recoverAddress(sigHex, message, 'eip191');
-    const result = verifier.verifyBridgeSignature(sigHex, message, [recovered.checksumAddress], 'eip191');
+    const result = verifier.verifyBridgeSignature(
+      sigHex,
+      message,
+      [recovered.checksumAddress],
+      'eip191',
+    );
 
     expect(result.valid).toBe(true);
-    expect(result.recovered?.checksumAddress.toLowerCase()).toBe(recovered.checksumAddress.toLowerCase());
+    expect(result.recovered?.checksumAddress.toLowerCase()).toBe(
+      recovered.checksumAddress.toLowerCase(),
+    );
   });
 
   it('detects mismatched signer address', () => {

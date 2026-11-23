@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 export interface IacValidationIssue {
   severity: 'error' | 'warning';
@@ -29,12 +29,6 @@ export class IacDeploymentValidator {
     }
 
     let foundTfOrYaml = false;
-    let hasHttpsRedirect = false;
-    let hasCors = false;
-    let hasWellKnown = false;
-    let hasWaf = false;
-    let hasUnencryptedBucket = false;
-    let hasPublicBucket = false;
 
     for (const file of files) {
       const ext = path.extname(file).toLowerCase();
@@ -67,7 +61,7 @@ export class IacDeploymentValidator {
   private walkDir(dir: string): string[] {
     let results: string[] = [];
     const list = fs.readdirSync(dir);
-    for (const file of list {
+    for (const file of list) {
       const filePath = path.join(dir, file);
       const stat = fs.statSync(filePath);
       if (stat && stat.isDirectory()) {
