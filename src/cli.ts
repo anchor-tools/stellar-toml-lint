@@ -15,6 +15,7 @@ import { assertKnownRule, loadConfig } from './config.js';
 import { loadPluginRules } from './engine/ruleLoader.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
+import { ASSET_CACHE_ENV, createAssetCacheFetch } from './gitops/ciAssetCache.js';
 import { VaultSecretEngineVerifier } from './gitops/vaultVerifier.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import {
