@@ -16,8 +16,6 @@ import {
 import { Keypair, Networks } from '@stellar/stellar-base';
 
 describe('OverlayHandshakeTester', () => {
-  const tester = new OverlayHandshakeTester();
-
   it('exposes overlay handshake rules and rule IDs', () => {
     expect(overlayHandshakeRules).toHaveLength(6);
     expect(overlayHandshakeRuleIds).toContain(OVERLAY_HANDSHAKE_FAILED);
@@ -69,7 +67,7 @@ describe('OverlayHandshakeTester', () => {
     };
 
     // Use mock simulated transport
-    const mockTransport = async (_ep: string, _data: Uint8Array): Promise<Uint8Array> => {
+    const mockTransport = async (): Promise<Uint8Array> => {
       return OverlayHandshakeTester.simulateValidatorResponse(
         endpoint.publicKey,
         Networks.PUBLIC,

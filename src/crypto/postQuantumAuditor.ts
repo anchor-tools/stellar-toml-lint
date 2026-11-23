@@ -85,7 +85,10 @@ export class PostQuantumReadinessAuditor {
   /**
    * Validates ML-DSA public key hex or base64 format and byte length.
    */
-  static validatePublicKey(paramSet: MlDsaParameterSet, keyData: string): { valid: boolean; error?: string; bytes?: Uint8Array } {
+  static validatePublicKey(
+    paramSet: MlDsaParameterSet,
+    keyData: string,
+  ): { valid: boolean; error?: string; bytes?: Uint8Array } {
     const spec = ML_DSA_SPECS[paramSet];
     if (!spec) {
       return { valid: false, error: `Unknown parameter set: ${paramSet}` };
@@ -163,14 +166,23 @@ export class PostQuantumReadinessAuditor {
    * Extracts post-quantum declaration fields from parsed TOML data.
    */
   static extractDeclaration(toml: Record<string, unknown>): PostQuantumDeclaration | undefined {
-    const pqSection = (toml.POST_QUANTUM || toml.post_quantum) as Record<string, unknown> | undefined;
+    const pqSection = (toml.POST_QUANTUM || toml.post_quantum) as
+      Record<string, unknown> | undefined;
     if (pqSection && typeof pqSection === 'object') {
       return {
-        parameterSet: (pqSection.PARAMETER_SET || pqSection.parameter_set || pqSection.ALGORITHM || pqSection.algorithm) as string | undefined,
-        publicKey: (pqSection.ML_DSA_PUBLIC_KEY || pqSection.PUBLIC_KEY || pqSection.public_key) as string | undefined,
-        crossSignature: (pqSection.CROSS_SIGNATURE || pqSection.cross_signature) as string | undefined,
-        classicSigningKey: (pqSection.CLASSIC_SIGNING_KEY || pqSection.SIGNING_KEY || toml.SIGNING_KEY) as string | undefined,
-        migrationDeadline: (pqSection.MIGRATION_DEADLINE || pqSection.migration_deadline) as string | undefined,
+        parameterSet: (pqSection.PARAMETER_SET ||
+          pqSection.parameter_set ||
+          pqSection.ALGORITHM ||
+          pqSection.algorithm) as string | undefined,
+        publicKey: (pqSection.ML_DSA_PUBLIC_KEY || pqSection.PUBLIC_KEY || pqSection.public_key) as
+          string | undefined,
+        crossSignature: (pqSection.CROSS_SIGNATURE || pqSection.cross_signature) as
+          string | undefined,
+        classicSigningKey: (pqSection.CLASSIC_SIGNING_KEY ||
+          pqSection.SIGNING_KEY ||
+          toml.SIGNING_KEY) as string | undefined,
+        migrationDeadline: (pqSection.MIGRATION_DEADLINE || pqSection.migration_deadline) as
+          string | undefined,
         hybridMode: Boolean(pqSection.HYBRID_MODE ?? true),
       };
     }
@@ -178,7 +190,9 @@ export class PostQuantumReadinessAuditor {
     // Direct root declarations
     if (toml.ML_DSA_PUBLIC_KEY || toml.POST_QUANTUM_KEY) {
       return {
-        parameterSet: (toml.ML_DSA_PARAMETER_SET || toml.POST_QUANTUM_ALGORITHM || 'ML-DSA-65') as string,
+        parameterSet: (toml.ML_DSA_PARAMETER_SET ||
+          toml.POST_QUANTUM_ALGORITHM ||
+          'ML-DSA-65') as string,
         publicKey: (toml.ML_DSA_PUBLIC_KEY || toml.POST_QUANTUM_KEY) as string,
         crossSignature: toml.POST_QUANTUM_CROSS_SIGNATURE as string | undefined,
         classicSigningKey: toml.SIGNING_KEY as string | undefined,
@@ -201,9 +215,12 @@ export class PostQuantumReadinessAuditor {
       findings.push({
         ruleId: 'PQ_NOT_CONFIGURED',
         severity: 'info',
-        message: 'No post-quantum lattice-based public key (ML-DSA / FIPS 204) declared in stellar.toml.',
+        message:
+          'No post-quantum lattice-based public key (ML-DSA / FIPS 204) declared in stellar.toml.',
       });
-      recommendations.push('Add [POST_QUANTUM] section declaring ML_DSA_PUBLIC_KEY with NIST FIPS 204 parameters.');
+      recommendations.push(
+        'Add [POST_QUANTUM] section declaring ML_DSA_PUBLIC_KEY with NIST FIPS 204 parameters.',
+      );
       return {
         score: 0,
         grade: 'F',
@@ -254,14 +271,19 @@ export class PostQuantumReadinessAuditor {
 
         // Verify cross-signature if present
         if (declaration.crossSignature && declaration.classicSigningKey && keyCheck.bytes) {
-          const verified = this.verifyCrossSignature(declaration.classicSigningKey, keyCheck.bytes, declaration.crossSignature);
+          const verified = this.verifyCrossSignature(
+            declaration.classicSigningKey,
+            keyCheck.bytes,
+            declaration.crossSignature,
+          );
           crossSigValid = verified;
           if (verified) {
             findings.push({
               ruleId: 'PQ_CROSS_SIGNATURE_VALID',
               severity: 'info',
               field: 'CROSS_SIGNATURE',
-              message: 'Classic Ed25519 cross-signature over post-quantum public key verified successfully.',
+              message:
+                'Classic Ed25519 cross-signature over post-quantum public key verified successfully.',
             });
             score += 25;
           } else {
@@ -274,7 +296,9 @@ export class PostQuantumReadinessAuditor {
             score -= 15;
           }
         } else if (!declaration.crossSignature) {
-          recommendations.push('Generate a cross-attestation signature using your classic Ed25519 signing key to bind the post-quantum key.');
+          recommendations.push(
+            'Generate a cross-attestation signature using your classic Ed25519 signing key to bind the post-quantum key.',
+          );
         }
       }
     }
