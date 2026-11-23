@@ -15,5 +15,6 @@ apps/extension/test-results/
 grammars/*/src/grammar.json
 grammars/*/src/node-types.json
 
-# SLSA test fixture must stay minified (JSONL).
-test/fixtures/gitops/slsa/attestation-public-key.json
+# Sigstore bundles are read as JSON lines (one document per line), so the
+# fixture must stay on a single line.
+test/fixtures/gitops/slsa/*.json

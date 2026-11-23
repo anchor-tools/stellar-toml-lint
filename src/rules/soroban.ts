@@ -8,6 +8,7 @@ import {
 import { auditUpgradeSecurity } from '../soroban/upgrade-auditor.js';
 import { auditSupplyInvariant } from '../soroban/supply-invariant.js';
 import { auditTomlStorageTtl } from '../soroban/ttlAuditor.js';
+import { auditTomlConstructorInvariants } from '../soroban/constructorVerifier.js';
 import type { TtlAuditorOptions } from '../soroban/ttlAuditor.js';
 import { auditWasmReentrancy } from '../soroban/reentrancyValidator.js';
 import { rpcUrlFor } from './display-decimals-audit.js';
@@ -105,6 +106,14 @@ export async function checkContracts(
       }
     }
   }
+
+  // Constructor and initialization invariants of every declared contract.
+  diagnostics.push(
+    ...(await auditTomlConstructorInvariants(doc, fetchImpl, {
+      rpcUrl,
+      ...(options.rules !== undefined ? { rules: options.rules } : {}),
+    })),
+  );
 
   // Opt-in storage TTL audit of every declared contract.
   if (options.storageTtl !== undefined) {

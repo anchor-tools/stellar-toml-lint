@@ -6,8 +6,8 @@
  * aggregated signature verification using optimal Ate / Tate pairings.
  */
 
-import { bls12_381 } from '@noble/curves/bls12-381';
 import { parse as parseToml } from 'smol-toml';
+import { bls12_381 } from '@noble/curves/bls12-381';
 
 export type BlsGroup = 'G1' | 'G2';
 export type SerializationFormat = 'compressed' | 'uncompressed';
@@ -66,7 +66,7 @@ export const BLS12_381_P =
 function toBytes(input: Uint8Array | string): Uint8Array {
   if (input instanceof Uint8Array || ArrayBuffer.isView(input) || Buffer.isBuffer(input))
     return input as Uint8Array;
-  if (typeof input !== 'string') return new Uint8Array(input as unknown as ArrayLike<number>);
+  if (typeof input !== 'string') return new Uint8Array(input as ArrayLike<number>);
   const cleaned = input.trim().replace(/^0x/i, '');
   return Buffer.from(cleaned, 'hex');
 }
@@ -465,6 +465,7 @@ export class BlsSignatureVerifier {
     let parsed: Record<string, unknown>;
     if (typeof toml === 'string') {
       try {
+        // parsed via the module-level smol-toml import
         parsed = parseToml(toml) as Record<string, unknown>;
       } catch {
         parsed = {};

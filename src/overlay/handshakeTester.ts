@@ -7,18 +7,6 @@
  */
 
 import { Keypair, Networks, StrKey, hash, xdr } from '@stellar/stellar-base';
-
-interface TcpSocket {
-  write(data: Buffer): void;
-  destroy(): void;
-  on(event: 'data', listener: (chunk: Buffer | string) => void): void;
-  on(event: 'error', listener: (err: Error) => void): void;
-  on(event: 'close', listener: () => void): void;
-  end(): void;
-}
-interface NetModuleShape {
-  createConnection: (options: { host: string; port: number }, cb?: () => void) => TcpSocket;
-}
 import { ed25519 } from '@noble/curves/ed25519';
 import { sha256 } from '@noble/hashes/sha256';
 import { hmac } from '@noble/hashes/hmac';
@@ -31,6 +19,21 @@ export const OVERLAY_VERSION_MISMATCH = 'overlay/version-mismatch';
 export const OVERLAY_VALIDATOR_KEY_MISMATCH = 'overlay/validator-key-mismatch';
 export const OVERLAY_CERT_INVALID = 'overlay/cert-invalid';
 export const OVERLAY_AUTH_MAC_INVALID = 'overlay/auth-mac-invalid';
+
+/**
+ * The slice of node:net that the TCP transport uses. Declared locally so this module
+ * keeps no static node: import and stays inside the browser bundle boundary.
+ */
+interface OverlaySocket {
+  write(data: Uint8Array): boolean;
+  end(): void;
+  destroy(): void;
+  on(event: string, listener: (...args: never[]) => void): this;
+}
+
+interface OverlayNetModule {
+  createConnection(options: { host: string; port: number }, onConnect: () => void): OverlaySocket;
+}
 
 export const DEFAULT_OVERLAY_PORT = 11625;
 export const DEFAULT_OVERLAY_VERSION = 34;
@@ -318,8 +321,7 @@ export class OverlayHandshakeTester {
     }
 
     const stellarMsg = xdr.StellarMessage.fromXDR(Buffer.from(payload));
-    const msgArm =
-      (stellarMsg as unknown as { arm?: () => string }).arm?.() ?? stellarMsg.switch().name;
+    const msgArm = stellarMsg.switch().name;
     if (msgArm !== 'hello') {
       throw new Error(`Expected HELLO message, got ${msgArm}`);
     }
@@ -526,7 +528,7 @@ export class OverlayHandshakeTester {
     timeoutMs: number,
   ): Promise<Uint8Array> {
     const netModule = 'node:net';
-    const { createConnection } = (await import(/* @vite-ignore */ netModule)) as NetModuleShape;
+    const { createConnection } = (await import(/* @vite-ignore */ netModule)) as OverlayNetModule;
     return new Promise((resolve, reject) => {
       const socket = createConnection({ host, port }, () => {
         socket.write(Buffer.from(data));

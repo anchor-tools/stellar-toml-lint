@@ -391,6 +391,7 @@ export class RangeProofVerifier {
 
     // Compute polynomial t(X) = t0 + t1*X + t2*X^2
     const z2 = mod(z * z, order);
+
     // y powers
     const yPowers: bigint[] = [1n];
     for (let i = 1; i <= bitLength; i++) {

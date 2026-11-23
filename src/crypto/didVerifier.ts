@@ -199,6 +199,7 @@ export class DidResolutionVerifier {
 
     if (typeof toml === 'string') {
       try {
+        // parsed via the module-level smol-toml import
         parsed = parseToml(toml) as Record<string, unknown>;
       } catch {
         // Simple regex fallback if parser fails
@@ -523,7 +524,7 @@ export class DidResolutionVerifier {
     }
 
     for (const vm of vms) {
-      const summary = this.validateVerificationMethod(vm);
+      const summary = this.validateVerificationMethod(vm, doc.id);
       summaries.push(summary);
       if (!summary.valid && summary.error) {
         errors.push(`VerificationMethod "${vm.id}": ${summary.error}`);
@@ -544,7 +545,7 @@ export class DidResolutionVerifier {
           authenticated = true;
           break;
         } else if (typeof auth === 'object' && auth !== null) {
-          const inlineSummary = this.validateVerificationMethod(auth);
+          const inlineSummary = this.validateVerificationMethod(auth, doc.id);
           summaries.push(inlineSummary);
           if (inlineSummary.valid) {
             authenticated = true;
@@ -562,7 +563,10 @@ export class DidResolutionVerifier {
   /**
    * Validate a single verification method (e.g. Ed25519VerificationKey2020).
    */
-  public validateVerificationMethod(vm: VerificationMethod): VerificationMethodSummary {
+  public validateVerificationMethod(
+    vm: VerificationMethod,
+    _docId: string,
+  ): VerificationMethodSummary {
     if (!vm.id || !vm.type || !vm.controller) {
       return {
         id: vm.id || 'unknown',
