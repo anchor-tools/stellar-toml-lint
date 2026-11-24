@@ -5072,6 +5072,107 @@ async function runHeapProfileCommand(argv: string[]): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint monitor-sponsor --account <pubkey> [--horizon <url>] [--surge-txs <n>] [--buffer <xlm>] [--slack <url>] [--discord <url>] [--pagerduty <url>] [--pagerduty-key <key>]` */
+async function monitorSponsor(argv: string[]): Promise<number> {
+  let account: string | undefined;
+  let horizon = DEFAULT_HORIZON_URL;
+  let surgeTxs = '10000';
+  let buffer = '100';
+  const targets: {
+    slack?: string;
+    discord?: string;
+    pagerduty?: string;
+    pagerdutyRoutingKey?: string;
+  } = {};
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    if (arg === '-h' || arg === '--help') {
+      process.stdout.write(
+        `Usage: stellar-toml-lint monitor-sponsor --account <pubkey> [--horizon <url>] [--surge-txs <count>] [--buffer <xlm>] [--slack <url>] [--discord <url>] [--pagerduty <url>] [--pagerduty-key <key>]\n`,
+      );
+      return 0;
+    } else if (arg === '--account') {
+      account = requireValue(argv, ++i, arg);
+    } else if (arg === '--horizon') {
+      horizon = requireValue(argv, ++i, arg);
+    } else if (arg === '--surge-txs') {
+      surgeTxs = requireValue(argv, ++i, arg);
+    } else if (arg === '--buffer') {
+      buffer = requireValue(argv, ++i, arg);
+    } else if (arg === '--slack') {
+      targets.slack = requireValue(argv, ++i, arg);
+    } else if (arg === '--discord') {
+      targets.discord = requireValue(argv, ++i, arg);
+    } else if (arg === '--pagerduty') {
+      targets.pagerduty = requireValue(argv, ++i, arg);
+    } else if (arg === '--pagerduty-key') {
+      targets.pagerdutyRoutingKey = requireValue(argv, ++i, arg);
+    } else {
+      process.stderr.write(`Unknown option "${arg}".\n`);
+      return 2;
+    }
+  }
+
+  if (account === undefined) {
+    process.stderr.write('monitor-sponsor requires --account <pubkey>.\n');
+    return 2;
+  }
+
+  const surgeCount = Number.parseInt(surgeTxs, 10);
+  const balanceBuffer = Number.parseFloat(buffer);
+  if (!Number.isFinite(surgeCount) || surgeCount < 1) {
+    process.stderr.write('--surge-txs must be a positive integer.\n');
+    return 2;
+  }
+  if (!Number.isFinite(balanceBuffer) || balanceBuffer < 0) {
+    process.stderr.write('--buffer must be a non-negative number.\n');
+    return 2;
+  }
+
+  try {
+    process.stdout.write(`Querying Horizon for sponsor account: ${account}...\n`);
+    const watchdog = new SponsorshipPoolWatchdog({
+      horizonUrl: horizon,
+      balanceBufferXlm: balanceBuffer,
+      targets,
+    });
+    const result = await watchdog.monitor(account, { surgeTransactionCount: surgeCount });
+
+    process.stdout.write('\n--- Sponsorship Pool Watchdog Report ---\n');
+    process.stdout.write(`Account ID               : ${result.state.accountId}\n`);
+    process.stdout.write(`Spendable Balance (XLM)  : ${result.state.balanceXlm.toFixed(4)}\n`);
+    process.stdout.write(`Sponsored Entries        : ${result.state.sponsoredEntriesCount}\n`);
+    process.stdout.write(`Surge Simulation Txs     : ${result.simulation.surgeTransactionCount}\n`);
+    process.stdout.write(
+      `Projected Post-Surge XLM : ${result.simulation.projectedBalanceAfterSurgeXlm.toFixed(4)}\n`,
+    );
+    process.stdout.write(
+      `Depletion Timeline (hrs) : ${result.simulation.depletionHours !== null ? result.simulation.depletionHours.toFixed(2) : 'N/A'}\n`,
+    );
+    process.stdout.write(`Health Status            : ${result.severity.toUpperCase()}\n`);
+    process.stdout.write(`Alert Deliveries Sent    : ${result.deliveries.length}\n`);
+
+    if (result.severity === 'critical') {
+      process.stderr.write(
+        '\n[!] CRITICAL: Sponsorship pool reserve is critically low or exhausted!\n',
+      );
+      return 1;
+    }
+    if (result.severity === 'warning') {
+      process.stderr.write(
+        '\n[!] WARNING: Sponsorship pool reserve is approaching warning threshold.\n',
+      );
+      return 0;
+    }
+    process.stdout.write('\n[✓] Sponsor account reserve is healthy.\n');
+    return 0;
+  } catch (error) {
+    process.stderr.write(`Error monitoring sponsor account: ${message(error)}\n`);
+    return 2;
+  }
+}
+
 main(process.argv.slice(2))
   .then((code) => {
     process.exitCode = code;
