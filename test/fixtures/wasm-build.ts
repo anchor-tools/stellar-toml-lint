@@ -104,9 +104,13 @@ export interface WasmModuleOptions {
   types: number[][];
   imports?: WasmImport[];
   memoryPages?: number;
+  /** Maximum pages; omit for an unbounded memory. */
+  memoryMaxPages?: number;
   data?: { offset: number; bytes: number[] | string }[];
   functions?: WasmFunction[];
   exports?: WasmExport[];
+  /** Debug names for the defined functions, indexed from the first one. */
+  functionNames?: string[];
 }
 
 export function buildWasm(options: WasmModuleOptions): Uint8Array {
@@ -137,7 +141,11 @@ export function buildWasm(options: WasmModuleOptions): Uint8Array {
   }
 
   if (options.memoryPages !== undefined) {
-    out.push(...section(5, vec([[0x00, ...u32(options.memoryPages)]])));
+    const limits =
+      options.memoryMaxPages === undefined
+        ? [0x00, ...u32(options.memoryPages)]
+        : [0x01, ...u32(options.memoryPages), ...u32(options.memoryMaxPages)];
+    out.push(...section(5, vec([limits])));
   }
 
   if (options.exports !== undefined && options.exports.length > 0) {
@@ -181,6 +189,16 @@ export function buildWasm(options: WasmModuleOptions): Uint8Array {
         ),
       ),
     );
+  }
+
+  if (options.functionNames !== undefined && options.functionNames.length > 0) {
+    const imported = imports.filter((entry) => entry.type !== undefined).length;
+    const subsection = [
+      ...u32(options.functionNames.length),
+      ...options.functionNames.flatMap((text, index) => [...u32(imported + index), ...name(text)]),
+    ];
+    // Custom section `name`, subsection 1 (function names).
+    out.push(...section(0, [...name('name'), 0x01, ...u32(subsection.length), ...subsection]));
   }
 
   return Uint8Array.from(out);

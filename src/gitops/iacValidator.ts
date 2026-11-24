@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 export interface IacValidationIssue {
   severity: 'error' | 'warning';
@@ -21,20 +21,9 @@ export class IacDeploymentValidator {
     const issues: IacValidationIssue[] = [];
     const stats = fs.statSync(targetPath);
 
-    let files: string[] = [];
-    if (stats.isDirectory()) {
-      files = this.walkDir(targetPath);
-    } else {
-      files = [targetPath];
-    }
+    const files = stats.isDirectory() ? this.walkDir(targetPath) : [targetPath];
 
     let foundTfOrYaml = false;
-    let hasHttpsRedirect = false;
-    let hasCors = false;
-    let hasWellKnown = false;
-    let hasWaf = false;
-    let hasUnencryptedBucket = false;
-    let hasPublicBucket = false;
 
     for (const file of files) {
       const ext = path.extname(file).toLowerCase();
@@ -54,13 +43,13 @@ export class IacDeploymentValidator {
         severity: 'warning',
         category: 'security',
         message: 'No Terraform (.tf) or Ansible playbook (.yml/.yaml) files found in path.',
-        file: targetPath
+        file: targetPath,
       });
     }
 
     return {
-      valid: !issues.some(i => i.severity === 'error'),
-      issues
+      valid: !issues.some((i) => i.severity === 'error'),
+      issues,
     };
   }
 
@@ -84,23 +73,33 @@ export class IacDeploymentValidator {
   private auditTerraformContent(content: string, file: string, issues: IacValidationIssue[]): void {
     // Check for HTTPS redirection
     if (content.includes('aws_lb_listener') || content.includes('aws_cloudfront_distribution')) {
-      if (!content.includes('REDIRECT_TO_HTTPS') && !content.includes('https') && !content.includes('viewer_protocol_policy = "redirect-to-https"')) {
+      if (
+        !content.includes('REDIRECT_TO_HTTPS') &&
+        !content.includes('https') &&
+        !content.includes('viewer_protocol_policy = "redirect-to-https"')
+      ) {
         issues.push({
           severity: 'warning',
           category: 'https',
-          message: 'Terraform load balancer or CloudFront distribution may lack explicit HTTPS redirection.',
-          file
+          message:
+            'Terraform load balancer or CloudFront distribution may lack explicit HTTPS redirection.',
+          file,
         });
       }
     }
 
     // Check for CORS
-    if (!content.includes('Access-Control-Allow-Origin') && !content.includes('cors') && !content.includes('Access-Control')) {
+    if (
+      !content.includes('Access-Control-Allow-Origin') &&
+      !content.includes('cors') &&
+      !content.includes('Access-Control')
+    ) {
       issues.push({
         severity: 'warning',
         category: 'cors',
-        message: 'Terraform configuration does not appear to configure CORS headers required for SEP-1 stellar.toml.',
-        file
+        message:
+          'Terraform configuration does not appear to configure CORS headers required for SEP-1 stellar.toml.',
+        file,
       });
     }
 
@@ -110,28 +109,35 @@ export class IacDeploymentValidator {
         issues.push({
           severity: 'warning',
           category: 'well-known',
-          message: 'S3 bucket or object configuration does not explicitly reference /.well-known/stellar.toml path.',
-          file
+          message:
+            'S3 bucket or object configuration does not explicitly reference /.well-known/stellar.toml path.',
+          file,
         });
       }
 
       // Check unencrypted S3 bucket
-      if (content.includes('aws_s3_bucket') && !content.includes('aws_s3_bucket_server_side_encryption_configuration')) {
+      if (
+        content.includes('aws_s3_bucket') &&
+        !content.includes('aws_s3_bucket_server_side_encryption_configuration')
+      ) {
         issues.push({
           severity: 'error',
           category: 'security',
           message: 'S3 bucket defined without server-side encryption configuration.',
-          file
+          file,
         });
       }
 
       // Check exposed public S3 buckets
-      if (content.includes('acl = "public-read"') || content.includes('block_public_acls = false')) {
+      if (
+        content.includes('acl = "public-read"') ||
+        content.includes('block_public_acls = false')
+      ) {
         issues.push({
           severity: 'error',
           category: 'security',
           message: 'S3 bucket is configured with public access enabled.',
-          file
+          file,
         });
       }
     }
@@ -142,7 +148,7 @@ export class IacDeploymentValidator {
         severity: 'warning',
         category: 'security',
         message: 'CloudFront distribution lacks a WAF web_acl_id association.',
-        file
+        file,
       });
     }
   }
@@ -154,16 +160,20 @@ export class IacDeploymentValidator {
           severity: 'warning',
           category: 'well-known',
           message: 'Ansible playbook does not deploy stellar.toml to /.well-known/ path.',
-          file
+          file,
         });
       }
 
-      if (!content.includes('ssl_certificate') && !content.includes('listen 443') && !content.includes('https')) {
+      if (
+        !content.includes('ssl_certificate') &&
+        !content.includes('listen 443') &&
+        !content.includes('https')
+      ) {
         issues.push({
           severity: 'warning',
           category: 'https',
           message: 'Ansible Nginx configuration does not enforce HTTPS.',
-          file
+          file,
         });
       }
 
@@ -172,7 +182,7 @@ export class IacDeploymentValidator {
           severity: 'warning',
           category: 'cors',
           message: 'Ansible playbook does not configure CORS headers for stellar.toml.',
-          file
+          file,
         });
       }
     }
