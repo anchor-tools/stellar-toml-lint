@@ -261,8 +261,11 @@ export function extractSponsorAccountsFromToml(tomlContent: string): string[] {
     if (/(sponsor|fee_bump|fee_pool)/i.test(line)) {
       let match: RegExpExecArray | null;
       while ((match = gKeyRegex.exec(line)) !== null) {
-        accounts.add(match[1]);
+        // Guard against a future change to the regex accidentally matching an
+        // empty group captured by a malformed pattern.
+        if (match[1] !== undefined) accounts.add(match[1]);
       }
+      gKeyRegex.lastIndex = 0;
     }
   }
   return Array.from(accounts);
