@@ -70,6 +70,7 @@ import { floodingDefenseRules } from '../overlay/floodingTester.js';
 import { overlayHeartbeatRules } from '../overlay/heartbeat-rules.js';
 import { tier1AlignmentRules } from '../overlay/tier1AlignmentVerifier.js';
 import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
+import { gitopsRules } from '../gitops/k8sIngressAuditor.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -146,6 +147,7 @@ export const allRules: Rule[] = [
   ...overlayHeartbeatRules,
   ...tier1AlignmentRules,
   ...sep31Sep12Rules,
+  ...gitopsRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -221,4 +223,5 @@ export {
   overlayHeartbeatRules,
   tier1AlignmentRules,
   sep31Sep12Rules,
+  gitopsRules,
 };

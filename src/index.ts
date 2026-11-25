@@ -10,6 +10,13 @@
  * ```
  */
 export { lint, lintDomain } from './lint.js';
+export {
+  K8sIngressCertManagerAuditor,
+  auditK8sManifests,
+  gitopsRules,
+} from './gitops/k8sIngressAuditor.js';
+export { parseYamlDocuments } from './gitops/yaml.js';
+export type { YamlDocument, YamlParseError, YamlParseResult } from './gitops/yaml.js';
 export { lspMain } from './lsp.js';
 export { allRules, ruleIds } from './rules/index.js';
 export { PRESETS, PRESET_NAMES, resolvePreset } from './presets.js';
@@ -325,6 +332,49 @@ export type {
   DiscordIncidentPayload,
   PagerDutyIncidentPayload,
 } from './gitops/incidentDispatcher.js';
+export {
+  CiMatrixWorkflowGenerator,
+  DEFAULT_PINNED_ACTIONS,
+  DEFAULT_WORKFLOW_PATH,
+  DEFAULT_FILE_PATTERN,
+  SCORECARD_MARKER,
+  validateWorkflow,
+} from './gitops/ciWorkflowGenerator.js';
+export type {
+  CiActionName,
+  CiMatrixWorkflowOptions,
+  PinnedAction,
+} from './gitops/ciWorkflowGenerator.js';
+export {
+  CI_ENVIRONMENTS,
+  CI_ENVIRONMENT_NAMES,
+  checkNetworkIsolation,
+  parseCiMatrix,
+  resolveCiEnvironment,
+} from './gitops/ciEnvironments.js';
+export type { CiEnvironmentName, CiEnvironmentProfile } from './gitops/ciEnvironments.js';
+export {
+  CI_REPORT_SCHEMA,
+  buildCiReport,
+  formatCiSarif,
+  isCiEnvironmentReport,
+  sarifCategory,
+  validateSarif,
+} from './gitops/ciSarif.js';
+export type { BuildCiReportInput, CiEnvironmentReport } from './gitops/ciSarif.js';
+export {
+  formatCiScorecard,
+  formatEnvironmentScorecard,
+  gradeFor,
+  scoreReport,
+} from './gitops/ciScorecard.js';
+export type { CiScorecardOptions } from './gitops/ciScorecard.js';
+export {
+  ASSET_CACHE_ENV,
+  createAssetCacheFetch,
+  isCacheableAssetUrl,
+} from './gitops/ciAssetCache.js';
+export type { AssetCacheOptions } from './gitops/ciAssetCache.js';
 export {
   ContainerSecurityAuditor,
   auditDockerfile,

@@ -201,6 +201,7 @@ and only `--write` changes the file. `--split` instead emits modular partials gr
 | `--audit-bridge-replays <file>`   | Match EVM lock event logs to Stellar mints and flag duplicate, unrecorded or replayable events                                        |
 | `--verify-attestations`           | Verify reserve attestation checksums and age; with `--check-network` download the PDFs (also `verify-attestations --domain <domain>`) |
 | `--audit-burn-redemptions <file>` | Verify wrapped-asset redemptions burn supply and flag pseudo-burns                                                                    |
+| `--audit-k8s-manifests <path>`    | Audit Kubernetes Ingress, Certificate, Issuer and ClusterIssuer YAML for cert-manager renewal problems                                |
 
 ### Options
 
@@ -220,6 +221,10 @@ and only `--write` changes the file. `--split` instead emits modular partials gr
 | `--audit-sep38-spreads`       | Compare SEP-38 indicative and firm quote rates across small, medium and large tiers, and verify quote expiry handling               |
 | `--verify-federation-srv`     | Check `_stellar-federation._tcp.<domain>` SRV records against `FEDERATION_SERVER` (use with `--domain`)                             |
 | `--audit-esg-disclosures`     | Verify `DOCUMENTATION.ORG_ESG` disclosures and attestation signature, and print a sustainability rating                             |
+| `--audit-caa`                 | Check DNS CAA records on `--domain` and its parent zones for `issue`, `issuewild` and `iodef`                                       |
+| `--verify-security-txt`       | Validate `/.well-known/security.txt` against RFC 9116 (also `verify-security-txt --domain <domain>`)                                |
+| `--audit-ip-spoofing`         | Probe SEP endpoints with spoofed client IP headers for rate-limit bypass (requires `--check-network`)                               |
+| `--audit-btc-reserves`        | Validate BTC `collateral_addresses`; with `--check-network` reconcile 6-conf UTXOs with supply                                      |
 | `--audit-opentelemetry`       | Probe SEP-6, SEP-24, SEP-31 and SEP-38 `/info` endpoints with W3C Trace Context headers and inspect response correlation evidence   |
 | `--audit-kyc-fsm`             | Audit SEP-12 customer status state machines for stuck or circular onboarding (use with `--domain`)                                  |
 | `--audit-cors`                | Probe every declared endpoint for wildcard-plus-credentials and unvalidated `Origin` CORS policies (OWASP)                          |
@@ -896,6 +901,60 @@ To route them into the Security tab instead:
     sarif_file: stellar-toml.sarif
 ```
 
+### Multi-environment matrix workflow
+
+Anchors that publish one `stellar.toml` per tenant (development, staging,
+testnet, production) can generate a complete workflow instead of writing one:
+
+```sh
+stellar-toml-lint init-ci --matrix testnet,public
+# writes .github/workflows/stellar-toml-lint-matrix.yml
+```
+
+By default it validates `environments/<env>/stellar.toml`. Change that with
+`--file-pattern 'tenants/{environment}/.well-known/stellar.toml'`, or override
+one tenant with `--file public=public/.well-known/stellar.toml`. Each cell of
+the environment × Node.js matrix (`--node 20,22` by default):
+
+- lints the tenant's file. On `testnet` and `public` it also runs
+  `--check-network` (link reachability, TLS, Horizon). Force it on or off with
+  `--check-network` / `--no-check-network`.
+- **checks network isolation**: the file's `NETWORK_PASSPHRASE` and well-known
+  `HORIZON_URL` must belong to that environment's network, and the production
+  file must not point at `localhost`, private IPs or `staging`/`dev`/`qa` hosts.
+  These findings use `ci/*` rule ids.
+- uploads **SARIF** to code scanning under the `stellar-toml-lint/<env>`
+  category, so each tenant's alerts stay separate.
+- caches the tool install and fetched **remote assets** (logos, JSON schemas,
+  IPFS content) with `actions/cache`, so warm runs finish in seconds.
+
+A final job posts one **scorecard comment** on the pull request: a per-environment
+table with a 0–100 score, counts, and network-isolation status. It edits that
+comment in place on later pushes instead of adding new ones.
+
+The generated workflow follows GitHub's hardening guidance:
+
+- every action is pinned to a full commit SHA, with a version comment Dependabot
+  can bump;
+- the default token has `permissions: {}`, and each job grants only the scopes
+  it needs;
+- checkout uses `persist-credentials: false`, and the tool installs with
+  `--ignore-scripts`;
+- matrix and event values reach scripts only through `env`;
+- the commenting job never checks out PR code;
+- fork PRs skip the steps that need a write token.
+
+`--no-sarif`, `--no-pr-comment`, `--no-cache` and `--strict` adjust it, and
+`--stdout` prints the workflow instead of writing it. The building blocks are
+also commands:
+
+- `ci-report` turns one cell's linter JSON into SARIF, a markdown fragment and a
+  JSON report.
+- `ci-scorecard` combines those reports into the comment.
+
+Setting `STELLAR_TOML_LINT_ASSET_CACHE=<dir>` enables the asset cache for any
+run.
+
 ### Azure DevOps
 
 Copy [`templates/azure-pipelines.yml`](templates/azure-pipelines.yml) into your repository and
@@ -1114,6 +1173,22 @@ the same JSON envelope with `"status": "error"`.
 Exit codes for CI: `0` in sync, `1` drift detected, `2` the check could not run (timeout, HTTP
 error, missing file, invalid TOML). `--timeout <ms>` defaults to 10000.
 
+### Kubernetes ingress and cert-manager audit
+
+`--audit-k8s-manifests <path>` audits Kubernetes YAML for the failure modes that make TLS
+certificates expire or silently stop renewing. The path may be one manifest or a directory,
+which is walked recursively for `.yaml`/`.yml` files.
+
+```sh
+stellar-toml-lint --audit-k8s-manifests deploy/
+```
+
+The auditor reads `Ingress`, `Certificate`, `Issuer`, and `ClusterIssuer` resources. It reports
+missing or mismatched `secretName` references, certificates with no usable issuer, ACME HTTP-01
+ingresses that do not route `/.well-known/acme-challenge`, disabled or missing renewal, expired
+or near-expiry certificates, and ingress TLS hosts that do not cover the declared hosts. Findings
+use `gitops/*` rule ids.
+
 ### Telemetry and SLA tooling
 
 Four subcommands audit how a live anchor behaves operationally. Every network probe is a
@@ -1240,7 +1315,8 @@ interface Diagnostic {
     | 'network'
     | 'security'
     | 'policy'
-    | 'sep12';
+    | 'sep12'
+    | 'gitops';
   message: string;
   path?: string; // 'CURRENCIES[1].issuer'
   position?: { line: number; column: number };

@@ -6,15 +6,33 @@
  * set is small and stable, and a linter that anchors run in CI benefits from a
  * dependency tree small enough to audit by eye.
  */
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { parse as parseToml } from 'smol-toml';
 import { createReadStream, watch } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
 import { loadPluginRules } from './engine/ruleLoader.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
+import { K8sIngressCertManagerAuditor } from './gitops/k8sIngressAuditor.js';
+import { ASSET_CACHE_ENV, createAssetCacheFetch } from './gitops/ciAssetCache.js';
+import {
+  CiMatrixWorkflowGenerator,
+  type CiMatrixWorkflowOptions,
+} from './gitops/ciWorkflowGenerator.js';
+import {
+  checkNetworkIsolation,
+  parseCiMatrix,
+  resolveCiEnvironment,
+} from './gitops/ciEnvironments.js';
+import {
+  buildCiReport,
+  formatCiSarif,
+  isCiEnvironmentReport,
+  type CiEnvironmentReport,
+} from './gitops/ciSarif.js';
+import { formatCiScorecard, formatEnvironmentScorecard } from './gitops/ciScorecard.js';
 import { VaultSecretEngineVerifier } from './gitops/vaultVerifier.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import {
@@ -186,6 +204,7 @@ import {
   type IncidentSeverity,
 } from './gitops/incidentDispatcher.js';
 import { auditDockerfile, renderContainerReport } from './gitops/containerAuditor.js';
+import { DEFAULT_HORIZON_URL, SponsorshipPoolWatchdog } from './gitops/sponsorshipWatchdog.js';
 import {
   renderProvenanceReport,
   verifySlsaProvenance,
@@ -257,6 +276,7 @@ interface Cli {
   preset?: PresetName;
   maxWarnings?: number;
   checkNetwork: boolean;
+  auditK8sManifests?: string;
   followLinks: boolean;
   verifySep10: boolean;
   auditQuotes: boolean;
@@ -497,6 +517,9 @@ OPTIONS
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, SEP-8
                           regulated issuer flags, and ANCHOR_QUOTE_SERVER
                           against the network
+      --audit-k8s-manifests <path>
+                          Audit Kubernetes Ingress, Certificate, Issuer, and
+                          ClusterIssuer YAML for cert-manager renewal issues
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --audit-quotes      Book an ANCHOR_QUOTE_SERVER SEP-38 quote and execute it on
                           TRANSFER_SERVER to verify atomic price and fee execution
@@ -689,6 +712,31 @@ test-kms-signer OPTIONS
                           (e.g. eval "$(stellar-toml-lint --completion zsh)")
   -v, --version
   -h, --help
+
+init-ci OPTIONS
+  --matrix <envs>     Comma-separated environments: development, staging,
+                      testnet, public (aliases: dev, stage, prod, mainnet).
+                      Default: testnet,public
+  --node <versions>   Comma-separated Node.js versions; the first is primary
+                      and uploads SARIF and the scorecard. Default: 20,22
+  --file-pattern <p>  Tenant file path; {environment} is substituted.
+                      Default: environments/{environment}/stellar.toml
+  --file <env>=<path> Override one environment's path (repeatable)
+  --output <path>     Default: .github/workflows/stellar-toml-lint-matrix.yml
+  --check-network / --no-check-network
+                      Force live link, TLS and Horizon checks on or off for
+                      every environment (default: on for testnet and public)
+  --strict            Treat warnings as failures
+  --no-sarif          Skip code scanning upload
+  --no-pr-comment     Skip the pull request scorecard bot
+  --no-cache          Skip tool and remote asset caching
+  --stdout            Print the workflow instead of writing it
+  --force             Overwrite an existing workflow file
+
+ENVIRONMENT
+  STELLAR_TOML_LINT_ASSET_CACHE=<dir>
+                      Cache fetched logos, JSON schemas and IPFS content under
+                      <dir> for 24 hours (set automatically by init-ci workflows)
 
 CONFIG
   .stellartomlrc.json    Project defaults, discovered upward from the linted
@@ -3242,6 +3290,277 @@ async function allowKeysFor(cli: Cli, path: string): Promise<string[]> {
   return [...(config.knownKeys ?? []), ...(cli.allowKeys ?? [])];
 }
 
+/**
+ * `init-ci`: writes a GitHub Actions workflow validating one stellar.toml per
+ * environment across a Node.js matrix. Exit codes: 0 written, 1 the target
+ * exists (without --force), 2 bad usage.
+ */
+async function initCiCommand(args: string[]): Promise<number> {
+  const files: NonNullable<CiMatrixWorkflowOptions['files']> = {};
+  const options: CiMatrixWorkflowOptions = { toolVersion: VERSION, files };
+  let toStdout = false;
+  let force = false;
+
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] as string;
+      switch (arg) {
+        case '-h':
+        case '--help':
+          process.stdout.write(USAGE);
+          return 0;
+        case '--matrix':
+          options.environments = parseCiMatrix(requireValue(args, ++i, arg));
+          break;
+        case '--node':
+          options.nodeVersions = requireValue(args, ++i, arg)
+            .split(',')
+            .map((v) => v.trim())
+            .filter((v) => v !== '');
+          break;
+        case '--file-pattern':
+          options.filePattern = requireValue(args, ++i, arg);
+          break;
+        case '--file': {
+          const value = requireValue(args, ++i, arg);
+          const eq = value.indexOf('=');
+          const env = eq > 0 ? resolveCiEnvironment(value.slice(0, eq)) : undefined;
+          if (env === undefined) throw new Error('--file expects <environment>=<path>');
+          files[env] = value.slice(eq + 1);
+          break;
+        }
+        case '-o':
+        case '--output':
+          options.workflowPath = requireValue(args, ++i, arg);
+          break;
+        case '--check-network':
+          options.checkNetwork = true;
+          break;
+        case '--no-check-network':
+          options.checkNetwork = false;
+          break;
+        case '--strict':
+          options.strict = true;
+          break;
+        case '--no-sarif':
+          options.sarif = false;
+          break;
+        case '--no-pr-comment':
+          options.prComment = false;
+          break;
+        case '--no-cache':
+          options.cache = false;
+          break;
+        case '--stdout':
+          toStdout = true;
+          break;
+        case '--force':
+          force = true;
+          break;
+        default:
+          throw new Error(`Unknown option "${arg}" for init-ci`);
+      }
+    }
+    const matrix = options.environments ?? ['testnet', 'public'];
+    for (const env of Object.keys(files)) {
+      if (!matrix.includes(env as (typeof matrix)[number])) {
+        throw new Error(`--file names "${env}", which is not in --matrix`);
+      }
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  let generator: CiMatrixWorkflowGenerator;
+  try {
+    generator = new CiMatrixWorkflowGenerator(options);
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  const yaml = generator.generate();
+  if (toStdout) {
+    process.stdout.write(yaml);
+    return 0;
+  }
+
+  const target = resolve(generator.workflowPath);
+  try {
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, yaml, { encoding: 'utf8', flag: force ? 'w' : 'wx' });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      process.stderr.write(`${generator.workflowPath} already exists; pass --force to overwrite\n`);
+      return 1;
+    }
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  const listed = Object.entries(generator.files).map(([env, file]) => `  ${env}: ${file}`);
+  process.stdout.write(
+    `Wrote ${generator.workflowPath}\nValidating:\n${listed.join('\n')}\n` +
+      'Commit it, then enable code scanning to see SARIF alerts in the Security tab.\n',
+  );
+  return 0;
+}
+
+/**
+ * `ci-report`: turns one matrix cell's linter output into the environment
+ * report, SARIF file and scorecard fragment. It exits 0 once inputs are valid —
+ * pass/fail is published as `ok=` on $GITHUB_OUTPUT so the workflow can upload
+ * results before failing the job.
+ */
+async function ciReportCommand(args: string[]): Promise<number> {
+  let environment: string | undefined;
+  let file: string | undefined;
+  let lintJsonPath: string | undefined;
+  let lintExitCode = 0;
+  let node: string | undefined;
+  let outDir = 'reports';
+  let checkNetwork = false;
+  let strict = false;
+
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] as string;
+      if (arg === '--environment') environment = requireValue(args, ++i, arg);
+      else if (arg === '--file') file = requireValue(args, ++i, arg);
+      else if (arg === '--lint-json') lintJsonPath = requireValue(args, ++i, arg);
+      else if (arg === '--lint-exit-code') {
+        lintExitCode = Number(requireValue(args, ++i, arg));
+        if (!Number.isInteger(lintExitCode) || lintExitCode < 0) {
+          throw new Error('--lint-exit-code expects a non-negative integer');
+        }
+      } else if (arg === '--node') node = requireValue(args, ++i, arg);
+      else if (arg === '--out-dir') outDir = requireValue(args, ++i, arg);
+      else if (arg === '--check-network') checkNetwork = true;
+      else if (arg === '--strict') strict = true;
+      else throw new Error(`Unknown option "${arg}" for ci-report`);
+    }
+    if (environment === undefined || file === undefined) {
+      throw new Error(
+        'Usage: stellar-toml-lint ci-report --environment <env> --file <path> ' +
+          '[--lint-json <file>] [--lint-exit-code <n>] [--node <v>] [--out-dir <dir>]',
+      );
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  const env = resolveCiEnvironment(environment);
+  if (env === undefined) {
+    process.stderr.write(`Unknown environment "${environment}"\n`);
+    return 2;
+  }
+
+  const source = await readFile(resolve(file), 'utf8').catch(() => undefined);
+  const lintJson =
+    lintJsonPath === undefined
+      ? undefined
+      : await readFile(resolve(lintJsonPath), 'utf8').catch(() => undefined);
+  const report = buildCiReport({
+    environment: env,
+    file,
+    ...(node === undefined ? {} : { node }),
+    checkNetwork,
+    strict,
+    lintExitCode,
+    ...(lintJson === undefined ? {} : { lintJson }),
+    isolation: source === undefined ? [] : checkNetworkIsolation(source, env),
+  });
+  if (source === undefined && report.error === undefined) {
+    report.error = `could not read ${file}`;
+    report.ok = false;
+  }
+
+  const markdown = formatEnvironmentScorecard(report);
+  try {
+    const dir = resolve(outDir);
+    await mkdir(dir, { recursive: true });
+    await writeFile(resolve(dir, `${env}.json`), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    await writeFile(
+      resolve(dir, `${env}.sarif`),
+      formatCiSarif([report], VERSION, source === undefined ? {} : { [file]: source }),
+      'utf8',
+    );
+    await writeFile(resolve(dir, `${env}.md`), markdown, 'utf8');
+    if (process.env.GITHUB_OUTPUT) {
+      await writeFile(process.env.GITHUB_OUTPUT, `ok=${report.ok}\n`, { flag: 'a' });
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  process.stdout.write(markdown);
+  return 0;
+}
+
+/** Reads every CI report under `dir`, up to two levels of artifact folders deep. */
+async function readCiReports(dir: string): Promise<CiEnvironmentReport[]> {
+  const reports: CiEnvironmentReport[] = [];
+  const visit = async (path: string, depth: number): Promise<void> => {
+    const entries = await readdir(path, { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = resolve(path, entry.name);
+      if (entry.isDirectory() && depth < 2) await visit(full, depth + 1);
+      else if (entry.isFile() && entry.name.endsWith('.json')) {
+        try {
+          const parsed: unknown = JSON.parse(await readFile(full, 'utf8'));
+          if (isCiEnvironmentReport(parsed)) reports.push(parsed);
+        } catch {
+          // Not a report; artifacts may carry other JSON.
+        }
+      }
+    }
+  };
+  await visit(dir, 0);
+  return reports;
+}
+
+/** `ci-scorecard`: combines the matrix's reports into the PR comment body. */
+async function ciScorecardCommand(args: string[]): Promise<number> {
+  let input: string | undefined;
+  let output: string | undefined;
+  let runUrl: string | undefined;
+  let commit: string | undefined;
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] as string;
+      if (arg === '--input') input = requireValue(args, ++i, arg);
+      else if (arg === '--output') output = requireValue(args, ++i, arg);
+      else if (arg === '--run-url') runUrl = requireValue(args, ++i, arg);
+      else if (arg === '--commit') commit = requireValue(args, ++i, arg);
+      else throw new Error(`Unknown option "${arg}" for ci-scorecard`);
+    }
+    if (input === undefined) {
+      throw new Error('Usage: stellar-toml-lint ci-scorecard --input <dir> [--output <file>]');
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  let reports: CiEnvironmentReport[];
+  try {
+    reports = await readCiReports(resolve(input));
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+  const markdown = formatCiScorecard(reports, {
+    ...(runUrl ? { runUrl } : {}),
+    ...(commit ? { commit } : {}),
+  });
+  if (output === undefined) process.stdout.write(markdown);
+  else await writeFile(resolve(output), markdown, 'utf8');
+  return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'test-kms-signer') {
     try {
@@ -3305,9 +3624,13 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
   if (argv[0] === 'probe-sla') return probeSlaCommand(argv.slice(1));
   if (argv[0] === 'calculate-uptime') return calculateUptimeCommand(argv.slice(1));
+  if (argv[0] === 'monitor-sponsor') return monitorSponsor(argv.slice(1));
   if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
+  if (argv[0] === 'init-ci') return initCiCommand(argv.slice(1));
+  if (argv[0] === 'ci-report') return ciReportCommand(argv.slice(1));
+  if (argv[0] === 'ci-scorecard') return ciScorecardCommand(argv.slice(1));
   if (argv[0] === 'audit-validator-rotation') return auditValidatorRotationCommand(argv.slice(1));
   if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
   if (argv[0] === 'audit-flood-policy') return auditFloodPolicyCommand(argv.slice(1));
@@ -3399,10 +3722,29 @@ async function main(argv: string[]): Promise<number> {
     try {
       // Fixture mode replaces the transport for every network-bound check, so a
       // hermetic run can never reach the internet by accident.
+      const assetCache = process.env[ASSET_CACHE_ENV];
       const fetchImpl =
-        cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
+        cli.mockFixtures !== undefined
+          ? createFixtureFetch(cli.mockFixtures)
+          : assetCache
+            ? createAssetCacheFetch(fetch, resolve(assetCache))
+            : fetch;
 
-      if (cli.domain && cli.paths.length === 0) {
+      if (cli.auditK8sManifests !== undefined) {
+        const files = await manifestFiles(cli.auditK8sManifests);
+        if (files.length === 0) {
+          throw new Error(`No Kubernetes YAML manifests found at ${cli.auditK8sManifests}.`);
+        }
+
+        const auditor = new K8sIngressCertManagerAuditor();
+        for (const file of files) {
+          const source = await readFile(file, 'utf8');
+          results.push({
+            name: file,
+            result: auditor.audit(source, { strict: cli.strict, rules: cli.rules }),
+          });
+        }
+      } else if (cli.domain && cli.paths.length === 0) {
         const config = await loadConfig(process.cwd(), pluginRuleIds);
         strict = strict || config.strict;
         maxWarnings ??= config.maxWarnings;
@@ -4215,6 +4557,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.checkNetwork = true;
         break;
 
+      case '--audit-k8s-manifests':
+        cli.auditK8sManifests = requireValue(argv, ++i, arg);
+        break;
+
       case '--verify-sep10':
         cli.verifySep10 = true;
         break;
@@ -4583,6 +4929,27 @@ function listRules(): string {
   return `${allRules.length} rules\n\n${lines.join('\n')}\n`;
 }
 
+/** Expands a file or directory into the YAML manifests the auditor should read. */
+async function manifestFiles(path: string): Promise<string[]> {
+  const info = await stat(path);
+  if (info.isFile()) return [path];
+  if (!info.isDirectory()) return [];
+
+  const entries = await readdir(path, { withFileTypes: true });
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+
+  const files: string[] = [];
+  for (const entry of entries) {
+    const child = join(path, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await manifestFiles(child)));
+    } else if (entry.isFile() && /\.ya?ml$/i.test(entry.name)) {
+      files.push(child);
+    }
+  }
+  return files;
+}
+
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
@@ -4747,6 +5114,107 @@ async function runHeapProfileCommand(argv: string[]): Promise<number> {
     return profile.leaked ? 1 : 0;
   } catch (error) {
     process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint monitor-sponsor --account <pubkey> [--horizon <url>] [--surge-txs <n>] [--buffer <xlm>] [--slack <url>] [--discord <url>] [--pagerduty <url>] [--pagerduty-key <key>]` */
+async function monitorSponsor(argv: string[]): Promise<number> {
+  let account: string | undefined;
+  let horizon = DEFAULT_HORIZON_URL;
+  let surgeTxs = '10000';
+  let buffer = '100';
+  const targets: {
+    slack?: string;
+    discord?: string;
+    pagerduty?: string;
+    pagerdutyRoutingKey?: string;
+  } = {};
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    if (arg === '-h' || arg === '--help') {
+      process.stdout.write(
+        `Usage: stellar-toml-lint monitor-sponsor --account <pubkey> [--horizon <url>] [--surge-txs <count>] [--buffer <xlm>] [--slack <url>] [--discord <url>] [--pagerduty <url>] [--pagerduty-key <key>]\n`,
+      );
+      return 0;
+    } else if (arg === '--account') {
+      account = requireValue(argv, ++i, arg);
+    } else if (arg === '--horizon') {
+      horizon = requireValue(argv, ++i, arg);
+    } else if (arg === '--surge-txs') {
+      surgeTxs = requireValue(argv, ++i, arg);
+    } else if (arg === '--buffer') {
+      buffer = requireValue(argv, ++i, arg);
+    } else if (arg === '--slack') {
+      targets.slack = requireValue(argv, ++i, arg);
+    } else if (arg === '--discord') {
+      targets.discord = requireValue(argv, ++i, arg);
+    } else if (arg === '--pagerduty') {
+      targets.pagerduty = requireValue(argv, ++i, arg);
+    } else if (arg === '--pagerduty-key') {
+      targets.pagerdutyRoutingKey = requireValue(argv, ++i, arg);
+    } else {
+      process.stderr.write(`Unknown option "${arg}".\n`);
+      return 2;
+    }
+  }
+
+  if (account === undefined) {
+    process.stderr.write('monitor-sponsor requires --account <pubkey>.\n');
+    return 2;
+  }
+
+  const surgeCount = Number.parseInt(surgeTxs, 10);
+  const balanceBuffer = Number.parseFloat(buffer);
+  if (!Number.isFinite(surgeCount) || surgeCount < 1) {
+    process.stderr.write('--surge-txs must be a positive integer.\n');
+    return 2;
+  }
+  if (!Number.isFinite(balanceBuffer) || balanceBuffer < 0) {
+    process.stderr.write('--buffer must be a non-negative number.\n');
+    return 2;
+  }
+
+  try {
+    process.stdout.write(`Querying Horizon for sponsor account: ${account}...\n`);
+    const watchdog = new SponsorshipPoolWatchdog({
+      horizonUrl: horizon,
+      balanceBufferXlm: balanceBuffer,
+      targets,
+    });
+    const result = await watchdog.monitor(account, { surgeTransactionCount: surgeCount });
+
+    process.stdout.write('\n--- Sponsorship Pool Watchdog Report ---\n');
+    process.stdout.write(`Account ID               : ${result.state.accountId}\n`);
+    process.stdout.write(`Spendable Balance (XLM)  : ${result.state.balanceXlm.toFixed(4)}\n`);
+    process.stdout.write(`Sponsored Entries        : ${result.state.sponsoredEntriesCount}\n`);
+    process.stdout.write(`Surge Simulation Txs     : ${result.simulation.surgeTransactionCount}\n`);
+    process.stdout.write(
+      `Projected Post-Surge XLM : ${result.simulation.projectedBalanceAfterSurgeXlm.toFixed(4)}\n`,
+    );
+    process.stdout.write(
+      `Depletion Timeline (hrs) : ${result.simulation.depletionHours !== null ? result.simulation.depletionHours.toFixed(2) : 'N/A'}\n`,
+    );
+    process.stdout.write(`Health Status            : ${result.severity.toUpperCase()}\n`);
+    process.stdout.write(`Alert Deliveries Sent    : ${result.deliveries.length}\n`);
+
+    if (result.severity === 'critical') {
+      process.stderr.write(
+        '\n[!] CRITICAL: Sponsorship pool reserve is critically low or exhausted!\n',
+      );
+      return 1;
+    }
+    if (result.severity === 'warning') {
+      process.stderr.write(
+        '\n[!] WARNING: Sponsorship pool reserve is approaching warning threshold.\n',
+      );
+      return 0;
+    }
+    process.stdout.write('\n[✓] Sponsor account reserve is healthy.\n');
+    return 0;
+  } catch (error) {
+    process.stderr.write(`Error monitoring sponsor account: ${message(error)}\n`);
     return 2;
   }
 }
