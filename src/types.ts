@@ -11,7 +11,14 @@ export type Severity = 'error' | 'warning' | 'info';
 
 /** Which part of SEP-1 a rule covers. Used for grouping in reports. */
 export type RuleCategory =
-  'file' | 'general' | 'documentation' | 'principals' | 'currencies' | 'validators' | 'network';
+  | 'file'
+  | 'general'
+  | 'documentation'
+  | 'principals'
+  | 'currencies'
+  | 'validators'
+  | 'network'
+  | 'gitops';
 
 /** A 1-based position in the source file. */
 export interface Position {

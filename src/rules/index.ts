@@ -7,6 +7,7 @@ import { validatorRules } from './validators.js';
 import { securityRules } from './security.js';
 import { horizonRules } from './horizon-check.js';
 import { sep38Rules } from './sep38-endpoints.js';
+import { gitopsRules } from '../gitops/k8sIngressAuditor.js';
 
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
@@ -18,6 +19,7 @@ export const allRules: Rule[] = [
   ...securityRules,
   ...horizonRules,
   ...sep38Rules,
+  ...gitopsRules,
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */
@@ -32,4 +34,5 @@ export {
   securityRules,
   horizonRules,
   sep38Rules,
+  gitopsRules,
 };

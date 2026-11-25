@@ -75,22 +75,47 @@ cat stellar.toml | stellar-toml-lint -
 
 ### Options
 
-| Flag                 | Effect                                                                |
-| -------------------- | --------------------------------------------------------------------- |
-| `-d, --domain <d>`   | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks |
-| `-f, --format <fmt>` | `text` (default), `json`, `sarif`, `github`, `junit`                  |
-| `--strict`           | Treat warnings as errors                                              |
-| `--max-warnings <n>` | Fail if warnings exceed `n`                                           |
-| `--check-network`    | Verify accounts, `HORIZON_URL`, and `ANCHOR_QUOTE_SERVER` online      |
-| `--off <rule>`       | Disable a rule (repeatable)                                           |
-| `--error <rule>`     | Raise a rule to error (repeatable)                                    |
-| `--warn <rule>`      | Lower a rule to warning (repeatable)                                  |
-| `-q, --quiet`        | Show errors only                                                      |
-| `--show-help-urls`   | Print the spec link for each finding                                  |
-| `--list-rules`       | Print every rule and exit                                             |
-| `--no-suggestions`   | Hide diagnostic suggestions in the output                             |
+| Flag                           | Effect                                                                |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `-d, --domain <d>`             | Serving domain. Enables CORS, content-type, TLS, and `ORG_URL` checks |
+| `-f, --format <fmt>`           | `text` (default), `json`, `sarif`, `github`, `junit`                  |
+| `--strict`                     | Treat warnings as errors                                              |
+| `--max-warnings <n>`           | Fail if warnings exceed `n`                                           |
+| `--check-network`              | Verify accounts, `HORIZON_URL`, and `ANCHOR_QUOTE_SERVER` online      |
+| `--audit-k8s-manifests <path>` | Audit Kubernetes Ingress and cert-manager YAML for renewal failures   |
+| `--off <rule>`                 | Disable a rule (repeatable)                                           |
+| `--error <rule>`               | Raise a rule to error (repeatable)                                    |
+| `--warn <rule>`                | Lower a rule to warning (repeatable)                                  |
+| `-q, --quiet`                  | Show errors only                                                      |
+| `--show-help-urls`             | Print the spec link for each finding                                  |
+| `--list-rules`                 | Print every rule and exit                                             |
+| `--no-suggestions`             | Hide diagnostic suggestions in the output                             |
 
 Exit codes: **0** no errors, **1** problems found, **2** bad usage or I/O failure.
+
+### Kubernetes ingress and cert-manager audit
+
+Anchors that run on Kubernetes rely on cert-manager to renew the certificate
+behind the Ingress. Audit the manifests in the same pull request that changes
+them:
+
+```bash
+stellar-toml-lint --audit-k8s-manifests deploy/k8s --strict
+```
+
+The path may be a file or a directory (recursively scanned for `.yaml`/`.yml`).
+The auditor parses `Ingress`, `Certificate`, `Issuer`, and `ClusterIssuer`
+objects and checks that:
+
+- the Ingress routes `/.well-known/acme-challenge/` for HTTP-01 renewals;
+- the Ingress routes `/.well-known/stellar.toml` and enables CORS for it;
+- every Ingress TLS `secretName` matches a Certificate declaration and host;
+- cert-manager issuer annotations resolve to a declared issuer;
+- the ACME server, account email, account key Secret, and solver are usable.
+
+Diagnostics use the same `rule`, `severity`, `message`, `path`, and `suggestion`
+shape as every other rule, so `--format json`, `sarif`, `github`, and `junit`
+work unchanged.
 
 ## In CI
 
@@ -209,7 +234,14 @@ interface Diagnostic {
   rule: string; // 'currencies/issuance-exclusive'
   severity: 'error' | 'warning' | 'info';
   category:
-    'file' | 'general' | 'documentation' | 'principals' | 'currencies' | 'validators' | 'network';
+    | 'file'
+    | 'general'
+    | 'documentation'
+    | 'principals'
+    | 'currencies'
+    | 'validators'
+    | 'network'
+    | 'gitops';
   message: string;
   path?: string; // 'CURRENCIES[1].issuer'
   position?: { line: number; column: number };
@@ -260,6 +292,11 @@ absolute URI.
 type, size, and the security of the TLS session: a negotiated protocol of TLS 1.0, TLS 1.1, SSLv2,
 or SSLv3, and cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. Nothing here
 fires for a local file, so offline linting never depends on a network connection.
+
+**GitOps** (with `--audit-k8s-manifests`) — parses Ingress, Certificate, Issuer, and ClusterIssuer
+manifests; verifies HTTP-01 challenge routing, TLS Secret to Certificate matching, issuer
+annotations, ACME server/email/account key/solver configuration, certificate expiry, and the CORS
+annotation that makes `/.well-known/stellar.toml` readable to browser wallets.
 
 **Network** (with `--check-network`) — queries the `HORIZON_URL` endpoint the file advertises and
 asserts it answers with a valid Horizon root document. An endpoint that is offline, misconfigured,

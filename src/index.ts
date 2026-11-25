@@ -11,6 +11,13 @@
  */
 export { lint, lintDomain } from './lint.js';
 export { allRules, ruleIds } from './rules/index.js';
+export {
+  K8sIngressCertManagerAuditor,
+  auditK8sManifests,
+  gitopsRules,
+} from './gitops/k8sIngressAuditor.js';
+export { parseYamlDocuments } from './gitops/yaml.js';
+export type { YamlDocument, YamlParseError, YamlParseResult } from './gitops/yaml.js';
 export { formatText, formatJson, formatSarif, formatGithub, formatJunit } from './reporters.js';
 export type { TextReporterOptions } from './reporters.js';
 export { probeTls } from './tls.js';

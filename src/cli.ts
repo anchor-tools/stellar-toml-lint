@@ -6,8 +6,8 @@
  * set is small and stable, and a linter that anchors run in CI benefits from a
  * dependency tree small enough to audit by eye.
  */
-import { readFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { readFile, readdir, stat } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import process from 'node:process';
 import { lint, lintDomain, finalize } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
@@ -15,6 +15,7 @@ import { formatGithub, formatJson, formatJunit, formatSarif, formatText } from '
 import { checkDisplayDecimals } from './rules/display-decimals-audit.js';
 import { checkHorizon } from './rules/horizon-check.js';
 import { checkSep38 } from './rules/sep38-endpoints.js';
+import { K8sIngressCertManagerAuditor } from './gitops/k8sIngressAuditor.js';
 import { allRules } from './rules/index.js';
 import type { LintResult, RuleOverrides, Severity } from './types.js';
 
@@ -35,6 +36,7 @@ interface Cli {
   rules: RuleOverrides;
   maxWarnings?: number;
   checkNetwork: boolean;
+  auditK8sManifests?: string;
 }
 
 const USAGE = `stellar-toml-lint ${VERSION}
@@ -60,6 +62,9 @@ OPTIONS
       --no-suggestions    Hide diagnostic suggestions in the output
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, and
                           ANCHOR_QUOTE_SERVER against the network
+      --audit-k8s-manifests <path>
+                          Audit Kubernetes Ingress, Certificate, Issuer, and
+                          ClusterIssuer YAML for cert-manager renewal issues
       --color / --no-color
       --list-rules        Print every rule and exit
   -v, --version
@@ -72,6 +77,7 @@ EXAMPLES
   stellar-toml-lint public/.well-known/stellar.toml
   stellar-toml-lint --domain example.com --strict
   stellar-toml-lint -f sarif > results.sarif
+  stellar-toml-lint --audit-k8s-manifests deploy/k8s --strict
 `;
 
 async function main(argv: string[]): Promise<number> {
@@ -89,7 +95,21 @@ async function main(argv: string[]): Promise<number> {
   const results: { name: string; result: LintResult }[] = [];
 
   try {
-    if (cli.domain && cli.paths.length === 0) {
+    if (cli.auditK8sManifests) {
+      const files = await manifestFiles(cli.auditK8sManifests);
+      if (files.length === 0) {
+        throw new Error(`No Kubernetes YAML manifests found at ${cli.auditK8sManifests}.`);
+      }
+
+      const auditor = new K8sIngressCertManagerAuditor();
+      for (const file of files) {
+        const source = await readFile(file, 'utf8');
+        results.push({
+          name: file,
+          result: auditor.audit(source, { strict: cli.strict, rules: cli.rules }),
+        });
+      }
+    } else if (cli.domain && cli.paths.length === 0) {
       results.push({
         name: cli.domain,
         result: await lintDomain(cli.domain, {
@@ -243,6 +263,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.checkNetwork = true;
         break;
 
+      case '--audit-k8s-manifests':
+        cli.auditK8sManifests = requireValue(argv, ++i, arg);
+        break;
+
       case '--max-warnings': {
         const value = Number(requireValue(argv, ++i, arg));
         if (!Number.isInteger(value) || value < 0) {
@@ -323,6 +347,27 @@ function listRules(): string {
     (r) => `  ${r.id.padEnd(width)}  ${r.severity.padEnd(7)}  ${r.description}`,
   );
   return `${allRules.length} rules\n\n${lines.join('\n')}\n`;
+}
+
+/** Expands a file or directory into the YAML manifests the auditor should read. */
+async function manifestFiles(path: string): Promise<string[]> {
+  const info = await stat(path);
+  if (info.isFile()) return [path];
+  if (!info.isDirectory()) return [];
+
+  const entries = await readdir(path, { withFileTypes: true });
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+
+  const files: string[] = [];
+  for (const entry of entries) {
+    const child = join(path, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await manifestFiles(child)));
+    } else if (entry.isFile() && /\.ya?ml$/i.test(entry.name)) {
+      files.push(child);
+    }
+  }
+  return files;
 }
 
 async function readStdin(): Promise<string> {
