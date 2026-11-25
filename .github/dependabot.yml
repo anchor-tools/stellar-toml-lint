@@ -1,0 +1,46 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: /integrations/github-app
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: /benchmarks
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: /packages/monaco
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /integrations/github-app
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /integrations/jetbrains
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /integrations/sublime
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /benchmarks
+    schedule:
+      interval: weekly

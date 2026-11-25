@@ -9,9 +9,399 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--verify-por-feed` / `stellar-toml-lint verify-por-feed --domain <domain>`
+  (`src/bridges/chainlinkPorVerifier.ts`): validates Chainlink Proof of Reserve feeds declared in
+  `[DOCUMENTATION.PROOF_OF_RESERVES]` or `CURRENCIES[].chainlink_por` (`por/invalid-feed`) and, under
+  `--check-network`, reads `decimals()` and `latestRoundData()` over EVM JSON-RPC
+  (`por/rpc-unavailable`, `por/invalid-answer`, `por/incomplete-round`, `por/stale-feed` beyond a
+  heartbeat of at most 86400s), compares the reserve with the Horizon supply
+  (`por/supply-unavailable`, `por/undercollateralized`) and reports the ratio
+  (`por/collateralization`).
+
+- `stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> [--guardian-set <file.json>]`
+  (`src/bridges/wormholeVaaAuditor.ts`): parses VAA headers, signatures, bodies and token transfer
+  payloads (`wormhole/malformed-vaa`, `wormhole/unsupported-version`, `wormhole/malformed-payload`),
+  recovers each guardian signature with a dependency-free Keccak-256 / secp256k1 implementation
+  (`src/bridges/evmCrypto.ts`) and enforces the two-thirds quorum (`wormhole/invalid-guardian-index`,
+  `wormhole/invalid-signature`, `wormhole/insufficient-quorum`, `wormhole/guardian-set-mismatch`,
+  `wormhole/expired-guardian-set`, `wormhole/unverified-signatures`).
+
+- `--verify-solana-bridge` / `stellar-toml-lint verify-solana-bridge --domain <domain>`
+  (`src/bridges/solanaEscrowVerifier.ts`): validates `CURRENCIES[].solana_bridge` base58 addresses
+  (`solbridge/invalid-config`) and, under `--check-network`, checks the escrow is an SPL token account
+  for the declared mint (`solbridge/escrow-mismatch`), reads `getTokenAccountBalance`
+  (`solbridge/rpc-unavailable`) and requires locked >= minted with exact decimal normalization
+  (`solbridge/supply-unavailable`, `solbridge/reserve-deficit`).
+
+- `--audit-erc4626-vaults` (`src/bridges/erc4626VaultAuditor.ts`): validates
+  `CURRENCIES[].collateral_vaults` (`erc4626/invalid-vault`) and, under `--check-network`, calls
+  `asset()`, `decimals()`, `totalAssets()` and `convertToAssets()` (`erc4626/rpc-unavailable`) to flag
+  inconsistent accounting (`erc4626/inconsistent-accounting`), share prices below par or drifting from
+  the declared `share_price` (`erc4626/share-price-below-par`, `erc4626/share-price-drift`) and NAV
+  that does not cover the Stellar supply (`erc4626/supply-unavailable`, `erc4626/insufficient-nav`).
+- `stellar-toml-lint benchmark-bridge-latency --receipts <file> [--corridor <source-dest>]`
+  (`src/bridges/latencyBenchmark.ts`): pairs origin-chain lock/burn receipts with Stellar
+  mint/release receipts, normalises every timestamp to UTC (zone-less times are rejected, block
+  numbers are placed by per-chain checkpoint interpolation) and reports mean, standard deviation and
+  p99 latency per corridor with an SLA rating (`bridgelatency/invalid-receipt`,
+  `bridgelatency/negative-latency`, `bridgelatency/sla-breach`,
+  `bridgelatency/congested-corridor`, `bridgelatency/stalled-transfer`).
+
+- `--audit-bridge-replays <evidence.json>` (`src/bridges/eventReplayDetector.ts`): parses EVM
+  `Locked` logs, compares 32-byte hex values strictly and checks each final lock maps to exactly one
+  Stellar mint with the same amount and recipient, with reorg and confirmation-depth handling
+  (`bridgereplay/duplicate-mint`, `bridgereplay/unrecorded-lock`,
+  `bridgereplay/missing-replay-id`, `bridgereplay/orphan-mint`,
+  `bridgereplay/reorged-event-minted`, `bridgereplay/premature-mint`,
+  `bridgereplay/amount-mismatch`, `bridgereplay/recipient-mismatch`).
+
+- `--verify-attestations` / `stellar-toml-lint verify-attestations --domain <domain>`
+  (`src/bridges/bankAttestationVerifier.ts`): checks `[[DOCUMENTATION.ATTESTATIONS]]` and
+  `attestation_of_reserve` links, SHA-256 checksums and the 90 day freshness limit and, under
+  `--check-network`, downloads each PDF over verified HTTPS, hashes it and reads its metadata
+  without crashing on corrupted files (`attestation/invalid-url`, `attestation/missing-checksum`,
+  `attestation/expired`, `attestation/checksum-mismatch`, `attestation/corrupted-document`,
+  `attestation/unreachable`, `attestation/under-reserved`).
+
+- `--audit-burn-redemptions <evidence.json>` (`src/bridges/proofOfBurnValidator.ts`): verifies
+  wrapped-asset redemptions pay the issuer, a locked account or call the SAC `burn` function, that
+  supply falls by exactly the redeemed amount, and flags pseudo-burns (`burn/pseudo-burn`,
+  `burn/supply-mismatch`, `burn/invalid-redemption`, `burn/undeclared-asset`,
+  `burn/missing-withdraw-endpoint`).
+- `stellar-toml-lint audit-ciphers --domain <domain>` (`src/security/tlsCipherAuditor.ts`): pins a
+  native `node:tls` handshake to each of TLS 1.0, 1.1, 1.2 and 1.3, requires TLS 1.0/1.1 to be
+  rejected, checks the negotiated suites for forward secrecy and AEAD and prints an A+/A/B/F grade
+  (`tlscipher/legacy-protocol-accepted`, `tlscipher/no-modern-protocol`,
+  `tlscipher/no-forward-secrecy`, `tlscipher/non-aead-cipher`, `tlscipher/weak-cipher`,
+  `tlscipher/unreachable`). Sockets are destroyed on every path.
+
+- `--audit-hsts` (`src/security/hstsVerifier.ts`): reads `Strict-Transport-Security` on the domain
+  and every host `stellar.toml` declares and applies the Chromium preload criteria
+  (`hsts/missing-header`, `hsts/invalid-header`, `hsts/short-max-age`,
+  `hsts/missing-include-subdomains`, `hsts/missing-preload`, `hsts/unreachable`), printing a
+  compliance badge per host to stderr.
+
+- `--audit-emergency-pause` (`src/bridges/emergencyPauseValidator.ts`): checks `[[BRIDGES]]` for an
+  exported pause method, multisig or circuit breaker pause authority separate from unpause, a
+  timelocked unpause and a 24/7 `SECURITY_CONTACT` or `ORG_OFFICIAL_EMAIL`
+  (`bridgepause/invalid-bridge`, `bridgepause/missing-pause-method`,
+  `bridgepause/missing-unpause-method`, `bridgepause/unrestricted-pause-authority`,
+  `bridgepause/shared-pause-unpause-authority`, `bridgepause/missing-unpause-timelock`,
+  `bridgepause/missing-security-contact`, `bridgepause/contact-not-24x7`).
+
+- `--audit-bridge-quorum` / `stellar-toml-lint audit-bridge-quorum --domain <domain>`
+  (`src/bridges/bridgeQuorumAuditor.ts`): checks `[[BRIDGES]]` relayer keys and `THRESHOLD` against
+  the 2/3 BFT supermajority with integer math, relayer set rotations and, under `--check-network`,
+  staking bonds and slashing conditions from `STAKING_EVIDENCE_URL`
+  (`bridgequorum/below-supermajority`, `bridgequorum/minority-threshold`,
+  `bridgequorum/small-validator-set`, `bridgequorum/abrupt-rotation`,
+  `bridgequorum/insufficient-stake`, `bridgequorum/missing-slashing` and others).
+- Rule plugins, so a team can write the check SEP-1 does not define
+  (`src/engine/semanticRuleEngine.ts`, `src/engine/ruleLoader.ts`, `--rules-dir <dir>`,
+  `--plugin <spec>`). A module exports one rule as its `default` or a list as `rules`, and the rule
+  subscribes to node hooks — `visitDocument`, `visitTable`, `visitCurrency`, `visitKeyValue` and a
+  `leave` counterpart for each — over one traversal the whole rule set shares, and each node kind
+  keeps the list of rules that asked for it, so a rule costs a function call per node it listens for
+  and nothing for the rest. 120 rules measure a median 2.2ms over a file with a hundred assets and a
+  hundred validators, against the 10ms `npm run bench` gates them at. A plugin's findings answer to
+  `--off`, `--warn`, `--error` and `.stellartomlrc.json` exactly as a built-in's do, which is what
+  makes a third-party rule operable; `--lsp` still runs the catalog alone, so plugin rules do not
+  appear in editor diagnostics. A source that cannot be read, or a module exporting a rule that is
+  missing a field or takes an id already in use, is a usage error and exits `2`; a rule that throws
+  while running collapses into one `internal/plugin-error` warning naming it and the number of nodes
+  it failed on, and the rest of the run is unaffected. Nothing is autoloaded — a rule runs because it
+  was named on the command line.
+
+- `verify-rate-headers` (`src/telemetry/rateLimitHeaderVerifier.ts`): Anchor API rate-limit header standard
+  RFC 6585 compliance verifier checking IETF headers (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`),
+  legacy `X-RateLimit-*` headers, and `Retry-After` delta-seconds and HTTP-date formats under 429 status codes (#534).
+
+- `audit-tls` (`src/telemetry/tlsWatchdog.ts`): Automated SSL/TLS certificate renewal and OCSP stapling health
+  watchdog establishing non-blocking TLS handshakes to verify expiration dates (<30 day alerts), OCSP stapling
+  response flags, and revocation status (#535).
+
+- `format` / `LosslessCstFormatter` (`src/cst/cstFormatter.ts`): Lossless Concrete Syntax Tree comment- and
+  whitespace-preserving formatter supporting programmatic AST node mutations (currencies, signing keys,
+  section reordering) and round-trip byte-for-byte idempotency (#536).
+
+- `ResilientIncrementalParser` (`src/cst/resilientParser.ts`): Resilient incremental syntax parser with
+  panic-mode and synchronization-token error recovery for Language Servers, isolating syntax errors to
+  localized error nodes without crashing and providing responsive range re-parsing on 5,000+ line TOML files (#538).
+
+- `--audit-cors` (`src/security/corsAuditor.ts`): probes every endpoint the file declares with an
+  `OPTIONS` pre-flight, an actual request from a wallet origin, and an actual request from an origin no
+  whitelist should contain, reading nothing but response headers and never sending credentials. Public
+  `/.well-known/stellar.toml` and SEP-38 `/info` reads must allow every origin
+  (`cors/public-endpoint-missing-wildcard`); an authenticated or interactive endpoint that pairs
+  `Access-Control-Allow-Origin: *` with `Access-Control-Allow-Credentials: true`
+  (`cors/wildcard-origin-with-credentials`) or echoes the unlisted origin back
+  (`cors/unlisted-origin-echoed`) is reported as an error, a refused pre-flight as a warning
+  (`cors/preflight-not-allowed`), and an unreachable host as `cors/endpoint-unreachable`. The resolved
+  policy table prints to stderr.
+
+- `--audit-asset-security` (`src/security/mimeScanner.ts`): fetches `ORG_LOGO`, `CURRENCIES[].image`,
+  the address and phone attestations, reserve attestations and linked `toml` files and classifies each
+  from its headers — missing `X-Content-Type-Options: nosniff` (`mime/missing-nosniff`), an executable
+  `Content-Type` (`mime/active-content-type`), a type that contradicts the URL's extension
+  (`mime/content-type-mismatch`) — then scans text-bearing bodies as raw markup for `<script>`, `on*=`
+  handlers, `javascript:` hrefs, `foreignObject`, embedded documents and `DOCTYPE`/`ENTITY`
+  declarations (`svg/embedded-script`, `svg/entity-declaration`). No XML entity is expanded, so an XXE
+  or billion-laughs payload is reported instead of dereferenced; binary payloads are never buffered and
+  a scanned body is bounded, with the byte limit named in the finding.
+
+- `audit-key-separation --domain <domain> [--horizon <url>] [--format text|json]`
+  (`src/security/keySeparationAuditor.ts`): builds the key/role association graph from `SIGNING_KEY`,
+  `URI_REQUEST_SIGNING_KEY`, `ACCOUNTS`, `CURRENCIES[].issuer`, `collateral_addresses` and
+  `VALIDATORS[].PUBLIC_KEY` and reports every account carrying more than one role —
+  `keys/signing-issuer-reuse`, `keys/issuer-operational-account`, `keys/validator-key-reuse` (errors)
+  and `keys/collateral-issuer-reuse` (warning) — then asks Horizon for signers, thresholds and the last
+  ten operations, emitting `keys/single-signer-root-account` and `keys/issuer-operational-activity`.
+  Issuer administration operations are not counted as operational traffic, and accounts Horizon cannot
+  serve produce no finding. The report prints the role graph as a tree.
+
+- `--audit-clickjacking` (`src/security/clickjackingAuditor.ts`): requests every URL a wallet embeds —
+  SEP-24 interactive endpoints, `KYC_SERVER`, `DIRECT_PAYMENT_SERVER`, `WEB_AUTH_ENDPOINT`,
+  `CURRENCIES[].approval_server` and `ORG_URL` — as an `iframe` navigation and reads both framing
+  headers. `frame-ancestors *` is an error (`clickjacking/wildcard-frame-ancestors`), an absent policy
+  and the browser-ignored `X-Frame-Options: ALLOW-FROM` are warnings
+  (`clickjacking/missing-frame-protection`, `clickjacking/deprecated-allow-from`). CSP decides over
+  `X-Frame-Options`, as it does in a browser, and a report-only policy counts as nothing sent.
+
+- `stellar-toml-lint diff <source> <target> [--json]` (`src/cst/semanticDiffer.ts`): compares two
+  documents by what they configure rather than by how they are typed, so an anchor's revised
+  `stellar.toml` reads as a changelog instead of a line diff. Both sides parse to value trees and
+  `[[CURRENCIES]]` / `[[VALIDATORS]]` entries pair on `code` and `PUBLIC_KEY`, which makes a
+  re-sort, a re-indent, a reordered key inside an entry and two spellings of the same instant all
+  invisible — the output of `--sort-keys` diffs as nothing. Either side can be a path, an `http(s)`
+  URL or `-` for stdin, and the report is markdown on a terminal or a JSON changelog with `path`,
+  `kind`, `section`, `category`, `breaking`, `reason`, `before` and `after`. Changes that stop a
+  client that read the source are tagged `BREAKING` with the reason in SEP-1 terms: a rotated
+  `SIGNING_KEY`, a currency whose `issuer` or `contract` moved, an endpoint that disappears instead
+  of moving, and an asset or validator that is no longer advertised. Additions are never breaking,
+  neither is dropping a field SEP-1 already deprecated, and fields outside SEP-1 are reported rather
+  than graded. Exit 0 with no breaking changes, 1 when there are, and 2 when a side cannot be parsed
+  or read.
+
+- `verify-archive-gpg --url <archive> --pubkey <key-file>` (`src/overlay/archiveGpgVerifier.ts`):
+  downloads the latest checkpoint ledger XDR gzip file described by `.well-known/stellar-history.json`
+  and verifies it against a supplied detached OpenPGP signature with OpenPGP.js. The optional
+  `<ledger-file>.sig` sidecar is a best-effort convention, not a Stellar Core format guarantee;
+  `--signature-url` can name a different location. The verifier enforces RSA 2048-bit or Ed25519
+  signing keys, expiry/revocation checks, SHA-2 signature hashes, bounded HTTPS requests, and
+  reports unknown operator identity trust unless an independently sourced fingerprint is pinned.
+
+- `stellar-toml-lint migrate` / `migrate --dry-run` (`src/cst/migrationCodemod.ts`,
+  `src/cst/codemodRules/`): rewrites deprecated SEP-1 fields into their current form in place —
+  `ORGANIZATION_NAME` → `[DOCUMENTATION].ORG_NAME`, `AUTH_SERVER` → `WEB_AUTH_ENDPOINT`,
+  `DEPOSIT_SERVER` → `TRANSFER_SERVER`, `FEDERATION_SERVER` over `https://`, and a
+  `[DOCUMENTATION]` field written at the document root moved under `[DOCUMENTATION]`. Rules emit
+  offsets into the original text and the engine splices them, so quoting, spacing and the comments
+  attached above a field survive; `--dry-run` runs the identical plan and prints a unified diff,
+  exiting 1 while a file still needs work. The result is linted and compared with the input, and a
+  migration that makes the file worse is refused rather than written — the file is left byte for
+  byte as it was and the exit code says so. Two rules reaching for overlapping text cancel that
+  edit instead of guessing an order, `--skip-rule <id>` leaves one migration undone, `--json`
+  reports the plan, and a file with nothing to migrate exits 0 without touching the disk.
+
+- `--detect-orphans` / `--prune-orphaned` / `--allow-key` (`src/cst/orphanedKeyScanner.ts`,
+  `src/levenshtein.ts`): reports keys and table headers that configure nothing any SEP defines, and
+  exits 1 when a file has any. It reads the CST, so unlike the section-scoped `unknown-field` rules
+  it sees `[[CURRENCY]]` — one letter short, with a whole block below it silently configuring
+  nothing — and a `[DOCUMENTATION]` field parked at the root. The recognized catalog comes from
+  `src/spec.ts`, so a field added to the spec is recognized by the scanner, the schema generator and
+  editor autocompletion in the same commit. Nothing under an unrecognized table is reported, `X_…`
+  vendor extensions are accepted before comparison, and `--allow-key` takes an exact name, a dotted
+  path, a table name or a `PREFIX_*` glob (also configurable as `knownKeys` in
+  `.stellartomlrc.json`). `--prune-orphaned` renames near-miss spellings, deletes what nothing
+  defines together with the comments attached to it, and refuses to delete a populated unknown
+  table.
+
+- `src/editor/` (`monacoBundle.ts`, `codeMirror.ts`, `language.ts`) ships the editor language
+  bundle for both web editors, built by `npm run build:editor`
+  (`scripts/build-editor-bundles.mjs`) to `dist/editor/monaco.bundle.js` and
+  `dist/editor/codemirror.bundle.js` as browser ESM with no Node built-ins. The Monaco half
+  registers a Monarch tokenizer, a language configuration, SEP-1 key/table/value completions, and
+  maps diagnostics through `monaco.editor.setModelMarkers`; the CodeMirror half is a `StreamParser`
+  plus a `linter()` source over the same facts. Validation is injected — either a result the page
+  already has, or `createWorkerValidator(worker)` speaking the existing
+  `stellar-toml-lint/worker` protocol — so the bundles stay under the 150 KB gzip budget the build
+  enforces by measuring its own output into `dist/editor/sizes.json`.
+  New `exports` entries `./editor/monaco` and `./editor/codemirror` resolve to those bundles with
+  the declarations `tsc` emits for the sources.
+  `test/fixtures/editor-demo.html` runs both in a page.
+
+- `grammars/tree-sitter-stellar-toml` now models SEP-1 in the parser rather than in queries:
+  `public_key`, `contract_id`, `asset_code`, `sep_table` and `currency_entry` are nodes, so
+  `tree-sitter tags` and a symbol list can name an account or a contract instead of matching one
+  out of a string, and every consumer that reads `node-types.json` highlights them identically.
+  Values that do not fit a shape still parse as ordinary TOML, so vendor extensions are unaffected,
+  and the reserved table names are lexed by the external scanner because token precedence outranks
+  match length. Adds `queries/tags.scm`, `tree-sitter.json`, `bindings/wasm/binding.c`, a four-file
+  corpus including a full production anchor, `scripts/build-tree-sitter-grammar.mjs` (generate +
+  corpus + optional WASM, with the CLI looked up rather than installed), and install instructions
+  for Neovim and Helix in `grammars/tree-sitter-stellar-toml/README.md`.
+
+- `--sort-keys` / `--sort-keys --dry-run` (`src/cst/canonicalSortCodemod.ts`,
+  `src/line-diff.ts`): rewrites `[DOCUMENTATION]`, `[[PRINCIPALS]]`, `[[CURRENCIES]]` and
+  `[[VALIDATORS]]` into the SEP-1 field order and sorts currency entries by `code` and validators by
+  `PUBLIC_KEY`, so adding one asset stops rediffing the whole file. Entries move as lossless CST
+  nodes, so nothing is reformatted and a comment travels with the key it annotates; a blank line
+  makes a comment floating and it stays at its position. Unknown keys stay last in the order written,
+  the pass is idempotent, and a file that does not parse is reported and left untouched (exit 1).
+  `--dry-run` prints a unified diff instead of writing and exits 1 when a file is not already
+  canonical, which is the CI gate; `--sort-keys -` sorts stdin to stdout.
+
+> > > > > > > maintainer/restore-main-ci-20261123
+
+- `--audit-esg-disclosures` (`src/protocols/esgComplianceVerifier.ts`): checks
+  `[DOCUMENTATION.ORG_ESG]` for a carbon accounting methodology, renewable energy certificates, PUE
+  and an attestation (`esg/missing-field`, `esg/invalid-field`, `esg/attestation-expired`), verifies
+  the Ed25519 attestation signature under `--check-network` (`esg/attestation-unreachable`,
+  `esg/attestation-signature-invalid`) and prints a Platinum/Gold/Silver/Bronze rating to stderr.
+
+- `--verify-federation-srv` (`src/protocols/federationSrvVerifier.ts`): resolves
+  `_stellar-federation._tcp.<domain>` (RFC 2782) and checks targets, ports, priority/weight
+  (`federationsrv/invalid-target`, `federationsrv/invalid-port`,
+  `federationsrv/invalid-priority-weight`, `federationsrv/non-default-port`), conflicts with
+  `FEDERATION_SERVER` (`federationsrv/conflicts-with-toml`) and, under `--check-network`, probes each
+  target over HTTPS with a timeout (`federationsrv/unreachable-target`,
+  `federationsrv/not-a-federation-server`).
+
+- `--verify-promotions` / `stellar-toml-lint verify-promotions --domain <domain>`
+  (`src/protocols/promotionalPricingVerifier.ts`): parses "0% fee", "1.5% fee" and "until
+  YYYY-MM-DD" claims from `[DOCUMENTATION]` and `CURRENCIES` text, flags expired claims
+  (`promotions/expired-claim`) and, under `--check-network`, compares them with SEP-38 `/price` fees
+  at test volumes using exact integer math (`promotions/fee-mismatch`,
+  `promotions/unverifiable-claim`). `/quote` needs a SEP-10 session, so indicative `/price` is used.
+
+- `--audit-sep30-recovery` (`src/protocols/sep30Verifier.ts`): validates `RECOVERY_SERVER` and
+  `RECOVERY_SIGNING_KEYS` (`sep30/invalid-recovery-server`, `sep30/invalid-signing-key`,
+  `sep30/insufficient-recovery-quorum`) and, under `--check-network`, probes `POST`/`GET`/`PUT`
+  `/accounts/{address}` with no credentials against a throwaway address
+  (`sep30/endpoint-unavailable`, `sep30/unauthenticated-recovery`, `sep30/unsupported-auth-method`).
+  Signer weights are not readable without an authenticated session, so quorum is judged from the
+  number of distinct declared signing keys.
+
+- `stellar-toml-lint audit-clawbacks --asset <code:issuer>` (`src/protocols/clawbackAuditGenerator.ts`):
+  scans the issuer's Horizon history for `clawback` and `clawback_claimable_balance` operations,
+  verifies each carries an audit memo reference, and generates JSON and Markdown audit trail reports
+  with exact stroop precision.
+
+- `--audit-kyc-fsm --domain <domain>` (`src/protocols/kycTierAuditor.ts`): reads the customer
+  types advertised by SEP-31 `/info`, observes the SEP-12 `/customer` status for each, and audits the
+  status state machine against the four SEP-12 statuses: `sep12/unknown-customer-status`,
+  `sep12/status-missing-next-action`, `sep12/circular-status-transition`,
+  `sep12/nondeterministic-status-transition` and `sep12/unreachable-status`. Transition diagrams are
+  printed to stderr.
+
+- `--audit-consumer-protection` (`src/protocols/consumerProtectionVerifier.ts`): checks that
+  `[DOCUMENTATION.ORG_LEGAL]` (or `[DOCUMENTATION]`) declares `ORG_COMPLAINTS_EMAIL`,
+  `ORG_DISPUTE_RESOLUTION_URL`, `ORG_JURISDICTION` and `ORG_LICENSES`
+  (`consumerprotection/missing-field`, `consumerprotection/invalid-field`), probes the dispute URL
+  for a 200 OK with readable content under `--check-network`
+  (`consumerprotection/dispute-url-unreachable`), and prints a transparency scorecard.
+
+- `--audit-unicode-security` (`src/cst/unicodeValidator.ts`): scans every key and string value
+  for bidirectional override characters (`unicode/bidi-override`, error), zero-width and invisible
+  formatting characters (`unicode/invisible-character`), Cyrillic/Greek homoglyphs in domains and
+  asset codes (`unicode/homoglyph-spoofing`, error), and malformed language tags
+  (`unicode/invalid-language-tag`), following Unicode TR #36.
+
+- SEP-42 cross-contract authorization call-tree simulator under `--check-network`
+  (`src/soroban/auth-tree-simulator.ts`): the SAC `mint` and `clawback` calls are dry-run with
+  `simulateTransaction` in recording mode, and the returned `SorobanAuthorizationEntry` tree is
+  traced, emitting `soroban/unauthorized-cross-contract-call` (error) when the tree authorizes an
+  identity other than the account the file publishes as `SIGNING_KEY` or a designated issuer, or
+  delegates into a contract the operation never called, and `soroban/unbounded-auth-grant`
+  (warning) when a grant names no address, lets a contract authorize itself, or re-delegates the
+  authorization further down the tree. Nothing is submitted and no fees are spent.
+
+- Follow and lint `toml` currency pointers. A `[[CURRENCIES]]` entry that points at a separate
+  document via `toml` now has that document fetched and linted as part of the same run, so an
+  anchor cannot pass with a broken linked asset. Enabled by `--follow-links` and implied by
+  `--domain`. Findings from a linked document are prefixed with its URL, a pointer that cannot be
+  fetched is a `network/toml-pointer-fetch` warning rather than a hard failure, and fetches are
+  capped at 20 so a long currency list cannot fan out unboundedly.
+
+- `--preset validator|anchor-sep24|issuer` applies a curated rule bundle for an organisation's role
+  in the ecosystem, so a validator operator, a SEP-24 anchor, and a standalone asset issuer stop
+  carrying the same `--off` chain through every workflow. `validator` keeps the validator and
+  general file checks and silences the currency and anchor service rules (raising a duplicate
+  validator `HOST` or `ALIAS` to `error`); `anchor-sep24` holds the SEP-24, SEP-10, and currency
+  requirements at `error` and silences the validator rules; `issuer` holds currency, collateral,
+  and documentation completeness at `error` and silences the anchor service rules. A preset is a
+  baseline, so an explicit `--off`/`--warn`/`--error` still wins whatever order the flags appear in,
+  and an unknown name lists the available presets and exits `2`. Bundles are assembled from the rule
+  registry, so a rule registered later joins the group its category puts it in (#20).
+- `general/deprecated-field` warns about legacy `AUTH_SERVER` and `DEPOSIT_SERVER` fields,
+  unencrypted `FEDERATION_SERVER` values, and documentation keys placed outside `[DOCUMENTATION]`,
+  with replacement syntax for SEP-10, SEP-12, SEP-6, and SEP-24 (#126).
+- `--format markdown` emits a GitHub-flavored Markdown report built for a workflow's
+  `$GITHUB_STEP_SUMMARY`: a pass/fail header with the error, warning, and info counts, a table with a
+  row per finding, and collapsible `<details>` blocks carrying suggestions and spec links. `|`, `<`,
+  and `>` are escaped so a hostile file cannot break the table or inject markup (#61).
+- `--completion bash|zsh|fish` prints a native shell completion script covering every flag, the
+  output formats, and the rule ids accepted by `--off`/`--warn`/`--error`. The rule ids come from
+  the same registry the linter runs, so they never drift from the actual checks; an unsupported
+  shell prints to stderr and exits `2` (#60).
+- `network/sep6-missing-asset` (warning), alongside `network/sep6-info-error` and
+  `network/sep6-info-malformed`, under `--domain` or `--check-network`: when `TRANSFER_SERVER` is
+  declared, `GET <TRANSFER_SERVER>/info` is fetched with redirects followed and every non-native
+  `[[CURRENCIES]]` asset must appear in the `deposit` or `withdraw` maps, keyed by bare code or
+  `CODE:issuer` (#38).
+- `soroban/invalid-auth-contract-interface` (error) under `--check-contracts`: for
+  `WEB_AUTH_CONTRACT_ID`, the deployed WASM's `contractspecv0` custom section is parsed and the
+  contract is required to export the SEP-45 `web_auth_verify` function. An unreadable interface
+  stays silent rather than guessing (#37).
+
+- `textDocument/hover` over LSP (#36): hovering a key or a table header in `stellar.toml` shows a
+  Markdown tooltip with the qualified name (`[[CURRENCIES]].display_decimals`), the field's type
+  (`integer (0-7)`), the SEP-1 description, the permitted values where the spec enumerates them
+  (`live`, `dead`, `test`, `private`), and a link to the anchoring section of SEP-1. Documentation
+  lives in `src/spec.ts` beside the `KNOWN_*` sets the linter checks against, with a test asserting
+  the two never drift apart; whitespace, comments, and keys SEP-1 does not define show nothing.
+- `network/wrong-path` (error) under `--domain`: when `/.well-known/stellar.toml` returns HTTP 404,
+  the linter probes `https://<host>/stellar.toml` once. If the root path serves the file, the
+  diagnostic says so and points at the SEP-1 location; if the root probe also fails, behaviour is
+  unchanged (`network/unreachable` only). At most one extra request, still through the injected
+  `fetchImpl` (#3).
+- Interactive quick-fix code actions over LSP (#42): `stellar-toml-lint --lsp` runs a stdio Language
+  Server that publishes diagnostics and answers `textDocument/codeAction` with `WorkspaceEdit`
+  replacements for mechanically safe rules — `general/trailing-slash-in-endpoint`,
+  `network/passphrase` (near miss), `documentation/social-handles`, `principals/social-handles`,
+  and `documentation/phone-e164`. Diagnostics that cannot be corrected safely (parse errors,
+  missing tables) offer no action. Shared fix engine lives in `src/fix.ts` for `--fix` (#9) to reuse.
+- Glob patterns in the positional file arguments (`stellar-toml-lint "configs/**/*.toml"`), expanded
+  by the linter rather than the shell so the same quoted argument works on Linux, macOS, and
+  Windows, where PowerShell and CMD do not expand globs at all. `*`, `?`, `[...]`, and `**` are
+  supported; a pattern that matches nothing reports itself and exits `2`; hidden entries are skipped
+  unless named. Multi-file runs now close with a summary line — `Checked 4 files: 3 passed, 1 failed
+(2 errors, 3 warnings)` — appended by the text reporter only, with the exit code still `1` if any
+  file failed and `0` if they all passed (#18).
+
+- Text output follows the [NO_COLOR standard](https://no-color.org) explicitly: any non-empty
+  `NO_COLOR` disables colour, an empty value counts as unset, and only an explicit `--color`
+  overrides it. Covered by `test/no-color.test.ts` (#148).
+
 - `--format junit` emits a JUnit XML test report for CI dashboards that chart test results (Jenkins,
   Bamboo, CircleCI, Azure DevOps). Error-severity findings are reported as `<failure>` elements and
   warnings as `<error>` elements, so a dashboard counting failures matches the exit code (#143).
+
+- `--format checkstyle` emits Checkstyle XML for CI dashboards that ingest the Checkstyle schema
+  (Jenkins Warnings NG, Java-adjacent pipelines) (#8): one `<file>` per linted file, one `<error>`
+  per diagnostic with `line`, `column`, `severity`, `message`, and `source` (the rule id).
+
+- `validators/invalid-history-url` (error) validates each `[[VALIDATORS]].HISTORY` as a well-formed
+  archive URL, including `{0}` template handling.
+- `validators/stellar-history-json-unreachable` (error) under `--check-network` fetches each
+  validator's archive root and requires it to serve `.well-known/stellar-history.json` with
+  `"version": 1` (#144).
+- Overlay and archive integrity audits: `--crawl-peers` decodes bounded `GET_PEERS` discovery
+  responses, `--verify-dnssec` compares DNSSEC-validating DoH resolvers, and `--check-network`
+  validates the three most recent history checkpoints for complete category archives and chained
+  previous-ledger pointers (#90, #91, #92, #96).
+- `overlay/invalid-crypto-framing` and `overlay/mac-authentication-failure` audit big-endian frame
+  lengths, HKDF-derived session keys, sequence replay, and authenticated tags (#91).
 
 - Opt-in `--check-network` flag to query Horizon and report non-existent `SIGNING_KEY` or `ACCOUNTS` entries as warnings (#7).
 - `network/horizon-unreachable` and `network/horizon-protocol-outdated` under `--check-network`:
@@ -26,14 +416,57 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   answers — so a quote server returning 500s or malformed JSON fails the run instead of surfacing
   later as wallets unable to calculate transaction amounts.
 
+### Fixed
+
+- `--warn <rule>` stored the flag's own spelling as the severity instead of the token `warning`, so
+  the lowered finding was counted under a `warn` key no reporter reads. It stayed in the diagnostic
+  list but left the summary — and an error lowered with `--warn` left `counts.error` too, so
+  `--strict` passed and the run exited `0` on a file with an unaddressed error. The flag now maps to
+  `warning`, which is what `--max-warnings` and the exit code count.
+
+- `--lsp` actually serves the protocol now. `main()` called the line-based `lspMain()`, which
+  registered a stdin listener and then fell through to `process.exit`, so the process printed
+  nothing and exited before a client could send a message. The CLI runs the framed stdio server
+  (`src/lsp/server.ts`) instead — diagnostics, quick-fix code actions, and hover — and the
+  unreachable server behind it is gone.
+
+### Changed
+
+- The `validators/history` warning is replaced by `validators/invalid-history-url`, which checks the
+  same field more strictly and reports it as an error. Update any `--off validators/history`
+  configuration to the new id.
+
 ### Added
 
+- SEP-8 regulated issuer flags under `--check-network`: for every `[[CURRENCIES]]` entry marked
+  `regulated=true` with a classic `issuer`, the linter reads the issuer account's flags from Horizon.
+  A missing `AUTH_REQUIRED` flag emits `currencies/regulated-missing-auth-required-flag` (error), a
+  missing `AUTH_REVOCABLE` flag emits `currencies/regulated-missing-auth-revocable-flag` (warning),
+  and a Horizon outage or missing account degrades to
+  `currencies/regulated-issuer-flags-unverifiable` (warning) so the run still fails cleanly on
+  strengthenable-to-fatal findings without depending on network availability.
+- Soroban contract liveliness under `--check-contracts`: `src/soroban.ts` queries the Soroban RPC's
+  `getLedgerEntries` for the contract instance and its WASM behind every `[[CURRENCIES]].contract`
+  and `WEB_AUTH_CONTRACT_ID`, comparing `liveUntilLedgerSeq` against `latestLedger`. Within ~a day of
+  expiry it emits `soroban/contract-ttl-expiring-soon` (warning); expired or archived state emits
+  `soroban/contract-expired` (error); an unreachable RPC degrades to `soroban/contract-ttl-unavailable`
+  (warning). The endpoint is derived from `NETWORK_PASSPHRASE` and overridable with `--soroban-rpc`.
 - `security/deprecated-tls-version` and `security/weak-cipher-suite` warnings under `--domain`:
   the linter now inspects the TLS session the host negotiates and flags TLS 1.0/1.1 (and SSLv2/SSLv3),
   plus cipher suites built on 3DES, DES, RC4, CBC, NULL, or EXPORT primitives. Offline linting is
   unaffected, and both rules can be tuned with `--off`, `--warn`, and `--error` like any other.
 - `lintDomain` accepts an optional `tlsProbe` so embedders and tests can supply the session instead of
   having one opened for them. `probeTls` is exported for callers that need to measure it themselves.
+- The `textDocument/documentSymbol` outline expands values written on the right of an `=`. An inline
+  table (`SUPPORT = { EMAIL = "…" }`) is an `Object` with a child per entry, an array of them
+  (`TYPES = [{asset = …}, {asset = …}]`) is an `Array` with one `Object` per element, and a nested list
+  nests further — previously all three were a single leaf, so the detail an anchor puts in `TYPES` and
+  `collateral_addresses` had no outline at all. Elements are numbered by source position, and a list of
+  scalars stays a leaf because `ACCOUNTS = ["GA…", "GB…"]` gains nothing from two more nodes.
+  `[[CURRENCIES]]` entries now report `SymbolKind.Interface` (11) rather than `Array` (18), which is
+  what issue #544 asks for and what an asset a client has to conform to is; entries of any other array
+  table are unchanged. `test/lsp/document-symbols.test.ts` covers the tree, the ranges (every selection
+  inside its range, every child inside its parent), and the request over the LSP wire.
 
 ## [0.1.0]
 

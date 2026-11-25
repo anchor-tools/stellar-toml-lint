@@ -1,0 +1,31 @@
+{
+  "name": "stellar-toml-lint-github-app",
+  "version": "1.0.0",
+  "description": "Official GitHub App for automated stellar.toml linting in pull requests",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "octokit": "^5.0.5",
+    "probot": "^14.3.2",
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0",
+    "msw": "^3.0.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anchor-tools/stellar-toml-lint.git"
+  },
+  "license": "Apache-2.0"
+}

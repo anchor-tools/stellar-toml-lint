@@ -1,0 +1,194 @@
+==================
+Compliant anchor
+==================
+
+# The shape the SEP-1 conformance check wants: one issuer account, the
+# currencies it issues, and the distribution accounts it moves them through.
+NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"
+HORIZON_URL = "https://horizon.stellar.org"
+FEDERATION_SERVER = "https://api.example.com/federation"
+TRANSFER_SERVER_SEP0024 = "https://api.example.com/sep24"
+WEB_AUTH_ENDPOINT = "https://api.example.com/auth"
+URI_REQUEST_SIGNING_KEY = "GC5MEN6ZAK7IPVMSMKXH2FKKGL6UTKW66V6ORPJNPCULDDIMYALEHB5K"
+
+[DOCUMENTATION]
+ORG_NAME = "Lobstr"
+ORG_DBA = "Lobstr Account"
+ORG_URL = "https://lobstr.co"
+ORG_TWITTER = "Lobstr_co"
+ORG_GITHUB = "Lobstrco"
+
+[[CURRENCIES]]
+code = "USDC"
+issuer = "GBC7FGN3H6ZJUK7NKZHQMFOJ3IBOFWANOJGPWAK5PPAEJZMR65CKS37N"
+status = "live"
+display_decimals = 2
+name = "USD Coin"
+desc = "USDC on the Stellar public network"
+image = "https://example.com/usdc.png"
+regulated = true
+anchor_asset_type = "fiat"
+attestation_of_reserve = "https://example.com/reserves.json"
+
+[[CURRENCIES]]
+code = "CMO"
+issuer = "GBXOVY3F3JZOPFJGNKZA2UM2CZK6KIUS2W4JJAOVASCL3BIQYSBIXTEA"
+contract = "CD72FSSFGOZG4NJH2LKVPWFGLXRQB2QFB4O6JEQLFVEFUD4F2QC5T24U"
+distribution_account = "GALS4ZTB46VF5VLPRY45GQBSUFDZQ7XBUPWWYVUX7UIC5A5VLTEZKO3K"
+status = "live"
+
+[[VALIDATORS]]
+ALIAS = "lobstr-1"
+DISPLAY_NAME = "Lobstr Node 1"
+HOST = "validator.lobstr.co:11625"
+PUBLIC_KEY = "GBINFEOFTQFGK5MY6LMKCZ7WBDO4PIRQKHTCY22NB2UCH6KWORYEOVSU"
+HISTORY = "https://history.lobstr.co/prd/core-live/core_live_001"
+
+---
+
+(document
+  (newline)
+  (comment)
+  (newline)
+  (comment)
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (string))
+  (newline)
+  (pair
+    (bare_key)
+    (public_key))
+  (newline)
+  (newline)
+  (table
+    (sep_table)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (array_table
+    (currency_entry)
+    (newline)
+    (pair
+      (bare_key)
+      (asset_code))
+    (newline)
+    (pair
+      (bare_key)
+      (public_key))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (integer))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (boolean))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (array_table
+    (currency_entry)
+    (newline)
+    (pair
+      (bare_key)
+      (asset_code))
+    (newline)
+    (pair
+      (bare_key)
+      (public_key))
+    (newline)
+    (pair
+      (bare_key)
+      (contract_id))
+    (newline)
+    (pair
+      (bare_key)
+      (public_key))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (newline))
+  (array_table
+    (bare_key)
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)
+    (pair
+      (bare_key)
+      (public_key))
+    (newline)
+    (pair
+      (bare_key)
+      (string))
+    (newline)))

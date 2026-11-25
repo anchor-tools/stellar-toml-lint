@@ -1,0 +1,13 @@
+pkgbase = stellar-toml-lint
+	pkgdesc = Offline SEP-1 linter for stellar.toml — validate your Stellar Info File before you deploy it
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/anchor-tools/stellar-toml-lint
+	arch = any
+	license = Apache-2.0
+	makedepends = npm
+	depends = nodejs
+	source = stellar-toml-lint-0.1.0.tar.gz::https://github.com/anchor-tools/stellar-toml-lint/archive/refs/tags/v0.1.0.tar.gz
+	sha256sums = SKIP
+
+pkgname = stellar-toml-lint
