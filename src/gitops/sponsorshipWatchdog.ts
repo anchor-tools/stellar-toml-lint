@@ -97,11 +97,18 @@ export class SponsorshipPoolWatchdog {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch sponsor account ${accountId} from Horizon: HTTP ${response.status}`);
+      throw new Error(
+        `Failed to fetch sponsor account ${accountId} from Horizon: HTTP ${response.status}`,
+      );
     }
 
     const data = (await response.json()) as {
-      balances?: Array<{ asset_type: string; balance: string; buying_liabilities?: string; selling_liabilities?: string }>;
+      balances?: Array<{
+        asset_type: string;
+        balance: string;
+        buying_liabilities?: string;
+        selling_liabilities?: string;
+      }>;
       num_sponsoring?: number;
       num_sponsored?: number;
       subentry_count?: number;
@@ -132,7 +139,10 @@ export class SponsorshipPoolWatchdog {
   /**
    * Simulates transaction volume surges (e.g. 10,000 sponsored txs) and calculates depletion timelines.
    */
-  simulateSurge(state: SponsorAccountState, options: SponsorshipSimulationOptions = {}): SponsorshipSimulationResult {
+  simulateSurge(
+    state: SponsorAccountState,
+    options: SponsorshipSimulationOptions = {},
+  ): SponsorshipSimulationResult {
     const surgeTransactionCount = options.surgeTransactionCount ?? 10000;
     const feePerTransactionXlm = options.feePerTransactionXlm ?? DEFAULT_FEE_PER_TX_XLM;
     const reserveLockPerTransactionXlm = options.reserveLockPerTransactionXlm ?? 0;
@@ -177,7 +187,10 @@ export class SponsorshipPoolWatchdog {
   /**
    * Evaluates sponsor account health and dispatches alerts if balances fall below safety buffers.
    */
-  async evaluateAndAlert(state: SponsorAccountState, options: SponsorshipSimulationOptions = {}): Promise<{
+  async evaluateAndAlert(
+    state: SponsorAccountState,
+    options: SponsorshipSimulationOptions = {},
+  ): Promise<{
     state: SponsorAccountState;
     simulation: SponsorshipSimulationResult;
     severity: IncidentSeverity | 'healthy';
@@ -194,14 +207,17 @@ export class SponsorshipPoolWatchdog {
       severity = 'warning';
     }
 
-    let deliveries: IncidentDelivery[] = [];
+    let deliveries: IncidentDelivery[];
     const rule = 'gitops/sponsorship-pool-reserve-exhaustion';
     const source = `stellar-sponsor:${state.accountId.slice(0, 8)}...`;
 
     if (severity === 'critical' || severity === 'warning') {
       const incident: Incident = {
         id: `sponsor-${state.accountId}`,
-        title: severity === 'critical' ? 'Sponsorship Pool Reserve Exhaustion Critical' : 'Sponsorship Pool Reserve Warning',
+        title:
+          severity === 'critical'
+            ? 'Sponsorship Pool Reserve Exhaustion Critical'
+            : 'Sponsorship Pool Reserve Warning',
         summary: `Sponsor account ${state.accountId} has balance ${state.balanceXlm.toFixed(2)} XLM (Buffer: ${criticalThreshold} XLM). Projected balance after ${simulation.surgeTransactionCount} surge txs: ${simulation.projectedBalanceAfterSurgeXlm.toFixed(2)} XLM.`,
         severity: severity === 'critical' ? 'critical' : 'warning',
         source,
@@ -211,7 +227,8 @@ export class SponsorshipPoolWatchdog {
           balanceXlm: Number(state.balanceXlm.toFixed(2)),
           sponsoredEntries: state.sponsoredEntriesCount,
           projectedAfterSurgeXlm: Number(simulation.projectedBalanceAfterSurgeXlm.toFixed(2)),
-          depletionHours: simulation.depletionHours !== null ? Number(simulation.depletionHours.toFixed(2)) : -1,
+          depletionHours:
+            simulation.depletionHours !== null ? Number(simulation.depletionHours.toFixed(2)) : -1,
         },
         dedupKey: `sponsorship-pool-${state.accountId}`,
       };
@@ -238,7 +255,10 @@ export class SponsorshipPoolWatchdog {
   /**
    * High-level check method: fetches state from Horizon, simulates, and alerts in one call.
    */
-  async monitor(accountId: string, options: SponsorshipSimulationOptions = {}): Promise<{
+  async monitor(
+    accountId: string,
+    options: SponsorshipSimulationOptions = {},
+  ): Promise<{
     state: SponsorAccountState;
     simulation: SponsorshipSimulationResult;
     severity: IncidentSeverity | 'healthy';

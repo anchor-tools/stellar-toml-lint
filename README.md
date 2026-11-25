@@ -201,6 +201,7 @@ and only `--write` changes the file. `--split` instead emits modular partials gr
 | `--audit-bridge-replays <file>`   | Match EVM lock event logs to Stellar mints and flag duplicate, unrecorded or replayable events                                        |
 | `--verify-attestations`           | Verify reserve attestation checksums and age; with `--check-network` download the PDFs (also `verify-attestations --domain <domain>`) |
 | `--audit-burn-redemptions <file>` | Verify wrapped-asset redemptions burn supply and flag pseudo-burns                                                                    |
+| `--audit-k8s-manifests <path>`    | Audit Kubernetes Ingress, Certificate, Issuer and ClusterIssuer YAML for cert-manager renewal problems                                |
 
 ### Options
 
@@ -1172,6 +1173,22 @@ the same JSON envelope with `"status": "error"`.
 Exit codes for CI: `0` in sync, `1` drift detected, `2` the check could not run (timeout, HTTP
 error, missing file, invalid TOML). `--timeout <ms>` defaults to 10000.
 
+### Kubernetes ingress and cert-manager audit
+
+`--audit-k8s-manifests <path>` audits Kubernetes YAML for the failure modes that make TLS
+certificates expire or silently stop renewing. The path may be one manifest or a directory,
+which is walked recursively for `.yaml`/`.yml` files.
+
+```sh
+stellar-toml-lint --audit-k8s-manifests deploy/
+```
+
+The auditor reads `Ingress`, `Certificate`, `Issuer`, and `ClusterIssuer` resources. It reports
+missing or mismatched `secretName` references, certificates with no usable issuer, ACME HTTP-01
+ingresses that do not route `/.well-known/acme-challenge`, disabled or missing renewal, expired
+or near-expiry certificates, and ingress TLS hosts that do not cover the declared hosts. Findings
+use `gitops/*` rule ids.
+
 ### Telemetry and SLA tooling
 
 Four subcommands audit how a live anchor behaves operationally. Every network probe is a
@@ -1298,7 +1315,8 @@ interface Diagnostic {
     | 'network'
     | 'security'
     | 'policy'
-    | 'sep12';
+    | 'sep12'
+    | 'gitops';
   message: string;
   path?: string; // 'CURRENCIES[1].issuer'
   position?: { line: number; column: number };

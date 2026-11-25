@@ -7,7 +7,7 @@ import {
 import { IncidentWebhookDispatcher } from '../src/gitops/incidentDispatcher.js';
 
 describe('SponsorshipPoolWatchdog', () => {
-  const mockAccountId = 'GABCD323456789ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVW';
+  const mockAccountId = `G${'A'.repeat(55)}`;
 
   it('extracts sponsor accounts from stellar.toml content', () => {
     const toml = `
@@ -43,7 +43,7 @@ describe('SponsorshipPoolWatchdog', () => {
   it('flags critical severity when balance is below safety buffer or exhausted after surge', async () => {
     let dispatchedIncident: any = null;
     const dispatcher = new IncidentWebhookDispatcher({
-      fetchImpl: async () => ({ ok: true, status: 200 } as any),
+      fetchImpl: async () => ({ ok: true, status: 200 }) as any,
     });
     // spy on dispatch
     dispatcher.dispatch = async (incident) => {
@@ -69,7 +69,10 @@ describe('SponsorshipPoolWatchdog', () => {
       targets: { slack: 'https://slack.com' },
     });
 
-    const result = await watchdog.monitor(mockAccountId, { surgeTransactionCount: 50000, feePerTransactionXlm: 0.001 });
+    const result = await watchdog.monitor(mockAccountId, {
+      surgeTransactionCount: 50000,
+      feePerTransactionXlm: 0.001,
+    });
     expect(result.severity).toBe('critical');
     expect(dispatchedIncident).toBeDefined();
     expect(dispatchedIncident.severity).toBe('critical');

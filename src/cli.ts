@@ -6,15 +6,16 @@
  * set is small and stable, and a linter that anchors run in CI benefits from a
  * dependency tree small enough to audit by eye.
  */
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { parse as parseToml } from 'smol-toml';
 import { createReadStream, watch } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
 import { loadPluginRules } from './engine/ruleLoader.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
+import { K8sIngressCertManagerAuditor } from './gitops/k8sIngressAuditor.js';
 import { ASSET_CACHE_ENV, createAssetCacheFetch } from './gitops/ciAssetCache.js';
 import {
   CiMatrixWorkflowGenerator,
@@ -203,6 +204,7 @@ import {
   type IncidentSeverity,
 } from './gitops/incidentDispatcher.js';
 import { auditDockerfile, renderContainerReport } from './gitops/containerAuditor.js';
+import { DEFAULT_HORIZON_URL, SponsorshipPoolWatchdog } from './gitops/sponsorshipWatchdog.js';
 import {
   renderProvenanceReport,
   verifySlsaProvenance,
@@ -274,6 +276,7 @@ interface Cli {
   preset?: PresetName;
   maxWarnings?: number;
   checkNetwork: boolean;
+  auditK8sManifests?: string;
   followLinks: boolean;
   verifySep10: boolean;
   auditQuotes: boolean;
@@ -514,6 +517,9 @@ OPTIONS
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, SEP-8
                           regulated issuer flags, and ANCHOR_QUOTE_SERVER
                           against the network
+      --audit-k8s-manifests <path>
+                          Audit Kubernetes Ingress, Certificate, Issuer, and
+                          ClusterIssuer YAML for cert-manager renewal issues
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --audit-quotes      Book an ANCHOR_QUOTE_SERVER SEP-38 quote and execute it on
                           TRANSFER_SERVER to verify atomic price and fee execution
@@ -3618,6 +3624,7 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
   if (argv[0] === 'probe-sla') return probeSlaCommand(argv.slice(1));
   if (argv[0] === 'calculate-uptime') return calculateUptimeCommand(argv.slice(1));
+  if (argv[0] === 'monitor-sponsor') return monitorSponsor(argv.slice(1));
   if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
@@ -3723,7 +3730,21 @@ async function main(argv: string[]): Promise<number> {
             ? createAssetCacheFetch(fetch, resolve(assetCache))
             : fetch;
 
-      if (cli.domain && cli.paths.length === 0) {
+      if (cli.auditK8sManifests !== undefined) {
+        const files = await manifestFiles(cli.auditK8sManifests);
+        if (files.length === 0) {
+          throw new Error(`No Kubernetes YAML manifests found at ${cli.auditK8sManifests}.`);
+        }
+
+        const auditor = new K8sIngressCertManagerAuditor();
+        for (const file of files) {
+          const source = await readFile(file, 'utf8');
+          results.push({
+            name: file,
+            result: auditor.audit(source, { strict: cli.strict, rules: cli.rules }),
+          });
+        }
+      } else if (cli.domain && cli.paths.length === 0) {
         const config = await loadConfig(process.cwd(), pluginRuleIds);
         strict = strict || config.strict;
         maxWarnings ??= config.maxWarnings;
@@ -4536,6 +4557,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.checkNetwork = true;
         break;
 
+      case '--audit-k8s-manifests':
+        cli.auditK8sManifests = requireValue(argv, ++i, arg);
+        break;
+
       case '--verify-sep10':
         cli.verifySep10 = true;
         break;
@@ -4902,6 +4927,27 @@ function listRules(): string {
     (r) => `  ${r.id.padEnd(width)}  ${r.severity.padEnd(7)}  ${r.description}`,
   );
   return `${allRules.length} rules\n\n${lines.join('\n')}\n`;
+}
+
+/** Expands a file or directory into the YAML manifests the auditor should read. */
+async function manifestFiles(path: string): Promise<string[]> {
+  const info = await stat(path);
+  if (info.isFile()) return [path];
+  if (!info.isDirectory()) return [];
+
+  const entries = await readdir(path, { withFileTypes: true });
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+
+  const files: string[] = [];
+  for (const entry of entries) {
+    const child = join(path, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await manifestFiles(child)));
+    } else if (entry.isFile() && /\.ya?ml$/i.test(entry.name)) {
+      files.push(child);
+    }
+  }
+  return files;
 }
 
 async function readStdin(): Promise<string> {

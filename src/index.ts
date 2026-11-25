@@ -10,6 +10,13 @@
  * ```
  */
 export { lint, lintDomain } from './lint.js';
+export {
+  K8sIngressCertManagerAuditor,
+  auditK8sManifests,
+  gitopsRules,
+} from './gitops/k8sIngressAuditor.js';
+export { parseYamlDocuments } from './gitops/yaml.js';
+export type { YamlDocument, YamlParseError, YamlParseResult } from './gitops/yaml.js';
 export { lspMain } from './lsp.js';
 export { allRules, ruleIds } from './rules/index.js';
 export { PRESETS, PRESET_NAMES, resolvePreset } from './presets.js';
