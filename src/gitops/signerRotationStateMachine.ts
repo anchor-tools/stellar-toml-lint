@@ -341,7 +341,7 @@ export function parseSignerStateFile(source: string, path = ''): DesiredSignerSt
       return parseDesiredSignerState(JSON.parse(trimmed));
     } catch (error) {
       if (error instanceof SyntaxError) {
-        throw new Error(`Invalid JSON in signer rotation file: ${error.message}`);
+        throw new Error(`Invalid JSON in signer rotation file: ${error.message}`, { cause: error });
       }
       throw error;
     }
@@ -350,7 +350,7 @@ export function parseSignerStateFile(source: string, path = ''): DesiredSignerSt
   try {
     return parseDesiredSignerState(parse(source));
   } catch (error) {
-    throw new Error(`Invalid signer rotation file: ${errorMessage(error)}`);
+    throw new Error(`Invalid signer rotation file: ${errorMessage(error)}`, { cause: error });
   }
 }
 
