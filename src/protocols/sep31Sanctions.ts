@@ -24,7 +24,13 @@
 
 import type { Diagnostic, Rule, RuleOverrides } from '../types.js';
 import { isString, isUrl } from '../predicates.js';
-import { errorMessage, fetchWithTimeout, isRecord, severityFor } from './verifierSupport.js';
+import {
+  errorMessage,
+  fetchWithTimeout,
+  isRecord,
+  severityFor,
+  trimTrailingSlashes,
+} from './verifierSupport.js';
 
 const SEP31_SPEC = 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0031.md';
 const SEP1_SPEC = 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0001.md';
@@ -301,7 +307,7 @@ export async function verifySanctionsCompliance(
 
   if (!isString(server) || !isUrl(server)) return empty();
 
-  const infoUrl = `${server.replace(/\/+$/, '')}/info`;
+  const infoUrl = trimTrailingSlashes(server) + '/info';
   let info: unknown;
   try {
     const response = await fetchWithTimeout(fetchImpl, infoUrl, {}, timeoutMs);
