@@ -109,6 +109,17 @@ import {
   Sep31Sep12ConsistencyEngine,
 } from './protocols/sep31Sep12Consistency.js';
 import { auditEsgDisclosures, renderEsgReport } from './protocols/esgComplianceVerifier.js';
+import {
+  auditSep10NetworkIsolation,
+  renderSep10IsolationReport,
+} from './protocols/sep10Isolation.js';
+import type { StellarNetwork } from './protocols/sep10Isolation.js';
+import { auditSep24WebviewSecurity, renderSep24SecurityReport } from './protocols/sep24Security.js';
+import { auditSep24Refunds, renderSep24RefundReport } from './protocols/sep24RefundAuditor.js';
+import {
+  renderSep38DeliveryReport,
+  verifySep38DeliveryMethods,
+} from './protocols/sep38Delivery.js';
 import { verifyPorFeeds } from './bridges/chainlinkPorVerifier.js';
 import { verifySolanaBridges } from './bridges/solanaEscrowVerifier.js';
 import { auditErc4626Vaults } from './bridges/erc4626VaultAuditor.js';
@@ -456,6 +467,20 @@ USAGE
                                          Map every public key in the file to its roles
                                          and report reused signing, issuer, account and
                                          validator keys
+  stellar-toml-lint audit-sep10-isolation --domain <domain>
+                                         [--network public|testnet] [--format text|json]
+                                         Verify the SEP-10 challenge commits to the target
+                                         network passphrase
+  stellar-toml-lint audit-sep24-security --domain <domain> --sep10-token <jwt>
+                                         Audit the SEP-24 interactive webview CSP, frame
+                                         ancestors, HSTS, referrer policy and SRI
+  stellar-toml-lint verify-refund --domain <domain> --tx-id <id> --sep10-token <jwt>
+                                         [--horizon <url>] [--format text|json]
+                                         Validate SEP-24 refund schemas and match each
+                                         refund payment against Horizon
+  stellar-toml-lint verify-delivery-methods --domain <domain> [--format text|json]
+                                         Validate SEP-38 buy/sell delivery methods and
+                                         check quotes itemise delivery fees
   stellar-toml-lint audit-validator-rotation --domain <domain>
                                          [--previous-signature <sig>]
                                          [--replacement-signature <sig>]
@@ -2158,6 +2183,220 @@ async function verifySep31Sep12Command(args: string[]): Promise<number> {
   }
 }
 
+/** Fetches the well-known document for the audit subcommands. */
+async function fetchStellarTomlDocument(domain: string): Promise<Record<string, unknown>> {
+  const host = new URL(domain.includes('://') ? domain : 'https://' + domain).host;
+  const url = 'https://' + host + '/.well-known/stellar.toml';
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not fetch ${url}: HTTP ${response.status}`);
+  return parseToml(await response.text()) as Record<string, unknown>;
+}
+
+/** `stellar-toml-lint audit-sep10-isolation --domain <domain> [--network public|testnet]` */
+async function auditSep10IsolationCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let network: StellarNetwork | undefined;
+  let endpoint: string | undefined;
+  let format = 'text';
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--network') {
+      const value = requireValue(args, ++i, arg).toLowerCase();
+      if (value !== 'public' && value !== 'testnet') {
+        process.stderr.write('--network expects public or testnet.\n');
+        return 2;
+      }
+      network = value;
+    } else if (arg === '--endpoint') endpoint = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-sep10-isolation\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-sep10-isolation --domain <domain> [--network public|testnet] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const doc = await fetchStellarTomlDocument(domain);
+    const result = await auditSep10NetworkIsolation(doc, domain, fetch, {
+      ...(network === undefined ? {} : { network }),
+      ...(endpoint === undefined ? {} : { webAuthEndpoint: endpoint }),
+    });
+    process.stdout.write(
+      format === 'json'
+        ? `${JSON.stringify({ ...result.report, diagnostics: result.diagnostics }, null, 2)}\n`
+        : renderSep10IsolationReport(result.report),
+    );
+    return result.report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint audit-sep24-security --domain <domain> --sep10-token <jwt>` */
+async function auditSep24SecurityCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let token: string | undefined;
+  let transferServer: string | undefined;
+  let assetCode: string | undefined;
+  let withdraw = false;
+  let format = 'text';
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--sep10-token') token = requireValue(args, ++i, arg);
+    else if (arg === '--token') token = requireValue(args, ++i, arg);
+    else if (arg === '--transfer-server') transferServer = requireValue(args, ++i, arg);
+    else if (arg === '--asset-code') assetCode = requireValue(args, ++i, arg);
+    else if (arg === '--withdraw') withdraw = true;
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-sep24-security\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-sep24-security --domain <domain> --sep10-token <jwt> [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const doc = await fetchStellarTomlDocument(domain);
+    const result = await auditSep24WebviewSecurity(doc, fetch, {
+      ...(token === undefined ? {} : { token }),
+      ...(transferServer === undefined ? {} : { transferServer }),
+      ...(assetCode === undefined ? {} : { assetCode }),
+      withdraw,
+    });
+    process.stdout.write(
+      format === 'json'
+        ? `${JSON.stringify({ ...result.report, diagnostics: result.diagnostics }, null, 2)}\n`
+        : renderSep24SecurityReport(result.report),
+    );
+    return result.report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint verify-refund --domain <domain> --tx-id <id>` */
+async function verifyRefundCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let transactionId: string | undefined;
+  let token: string | undefined;
+  let transferServer: string | undefined;
+  let horizon: string | undefined;
+  let format = 'text';
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--tx-id') transactionId = requireValue(args, ++i, arg);
+    else if (arg === '--sep10-token') token = requireValue(args, ++i, arg);
+    else if (arg === '--token') token = requireValue(args, ++i, arg);
+    else if (arg === '--transfer-server') transferServer = requireValue(args, ++i, arg);
+    else if (arg === '--horizon') horizon = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for verify-refund\n`);
+      return 2;
+    }
+  }
+  if (
+    domain === undefined ||
+    transactionId === undefined ||
+    (format !== 'text' && format !== 'json')
+  ) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint verify-refund --domain <domain> --tx-id <id> --sep10-token <jwt> [--horizon <url>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const doc = await fetchStellarTomlDocument(domain);
+    const result = await auditSep24Refunds(doc, fetch, {
+      transactionId,
+      ...(token === undefined ? {} : { token }),
+      ...(transferServer === undefined ? {} : { transferServer }),
+      ...(horizon === undefined ? {} : { horizonUrl: horizon }),
+    });
+    process.stdout.write(
+      format === 'json'
+        ? `${JSON.stringify({ ...result.report, diagnostics: result.diagnostics }, null, 2)}\n`
+        : renderSep24RefundReport(result.report),
+    );
+    return result.report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint verify-delivery-methods --domain <domain>` */
+async function verifyDeliveryMethodsCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let quoteServer: string | undefined;
+  let token: string | undefined;
+  let sellAsset: string | undefined;
+  let buyAsset: string | undefined;
+  let sellAmount: string | undefined;
+  let checkQuotes = true;
+  let format = 'text';
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--quote-server') quoteServer = requireValue(args, ++i, arg);
+    else if (arg === '--sep10-token') token = requireValue(args, ++i, arg);
+    else if (arg === '--token') token = requireValue(args, ++i, arg);
+    else if (arg === '--sell-asset') sellAsset = requireValue(args, ++i, arg);
+    else if (arg === '--buy-asset') buyAsset = requireValue(args, ++i, arg);
+    else if (arg === '--sell-amount') sellAmount = requireValue(args, ++i, arg);
+    else if (arg === '--no-quote') checkQuotes = false;
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for verify-delivery-methods\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint verify-delivery-methods --domain <domain> [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const doc = await fetchStellarTomlDocument(domain);
+    const result = await verifySep38DeliveryMethods(doc, fetch, {
+      checkQuotes,
+      ...(quoteServer === undefined ? {} : { quoteServer }),
+      ...(token === undefined ? {} : { token }),
+      ...(sellAsset === undefined ? {} : { sellAsset }),
+      ...(buyAsset === undefined ? {} : { buyAsset }),
+      ...(sellAmount === undefined ? {} : { sellAmount }),
+    });
+    process.stdout.write(
+      format === 'json'
+        ? `${JSON.stringify({ ...result.report, diagnostics: result.diagnostics }, null, 2)}\n`
+        : renderSep38DeliveryReport(result.report),
+    );
+    return result.report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 /** `stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>] [--format text|json]` */
 async function auditKeySeparationCommand(args: string[]): Promise<number> {
   let domain: string | undefined;
@@ -3631,6 +3870,13 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
+  if (argv[0] === 'audit-sep10-isolation') return auditSep10IsolationCommand(argv.slice(1));
+  if (argv[0] === 'audit-sep24-security') return auditSep24SecurityCommand(argv.slice(1));
+  if (argv[0] === 'verify-refund') return verifyRefundCommand(argv.slice(1));
+  if (argv[0] === 'verify-delivery-methods') return verifyDeliveryMethodsCommand(argv.slice(1));
+  if (argv[0] === '--audit-sep24-security') {
+    return auditSep24SecurityCommand(argv.slice(1));
+  }
   if (argv[0] === 'init-ci') return initCiCommand(argv.slice(1));
   if (argv[0] === 'ci-report') return ciReportCommand(argv.slice(1));
   if (argv[0] === 'ci-scorecard') return ciScorecardCommand(argv.slice(1));

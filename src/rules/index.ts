@@ -37,6 +37,10 @@ import { sep38CircuitBreakerRules } from '../protocols/sep38CircuitBreaker.js';
 import { sep38DiscrepancyRules } from '../protocols/sep38Discrepancy.js';
 import { sep6PollingRules } from '../protocols/sep6Polling.js';
 import { sep10JwtRules } from '../protocols/sep10JwtAuditor.js';
+import { sep10IsolationRules } from '../protocols/sep10Isolation.js';
+import { sep24SecurityRules } from '../protocols/sep24Security.js';
+import { sep24RefundRules } from '../protocols/sep24RefundAuditor.js';
+import { sep38DeliveryRules } from '../protocols/sep38Delivery.js';
 import { sep12FileUploadRules } from '../protocols/sep12FileUpload.js';
 import { federationSrvRules } from '../protocols/federationSrvVerifier.js';
 import { esgRules } from '../protocols/esgComplianceVerifier.js';
@@ -118,6 +122,10 @@ export const allRules: Rule[] = [
   ...sep38DiscrepancyRules,
   ...sep6PollingRules,
   ...sep10JwtRules,
+  ...sep10IsolationRules,
+  ...sep24SecurityRules,
+  ...sep24RefundRules,
+  ...sep38DeliveryRules,
   ...sep12FileUploadRules,
   ...federationSrvRules,
   ...esgRules,
@@ -203,6 +211,10 @@ export {
   sep38DiscrepancyRules,
   sep6PollingRules,
   sep10JwtRules,
+  sep10IsolationRules,
+  sep24SecurityRules,
+  sep24RefundRules,
+  sep38DeliveryRules,
   sep12FileUploadRules,
   federationSrvRules,
   esgRules,
