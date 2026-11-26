@@ -16,7 +16,7 @@ import {
 
 export interface SponsorAccountState {
   accountId: string;
-  /** Spendable XLM balance (excluding base reserves for owned entries), in stroops or XLM string/number. */
+  /** Spendable balance in XLM after selling liabilities and minimum reserve. */
   balanceXlm: number;
   /** Number of sponsored ledger entries / future reserves currently active. */
   sponsoredEntriesCount: number;
@@ -106,7 +106,6 @@ export class SponsorshipPoolWatchdog {
       balances?: Array<{
         asset_type: string;
         balance: string;
-        buying_liabilities?: string;
         selling_liabilities?: string;
       }>;
       num_sponsoring?: number;
@@ -114,25 +113,29 @@ export class SponsorshipPoolWatchdog {
       subentry_count?: number;
     };
 
+    const sponsoredEntriesCount = data.num_sponsoring ?? 0;
+    const baseReserveXlm =
+      Math.max(
+        0,
+        2 + (data.subentry_count ?? 0) + sponsoredEntriesCount - (data.num_sponsored ?? 0),
+      ) * DEFAULT_RESERVE_PER_ENTRY_XLM;
+
     let nativeBalanceXlm = 0;
     if (Array.isArray(data.balances)) {
       const native = data.balances.find((b) => b.asset_type === 'native');
       if (native) {
         const total = Number.parseFloat(native.balance);
-        const buying = Number.parseFloat(native.buying_liabilities ?? '0');
         const selling = Number.parseFloat(native.selling_liabilities ?? '0');
-        nativeBalanceXlm = Math.max(0, total - buying - selling);
+        nativeBalanceXlm = Math.max(0, total - selling - baseReserveXlm);
       }
     }
-
-    // Sponsored entry count is represented by num_sponsoring or subentries in Stellar ledger accounting
-    const sponsoredEntriesCount = Number(data.num_sponsoring ?? data.subentry_count ?? 0);
 
     return {
       accountId,
       balanceXlm: nativeBalanceXlm,
       sponsoredEntriesCount,
       reservePerEntryXlm: DEFAULT_RESERVE_PER_ENTRY_XLM,
+      baseReserveXlm,
     };
   }
 

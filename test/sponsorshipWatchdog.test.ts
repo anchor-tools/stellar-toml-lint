@@ -20,6 +20,31 @@ describe('SponsorshipPoolWatchdog', () => {
     expect(accounts).toContain(mockAccountId);
   });
 
+  it('subtracts minimum reserve and selling liabilities from the Horizon balance', async () => {
+    const watchdog = new SponsorshipPoolWatchdog({
+      fetchImpl: async () =>
+        Response.json({
+          balances: [
+            {
+              asset_type: 'native',
+              balance: '50',
+              buying_liabilities: '30',
+              selling_liabilities: '4',
+            },
+          ],
+          subentry_count: 3,
+          num_sponsoring: 4,
+          num_sponsored: 1,
+        }),
+    });
+
+    await expect(watchdog.fetchAccountState(mockAccountId)).resolves.toMatchObject({
+      balanceXlm: 42,
+      baseReserveXlm: 4,
+      sponsoredEntriesCount: 4,
+    });
+  });
+
   it('simulates transaction surges and calculates depletion accurately', () => {
     const watchdog = new SponsorshipPoolWatchdog();
     const state: SponsorAccountState = {
