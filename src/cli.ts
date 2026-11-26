@@ -204,13 +204,14 @@ import {
   type IncidentSeverity,
 } from './gitops/incidentDispatcher.js';
 import { auditDockerfile, renderContainerReport } from './gitops/containerAuditor.js';
+import { IacDeploymentValidator } from './gitops/iacValidator.js';
 import { DEFAULT_HORIZON_URL, SponsorshipPoolWatchdog } from './gitops/sponsorshipWatchdog.js';
 import {
   renderProvenanceReport,
   verifySlsaProvenance,
   type SlsaLevel,
 } from './gitops/slsaVerifier.js';
-import { allRules } from './rules/index.js';
+import { allRules, IAC_DEPLOYMENT_RULE } from './rules/index.js';
 import { PRESETS, resolvePreset, type PresetName } from './presets.js';
 import { generateBadgeSvg, generateShieldsEndpoint } from './generators/badge.js';
 import {
@@ -277,6 +278,7 @@ interface Cli {
   maxWarnings?: number;
   checkNetwork: boolean;
   auditK8sManifests?: string;
+  auditIac?: string;
   followLinks: boolean;
   verifySep10: boolean;
   auditQuotes: boolean;
@@ -517,6 +519,7 @@ OPTIONS
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, SEP-8
                           regulated issuer flags, and ANCHOR_QUOTE_SERVER
                           against the network
+      --audit-iac <path>   Audit Terraform and Ansible anchor deployment files
       --audit-k8s-manifests <path>
                           Audit Kubernetes Ingress, Certificate, Issuer, and
                           ClusterIssuer YAML for cert-manager renewal issues
@@ -3730,7 +3733,26 @@ async function main(argv: string[]): Promise<number> {
             ? createAssetCacheFetch(fetch, resolve(assetCache))
             : fetch;
 
-      if (cli.auditK8sManifests !== undefined) {
+      if (cli.auditIac !== undefined) {
+        const { issues } = new IacDeploymentValidator().audit(cli.auditIac);
+        const severity = cli.rules[IAC_DEPLOYMENT_RULE];
+        results.push({
+          name: cli.auditIac,
+          result: finalize(
+            severity === 'off'
+              ? []
+              : issues.map((issue) => ({
+                  rule: IAC_DEPLOYMENT_RULE,
+                  category: 'gitops',
+                  severity: severity ?? issue.severity,
+                  message: issue.message,
+                  path: issue.file,
+                })),
+            { strict },
+            undefined,
+          ),
+        });
+      } else if (cli.auditK8sManifests !== undefined) {
         const files = await manifestFiles(cli.auditK8sManifests);
         if (files.length === 0) {
           throw new Error(`No Kubernetes YAML manifests found at ${cli.auditK8sManifests}.`);
@@ -4555,6 +4577,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--check-network':
         cli.checkNetwork = true;
+        break;
+
+      case '--audit-iac':
+        cli.auditIac = requireValue(argv, ++i, arg);
         break;
 
       case '--audit-k8s-manifests':
