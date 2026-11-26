@@ -1173,6 +1173,23 @@ export type {
   FramingDecision,
   FramingRole,
 } from './security/clickjackingAuditor.js';
+export {
+  SemanticTomlDiffer,
+  diffSemanticToml,
+  renderSemanticDiff,
+  renderSemanticDiffJson,
+} from './cst/semanticDiffer.js';
+export type {
+  DiffCategory,
+  DiffKind,
+  DiffLabels,
+  SemanticChange,
+  SemanticDiff,
+  SemanticDiffSide,
+  SemanticTomlDifferOptions,
+} from './cst/semanticDiffer.js';
+export { DocumentSymbolKind, getDocumentSymbols } from './lsp/document-symbols.js';
+export type { LspDocumentSymbol } from './lsp/document-symbols.js';
 export { LosslessCstFormatter } from './cst/cstFormatter.js';
 export type { FormatterOptions } from './cst/cstFormatter.js';
 export { ResilientIncrementalParser } from './cst/resilientParser.js';
