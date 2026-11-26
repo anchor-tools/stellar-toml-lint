@@ -17,7 +17,7 @@ const fixture = (name: string): string => join(here, 'fixtures', 'k8s', name);
 const read = (name: string): string => readFileSync(fixture(name), 'utf8');
 const run = promisify(execFile);
 
-const COMPLIANT = read('compliant.yaml');
+const COMPLIANT = read('compliant.yaml').replace(/\r\n/g, '\n');
 const MISCONFIGURED = read('misconfigured.yaml');
 
 const auditor = new K8sIngressCertManagerAuditor();
@@ -53,6 +53,14 @@ describe('K8sIngressCertManagerAuditor', () => {
 
   it('passes the compliant fixture in strict mode', () => {
     expect(auditor.audit(COMPLIANT, { strict: true }).ok).toBe(true);
+  });
+
+  it('audits Windows line endings identically to LF', () => {
+    const source = MISCONFIGURED.replace(/\r\n/g, '\n');
+    const expected = auditor.audit(source);
+
+    expect(expected.ok).toBe(false);
+    expect(auditor.audit(source.replace(/\n/g, '\r\n'))).toEqual(expected);
   });
 
   it('flags the misconfigured fixture with actionable diagnostics', () => {
@@ -110,7 +118,7 @@ describe('K8sIngressCertManagerAuditor', () => {
 
   it('flags a missing CORS annotation on the stellar.toml route', () => {
     const withoutCors = COMPLIANT.replace(
-      /^.*nginx\.ingress\.kubernetes\.io\/(?:enable-cors|cors-allow-origin):.*\n/gm,
+      /^ +nginx\.ingress\.kubernetes\.io\/(?:enable-cors|cors-allow-origin):.*\n/gm,
       '',
     );
 
