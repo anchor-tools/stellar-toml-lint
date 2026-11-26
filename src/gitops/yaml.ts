@@ -86,7 +86,7 @@ export function parseYamlDocuments(source: string): YamlParseResult {
 }
 
 function toLines(source: string): SourceLine[] {
-  return source.split('\n').map((raw, index) => {
+  return source.split(/\r\n|\n|\r/).map((raw, index) => {
     // Tabs are illegal indentation in YAML. Expanding them is friendlier than
     // rejecting an otherwise readable manifest.
     const expanded = raw.replace(/\t/g, '  ');
