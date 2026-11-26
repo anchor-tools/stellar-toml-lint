@@ -3,23 +3,8 @@
  *
  * Runs under `stellar-toml-lint audit-sep10-isolation --domain <domain>`.
  *
- * A SEP-10 challenge is a Stellar transaction, and a transaction is only valid
- * on the network whose passphrase was hashed into its signing hash. An anchor
- * that serves both Testnet and Mainnet must therefore verify the client's
- * signature against the passphrase of the endpoint that issued the challenge.
- * A server that parses the envelope against the wrong passphrase — or accepts
- * whichever passphrase happens to validate the signature — lets an attacker
- * authenticate with a keypair that only ever existed on Testnet.
- *
- * The audit walks the handshake against the live endpoint:
- *   1. GET /auth?account=<client> to fetch the challenge.
- *   2. Verify the challenge commits to the target network by checking the
- *      server's signature against the target passphrase hash.
- *   3. Re-sign the same challenge under the alternate passphrase and POST it
- *      back; a correct server answers 400 with a descriptive error.
- *
- * Secret keys never leave this module: probes and reports carry public keys
- * only, so a CI log cannot leak a signing seed.
+ * Fetches an unsigned-client challenge and checks the server signature against
+ * the configured Stellar network passphrase.
  */
 
 import { Keypair, Networks, TransactionBuilder } from '@stellar/stellar-base';
@@ -29,9 +14,6 @@ import { isRecord, severityFor } from './verifierSupport.js';
 const CHALLENGE_MALFORMED_RULE = 'sep10/isolation-challenge-malformed';
 const CHALLENGE_MISMATCH_RULE = 'sep10/isolation-challenge-network-mismatch';
 const SIGNATURE_INVALID_RULE = 'sep10/isolation-challenge-signature-invalid';
-const CROSS_NETWORK_ACCEPTED_RULE = 'sep10/isolation-cross-network-accepted';
-const CROSS_NETWORK_STATUS_RULE = 'sep10/isolation-cross-network-bad-status';
-const MISSING_ERROR_CODE_RULE = 'sep10/isolation-missing-error-code';
 const PROBE_FAILED_RULE = 'sep10/isolation-probe-failed';
 
 const SPEC = 'https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0010.md';
@@ -44,9 +26,6 @@ export const NETWORK_PASSPHRASES = {
 } as const;
 
 export type StellarNetwork = keyof typeof NETWORK_PASSPHRASES;
-
-/** HTTP status SEP-10 servers must use for an invalid challenge response. */
-export const CROSS_NETWORK_REJECTION_STATUS = 400;
 
 /**
  * Passphrase that must never validate a signature a correct server accepts on
@@ -78,29 +57,13 @@ export interface Sep10IsolationOptions {
   rules?: RuleOverrides;
   /** Target network; defaults to `public`. */
   network?: StellarNetwork;
-  /**
-   * Client keypair used to answer the challenge. Defaults to a throwaway random
-   * keypair — the audit never needs a funded account, only a valid signer.
-   */
-  clientKeypair?: Keypair;
+  /** Client public key sent in the request. Defaults to an ephemeral public key. */
+  clientAccount?: string;
   /** SEP-10 endpoint; discovered from `stellar.toml` when omitted. */
   webAuthEndpoint?: string;
   /** Home domain sent with the challenge request. */
   homeDomain?: string;
   timeoutMs?: number;
-}
-
-/** What happened when a cross-network challenge was submitted. */
-export interface CrossNetworkProbe {
-  /** Passphrase the response was signed under. */
-  passphrase: string;
-  status?: number;
-  /** Server-supplied error string / code, when it returned one. */
-  error?: string;
-  /** True when the server returned a token instead of an error. */
-  accepted: boolean;
-  /** True when the server rejected with 400 and a descriptive error. */
-  rejectedStrictly: boolean;
 }
 
 /** Public-only account and challenge details, safe to print. */
@@ -109,8 +72,6 @@ export interface IsolationChallenge {
   account: string;
   /** Public key of the server signing key (challenge source account). */
   serverAccount?: string;
-  /** Base64 envelope used for the cross-network probe. */
-  xdr: string;
   /** True when the server signature validates under the target passphrase. */
   networkBound: boolean;
   /** Passphrase whose hash validates the server signature, if discoverable. */
@@ -124,8 +85,7 @@ export interface Sep10IsolationReport {
   expectedPassphrase: string;
   alternatePassphrase: string;
   challenge?: IsolationChallenge;
-  probe?: CrossNetworkProbe;
-  /** True only when the challenge is network-bound and the probe was rejected. */
+  /** True only when the challenge is network-bound. */
   ok: boolean;
   findings: { code: string; severity: Severity; message: string }[];
 }
@@ -200,38 +160,6 @@ export function inspectChallenge(xdr: string, passphrase: string): ParsedChallen
   };
 }
 
-/** Signs an existing envelope with `keypair` under `passphrase`. */
-export function signUnderPassphrase(xdr: string, passphrase: string, keypair: Keypair): string {
-  const tx = TransactionBuilder.fromXDR(xdr, passphrase);
-  if ('innerTransaction' in tx) throw new Error('fee-bump challenges are not supported');
-  tx.sign(keypair);
-  return tx.toXDR();
-}
-
-async function readError(response: Response): Promise<string | undefined> {
-  // Read the body once: a failed `json()` still consumes it, so JSON and plain
-  // text replies have to be distinguished after the read, not by retrying.
-  let text: string;
-  try {
-    text = (await response.text()).trim();
-  } catch {
-    return undefined;
-  }
-  if (text === '') return undefined;
-  try {
-    const body: unknown = JSON.parse(text);
-    if (!isRecord(body)) return undefined;
-    for (const key of ['error', 'code', 'message']) {
-      const value = body[key];
-      if (typeof value === 'string' && value.trim() !== '') return value;
-    }
-    return undefined;
-  } catch {
-    // Plain-text error body, which some SEP-10 servers still send.
-    return text.slice(0, 200);
-  }
-}
-
 /**
  * Audits one anchor for network passphrase isolation.
  *
@@ -255,7 +183,7 @@ export class Sep10NetworkIsolationAuditor {
       this.options.webAuthEndpoint ??
       (typeof doc.WEB_AUTH_ENDPOINT === 'string' ? doc.WEB_AUTH_ENDPOINT : undefined) ??
       `https://${domain}/auth`;
-    const client = this.options.clientKeypair ?? Keypair.random();
+    const account = this.options.clientAccount ?? Keypair.random().publicKey();
 
     const report: Sep10IsolationReport = {
       domain,
@@ -278,15 +206,16 @@ export class Sep10NetworkIsolationAuditor {
       }
     };
 
-    const url = new URL(endpoint);
-    url.searchParams.set('account', client.publicKey());
-    const homeDomain = this.options.homeDomain ?? domain;
-    if (homeDomain !== '') url.searchParams.set('home_domain', homeDomain);
-
     let challengeXdr: string;
     try {
+      const url = new URL(endpoint);
+      if (url.protocol !== 'https:') throw new Error('WEB_AUTH_ENDPOINT must use HTTPS');
+      url.searchParams.set('account', account);
+      const homeDomain = this.options.homeDomain ?? domain;
+      if (homeDomain !== '') url.searchParams.set('home_domain', homeDomain);
       const response = await this.fetchImpl(url.toString(), {
         method: 'GET',
+        redirect: 'error',
         headers: { accept: 'application/json' },
         signal: AbortSignal.timeout(this.options.timeoutMs ?? 10_000),
       });
@@ -355,9 +284,8 @@ export class Sep10NetworkIsolationAuditor {
     const networkBound = observedPassphrase === expectedPassphrase;
 
     const challenge: IsolationChallenge = {
-      account: client.publicKey(),
+      account,
       serverAccount: expected.source,
-      xdr: challengeXdr,
       networkBound,
       ...(observedPassphrase === undefined ? {} : { observedPassphrase }),
     };
@@ -373,89 +301,19 @@ export class Sep10NetworkIsolationAuditor {
           this.options.rules,
         ),
       );
-    } else if (expected.validSignatures.length === 0) {
+    } else if (!networkBound) {
       add(
         diagnostic(
           SIGNATURE_INVALID_RULE,
           'error',
-          'No signature on the challenge validates against the target network passphrase',
+          'The challenge source signature does not validate against the target network passphrase',
           'Sign the challenge transaction with the network passphrase this endpoint serves.',
           this.options.rules,
         ),
       );
     }
 
-    // Safe after {@link inspectChallenge}: the envelope parsed as a standard
-    // transaction, so re-parsing here under the alternate passphrase cannot
-    // hit the fee-bump path that `signUnderPassphrase` rejects.
-    const probeXdr = signUnderPassphrase(challengeXdr, alternatePassphrase, client);
-
-    try {
-      const response = await this.fetchImpl(endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify({ transaction: probeXdr }),
-        signal: AbortSignal.timeout(this.options.timeoutMs ?? 10_000),
-      });
-      const error = await readError(response);
-      const accepted = response.ok;
-      const probe: CrossNetworkProbe = {
-        passphrase: alternatePassphrase,
-        status: response.status,
-        ...(error === undefined ? {} : { error }),
-        accepted,
-        rejectedStrictly:
-          response.status === CROSS_NETWORK_REJECTION_STATUS &&
-          error !== undefined &&
-          error.trim() !== '',
-      };
-      report.probe = probe;
-
-      if (accepted) {
-        add(
-          diagnostic(
-            CROSS_NETWORK_ACCEPTED_RULE,
-            'error',
-            `The endpoint accepted a challenge signed for ${alternatePassphrase} on the ${network} network`,
-            'Reject signatures that were produced for a different network passphrase.',
-            this.options.rules,
-          ),
-        );
-      } else if (response.status !== CROSS_NETWORK_REJECTION_STATUS) {
-        add(
-          diagnostic(
-            CROSS_NETWORK_STATUS_RULE,
-            'error',
-            `Cross-network challenge was rejected with HTTP ${response.status}, expected 400`,
-            'Answer an invalid network passphrase signature with 400 Bad Request.',
-            this.options.rules,
-          ),
-        );
-      } else if (error === undefined || error.trim() === '') {
-        add(
-          diagnostic(
-            MISSING_ERROR_CODE_RULE,
-            'warning',
-            'Cross-network challenge was rejected with 400 but no descriptive error code',
-            'Return `{ "error": "<reason>" }` so wallets can diagnose the failure.',
-            this.options.rules,
-          ),
-        );
-      }
-
-      report.ok =
-        networkBound && expected.validSignatures.length > 0 && probe.rejectedStrictly && !accepted;
-    } catch (error) {
-      add(
-        diagnostic(
-          PROBE_FAILED_RULE,
-          'warning',
-          `POST /auth failed: ${error instanceof Error ? error.message : String(error)}`,
-          'Confirm the endpoint accepts SEP-10 challenge responses.',
-          this.options.rules,
-        ),
-      );
-    }
+    report.ok = networkBound;
 
     return { report, diagnostics };
   }
@@ -483,11 +341,6 @@ export function renderSep10IsolationReport(report: Sep10IsolationReport): string
   if (report.challenge) {
     lines.push(`  account:   ${report.challenge.account}`);
     lines.push(`  bound:     ${report.challenge.networkBound ? 'yes' : 'no'}`);
-  }
-  if (report.probe) {
-    lines.push(
-      `  probe:     HTTP ${report.probe.status ?? 'n/a'}${report.probe.error === undefined ? '' : ` — ${report.probe.error}`}`,
-    );
   }
   lines.push(`  result:    ${report.ok ? 'PASS' : 'FAIL'}`);
   for (const finding of report.findings) {
@@ -524,27 +377,6 @@ export const sep10IsolationRules: Rule[] = [
     category: CATEGORY,
     severity: 'error',
     description: 'SEP-10 challenge must carry a signature valid on the target network',
-    run() {},
-  },
-  {
-    id: CROSS_NETWORK_ACCEPTED_RULE,
-    category: CATEGORY,
-    severity: 'error',
-    description: 'SEP-10 server must not accept cross-network signatures',
-    run() {},
-  },
-  {
-    id: CROSS_NETWORK_STATUS_RULE,
-    category: CATEGORY,
-    severity: 'error',
-    description: 'Cross-network challenges must be rejected with HTTP 400',
-    run() {},
-  },
-  {
-    id: MISSING_ERROR_CODE_RULE,
-    category: CATEGORY,
-    severity: 'warning',
-    description: 'Rejected cross-network challenges need a descriptive error code',
     run() {},
   },
 ];

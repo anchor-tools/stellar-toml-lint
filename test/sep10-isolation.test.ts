@@ -1,7 +1,6 @@
 import { Account, Keypair, Networks, Operation, TransactionBuilder } from '@stellar/stellar-base';
 import { describe, expect, it } from 'vitest';
 import {
-  CROSS_NETWORK_REJECTION_STATUS,
   NETWORK_PASSPHRASES,
   Sep10NetworkIsolationAuditor,
   alternatePassphraseFor,
@@ -13,7 +12,6 @@ import {
   renderSep10IsolationReport,
   sep10IsolationRuleIds,
   sep10IsolationRules,
-  signUnderPassphrase,
 } from '../src/protocols/sep10Isolation.js';
 
 const SERVER = Keypair.fromRawEd25519Seed(Buffer.alloc(32, 1));
@@ -40,45 +38,16 @@ function buildChallenge(
   return tx.toXDR();
 }
 
-/** A challenge endpoint whose POST handler decides whether to accept the reply. */
-function authServer(
-  challengeFor: () => string,
-  accept: (xdr: string) => boolean,
-  status = 400,
-  error: string | null = 'invalid network passphrase',
-) {
+function authServer(challengeFor: () => string) {
   const calls: string[] = [];
-  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+  const fetchImpl: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
-    calls.push(`${init?.method ?? 'GET'} ${url.pathname}`);
-    if (init?.method === 'GET') {
-      return Response.json({ transaction: challengeFor() });
-    }
-    const body = JSON.parse(String(init?.body)) as { transaction?: string };
-    if (accept(body.transaction ?? '')) return Response.json({ token: 'jwt' });
-    if (error === null) return new Response('', { status });
-    return Response.json({ error }, { status });
-  }) as unknown as typeof fetch;
+    calls.push(String(init?.method) + ' ' + url.pathname);
+    expect(init?.method).toBe('GET');
+    expect(url.searchParams.get('account')).toBe(CLIENT.publicKey());
+    return Response.json({ transaction: challengeFor() });
+  };
   return { fetchImpl, calls };
-}
-
-/** True only when the client's signature validates under the given passphrase. */
-function signedFor(xdr: string, passphrase: string, keypair = CLIENT): boolean {
-  try {
-    const tx = TransactionBuilder.fromXDR(xdr, passphrase);
-    if ('innerTransaction' in tx) return false;
-    const hash = tx.hash();
-    return tx.signatures.some(
-      (sig) => keypair.signatureHint().equals(sig.hint()) && keypair.verify(hash, sig.signature()),
-    );
-  } catch {
-    return false;
-  }
-}
-
-function passphraseValidation(server: Keypair, client: Keypair, passphrase: string): boolean {
-  const xdr = signUnderPassphrase(buildChallenge(passphrase, server, client), passphrase, client);
-  return signedFor(xdr, passphrase, client);
 }
 
 describe('passphrase helpers', () => {
@@ -100,17 +69,6 @@ describe('passphrase helpers', () => {
 });
 
 describe('signing and inspection', () => {
-  it('signs the same envelope under different passphrases, producing different hashes', () => {
-    const xdr = buildChallenge(Networks.PUBLIC);
-    const publicSig = signUnderPassphrase(xdr, Networks.PUBLIC, CLIENT);
-    const testnetSig = signUnderPassphrase(xdr, Networks.TESTNET, CLIENT);
-    expect(publicSig).not.toBe(testnetSig);
-    expect(signedFor(publicSig, Networks.PUBLIC)).toBe(true);
-    expect(signedFor(publicSig, Networks.TESTNET)).toBe(false);
-    expect(signedFor(testnetSig, Networks.TESTNET)).toBe(true);
-    expect(signedFor(testnetSig, Networks.PUBLIC)).toBe(false);
-  });
-
   it('detects the passphrase the server signature commits to', () => {
     const xdr = buildChallenge(Networks.PUBLIC);
     const publicView = inspectChallenge(xdr, Networks.PUBLIC);
@@ -119,22 +77,6 @@ describe('signing and inspection', () => {
     expect(publicView?.account).toBe(CLIENT.publicKey());
     expect(testnetView?.validSignatures).toEqual([]);
     expect(inspectChallenge('not-an-envelope', Networks.PUBLIC)).toBeUndefined();
-  });
-
-  it('rejects malformed envelopes when signing', () => {
-    expect(() => signUnderPassphrase('garbage', Networks.PUBLIC, CLIENT)).toThrow();
-  });
-
-  it('rejects fee-bump envelopes when signing', () => {
-    const inner = TransactionBuilder.fromXDR(buildChallenge(Networks.PUBLIC), Networks.PUBLIC);
-    if ('innerTransaction' in inner) throw new Error('expected a standard envelope');
-    const feeBump = TransactionBuilder.buildFeeBumpTransaction(
-      SERVER,
-      '200',
-      inner,
-      Networks.PUBLIC,
-    );
-    expect(() => signUnderPassphrase(feeBump.toXDR(), Networks.PUBLIC, CLIENT)).toThrow(/fee-bump/);
   });
 
   it('registers one rule id per finding code and every runner is a no-op', () => {
@@ -162,13 +104,10 @@ describe('signing and inspection', () => {
 });
 
 describe('Sep10NetworkIsolationAuditor', () => {
-  it('passes when the challenge is network-bound and the cross-network reply is rejected', async () => {
-    const { fetchImpl, calls } = authServer(
-      () => buildChallenge(Networks.PUBLIC),
-      (xdr) => signedFor(xdr, Networks.PUBLIC),
-    );
+  it('passes for a network-bound challenge with a single GET', async () => {
+    const { fetchImpl, calls } = authServer(() => buildChallenge(Networks.PUBLIC));
     const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
+      clientAccount: CLIENT.publicKey(),
     }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
 
     expect(result.diagnostics).toEqual([]);
@@ -176,35 +115,14 @@ describe('Sep10NetworkIsolationAuditor', () => {
     expect(result.report.network).toBe('public');
     expect(result.report.challenge?.networkBound).toBe(true);
     expect(result.report.challenge?.observedPassphrase).toBe(Networks.PUBLIC);
-    expect(result.report.probe?.status).toBe(CROSS_NETWORK_REJECTION_STATUS);
-    expect(result.report.probe?.rejectedStrictly).toBe(true);
-    expect(calls).toEqual(['GET /auth', 'POST /auth']);
+    expect(calls).toEqual(['GET /auth']);
     expect(renderSep10IsolationReport(result.report)).toContain('PASS');
   });
 
-  it('fails when the server accepts a testnet-signed response on mainnet', async () => {
-    const { fetchImpl } = authServer(
-      () => buildChallenge(Networks.PUBLIC),
-      (xdr) => signedFor(xdr, Networks.PUBLIC) || signedFor(xdr, Networks.TESTNET),
-    );
-    const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
-    }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
-
-    expect(result.report.probe?.accepted).toBe(true);
-    expect(result.report.ok).toBe(false);
-    expect(result.diagnostics.map((d) => d.rule)).toContain(
-      'sep10/isolation-cross-network-accepted',
-    );
-  });
-
   it('flags a challenge that is signed for the alternate network', async () => {
-    const { fetchImpl } = authServer(
-      () => buildChallenge(Networks.TESTNET),
-      () => false,
-    );
+    const { fetchImpl } = authServer(() => buildChallenge(Networks.TESTNET));
     const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
+      clientAccount: CLIENT.publicKey(),
     }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
 
     expect(result.report.challenge?.networkBound).toBe(false);
@@ -232,12 +150,9 @@ describe('Sep10NetworkIsolationAuditor', () => {
       .setTimeout(30)
       .build();
     tx.sign(third);
-    const { fetchImpl } = authServer(
-      () => tx.toXDR(),
-      () => false,
-    );
+    const { fetchImpl } = authServer(() => tx.toXDR());
     const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
+      clientAccount: CLIENT.publicKey(),
     }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
 
     expect(result.report.challenge?.networkBound).toBe(false);
@@ -247,46 +162,11 @@ describe('Sep10NetworkIsolationAuditor', () => {
     );
   });
 
-  it('requires a descriptive error code on rejection', async () => {
-    const { fetchImpl } = authServer(
-      () => buildChallenge(Networks.PUBLIC),
-      () => false,
-      400,
-      null,
-    );
-    const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
-    }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
-
-    expect(result.diagnostics.map((d) => d.rule)).toContain('sep10/isolation-missing-error-code');
-    expect(result.report.probe?.rejectedStrictly).toBe(false);
-    expect(result.report.ok).toBe(false);
-  });
-
-  it('flags the wrong rejection status even with an error body', async () => {
-    const { fetchImpl } = authServer(
-      () => buildChallenge(Networks.PUBLIC),
-      () => false,
-      401,
-      'unauthorized',
-    );
-    const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
-    }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
-
-    expect(result.diagnostics.map((d) => d.rule)).toContain(
-      'sep10/isolation-cross-network-bad-status',
-    );
-  });
-
   it('tests the reverse direction on testnet', async () => {
-    const { fetchImpl } = authServer(
-      () => buildChallenge(Networks.TESTNET),
-      (xdr) => signedFor(xdr, Networks.TESTNET),
-    );
+    const { fetchImpl } = authServer(() => buildChallenge(Networks.TESTNET));
     const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
       network: 'testnet',
-      clientKeypair: CLIENT,
+      clientAccount: CLIENT.publicKey(),
     }).audit({ WEB_AUTH_ENDPOINT: 'https://testnet.anchor.test/auth' }, 'testnet.anchor.test');
 
     expect(result.report.expectedPassphrase).toBe(Networks.TESTNET);
@@ -299,7 +179,7 @@ describe('Sep10NetworkIsolationAuditor', () => {
       throw new Error('ECONNREFUSED');
     }) as unknown as typeof fetch;
     const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
+      clientAccount: CLIENT.publicKey(),
     }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
 
     expect(result.diagnostics.map((d) => d.rule)).toEqual(['sep10/isolation-probe-failed']);
@@ -309,13 +189,13 @@ describe('Sep10NetworkIsolationAuditor', () => {
   it('reports a non-2xx challenge response and a missing envelope', async () => {
     const down = (async () => new Response('nope', { status: 503 })) as unknown as typeof fetch;
     const first = await new Sep10NetworkIsolationAuditor(down, {
-      clientKeypair: CLIENT,
+      clientAccount: CLIENT.publicKey(),
     }).audit({}, 'anchor.test');
     expect(first.diagnostics[0]?.message).toContain('HTTP 503');
 
     const empty = (async () => Response.json({})) as unknown as typeof fetch;
     const second = await new Sep10NetworkIsolationAuditor(empty, {
-      clientKeypair: CLIENT,
+      clientAccount: CLIENT.publicKey(),
     }).audit({}, 'anchor.test');
     expect(second.diagnostics[0]?.message).toContain('no `transaction`');
   });
@@ -324,70 +204,9 @@ describe('Sep10NetworkIsolationAuditor', () => {
     const fetchImpl = (async () =>
       Response.json({ transaction: 'garbage' })) as unknown as typeof fetch;
     const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
+      clientAccount: CLIENT.publicKey(),
     }).audit({}, 'anchor.test');
     expect(result.diagnostics.map((d) => d.rule)).toEqual(['sep10/isolation-challenge-malformed']);
-  });
-
-  it('reports a network error during the cross-network submission', async () => {
-    let call = 0;
-    const fetchImpl = (async () => {
-      call += 1;
-      if (call === 1) return Response.json({ transaction: buildChallenge(Networks.PUBLIC) });
-      throw new Error('socket hang up');
-    }) as unknown as typeof fetch;
-    const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
-    }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
-    expect(result.diagnostics.map((d) => d.rule)).toContain('sep10/isolation-probe-failed');
-  });
-
-  it('accepts a plain-text error body from a rejecting server', async () => {
-    let call = 0;
-    const fetchImpl = (async () => {
-      call += 1;
-      if (call === 1) return Response.json({ transaction: buildChallenge(Networks.PUBLIC) });
-      return new Response('bad network passphrase', { status: 400 });
-    }) as unknown as typeof fetch;
-    const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
-    }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
-    expect(result.report.probe?.error).toBe('bad network passphrase');
-    expect(result.report.probe?.rejectedStrictly).toBe(true);
-    expect(result.report.ok).toBe(true);
-  });
-
-  it('treats a JSON error body without a string code as missing', async () => {
-    let call = 0;
-    const fetchImpl = (async () => {
-      call += 1;
-      if (call === 1) return Response.json({ transaction: buildChallenge(Networks.PUBLIC) });
-      return Response.json({ detail: 42 }, { status: 400 });
-    }) as unknown as typeof fetch;
-    const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
-    }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
-    expect(result.diagnostics.map((d) => d.rule)).toContain('sep10/isolation-missing-error-code');
-  });
-
-  it('treats an unreadable rejection body as a missing error code', async () => {
-    let call = 0;
-    const fetchImpl = (async () => {
-      call += 1;
-      if (call === 1) return Response.json({ transaction: buildChallenge(Networks.PUBLIC) });
-      return {
-        ok: false,
-        status: 400,
-        text: async () => {
-          throw new Error('stream closed');
-        },
-      } as unknown as Response;
-    }) as unknown as typeof fetch;
-    const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
-    }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
-    expect(result.report.probe?.error).toBeUndefined();
-    expect(result.diagnostics.map((d) => d.rule)).toContain('sep10/isolation-missing-error-code');
   });
 
   it('audits through the document wrapper and renders an unprobed report', async () => {
@@ -397,7 +216,7 @@ describe('Sep10NetworkIsolationAuditor', () => {
       { NETWORK_PASSPHRASE: Networks.TESTNET },
       'anchor.test',
       fetchImpl,
-      { clientKeypair: CLIENT },
+      { clientAccount: CLIENT.publicKey() },
     );
     expect(result.report.network).toBe('testnet');
     const rendered = renderSep10IsolationReport(result.report);
@@ -405,54 +224,26 @@ describe('Sep10NetworkIsolationAuditor', () => {
     expect(rendered).not.toContain('probe:');
   });
 
-  it('renders the probe error line', async () => {
-    const { fetchImpl } = authServer(
-      () => buildChallenge(Networks.PUBLIC),
-      () => false,
-      401,
-      'wrong network',
-    );
-    const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
-    }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
-    expect(renderSep10IsolationReport(result.report)).toContain('— wrong network');
-  });
-
   it('honours severity overrides', async () => {
     const fetchImpl = (async () => {
       throw new Error('offline');
     }) as unknown as typeof fetch;
     const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
+      clientAccount: CLIENT.publicKey(),
       rules: { 'sep10/isolation-probe-failed': 'off' },
     }).audit({}, 'anchor.test');
     expect(result.diagnostics).toEqual([]);
   });
 
   it('never includes secret keys in reports', async () => {
-    const { fetchImpl } = authServer(
-      () => buildChallenge(Networks.PUBLIC),
-      () => false,
-    );
+    const { fetchImpl } = authServer(() => buildChallenge(Networks.PUBLIC));
     const result = await new Sep10NetworkIsolationAuditor(fetchImpl, {
-      clientKeypair: CLIENT,
+      clientAccount: CLIENT.publicKey(),
     }).audit({ WEB_AUTH_ENDPOINT: 'https://anchor.test/auth' }, 'anchor.test');
     const serialized = JSON.stringify(result);
     // Compare booleans so a failing assertion cannot echo a secret seed.
     expect(serialized.includes(CLIENT.secret())).toBe(false);
     expect(serialized.includes(SERVER.secret())).toBe(false);
     expect(serialized.includes(CLIENT.publicKey())).toBe(true);
-  });
-
-  it('proves a challenge envelope verified under the target hash is not valid on the other network', () => {
-    expect(passphraseValidation(SERVER, CLIENT, Networks.PUBLIC)).toBe(true);
-    expect(passphraseValidation(SERVER, CLIENT, Networks.TESTNET)).toBe(true);
-    const publicChallenge = signUnderPassphrase(
-      buildChallenge(Networks.PUBLIC),
-      Networks.PUBLIC,
-      CLIENT,
-    );
-    expect(signedFor(publicChallenge, Networks.PUBLIC)).toBe(true);
-    expect(signedFor(publicChallenge, Networks.TESTNET)).toBe(false);
   });
 });

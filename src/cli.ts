@@ -6,15 +6,33 @@
  * set is small and stable, and a linter that anchors run in CI benefits from a
  * dependency tree small enough to audit by eye.
  */
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { parse as parseToml } from 'smol-toml';
 import { createReadStream, watch } from 'node:fs';
-import { basename, dirname, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { assertKnownRule, loadConfig } from './config.js';
 import { loadPluginRules } from './engine/ruleLoader.js';
 import { lint, lintDomain, finalize, followTomlPointers } from './lint.js';
 import { checkNetworkAccounts } from './network-checks.js';
+import { K8sIngressCertManagerAuditor } from './gitops/k8sIngressAuditor.js';
+import { ASSET_CACHE_ENV, createAssetCacheFetch } from './gitops/ciAssetCache.js';
+import {
+  CiMatrixWorkflowGenerator,
+  type CiMatrixWorkflowOptions,
+} from './gitops/ciWorkflowGenerator.js';
+import {
+  checkNetworkIsolation,
+  parseCiMatrix,
+  resolveCiEnvironment,
+} from './gitops/ciEnvironments.js';
+import {
+  buildCiReport,
+  formatCiSarif,
+  isCiEnvironmentReport,
+  type CiEnvironmentReport,
+} from './gitops/ciSarif.js';
+import { formatCiScorecard, formatEnvironmentScorecard } from './gitops/ciScorecard.js';
 import { VaultSecretEngineVerifier } from './gitops/vaultVerifier.js';
 import { checkCorsPreflight } from './network/cors-preflight.js';
 import {
@@ -37,6 +55,12 @@ import { checkRegulatedIssuerFlags } from './rules/currencies.js';
 import { checkContracts } from './rules/soroban.js';
 import { auditTomlAuthTree } from './soroban/auth-tree-simulator.js';
 import { auditTomlEvents } from './soroban/eventVerifier.js';
+import { AuthTreeSimulator, renderAuthTreeReport } from './soroban/authTreeSimulator.js';
+import { analyzeWasmMemory, renderMemoryHazardReport } from './soroban/wasmMemoryAnalyzer.js';
+import {
+  auditSignatureReplay,
+  renderSignatureReplayReport,
+} from './soroban/signatureReplayAuditor.js';
 import {
   contractTargetsOf,
   ledgersToDays,
@@ -96,6 +120,22 @@ import {
   renderSep38DeliveryReport,
   verifySep38DeliveryMethods,
 } from './protocols/sep38Delivery.js';
+import { verifyPorFeeds } from './bridges/chainlinkPorVerifier.js';
+import { verifySolanaBridges } from './bridges/solanaEscrowVerifier.js';
+import { auditErc4626Vaults } from './bridges/erc4626VaultAuditor.js';
+import {
+  WormholeVaaAuditor,
+  parseGuardianSet,
+  renderVaaReport,
+} from './bridges/wormholeVaaAuditor.js';
+import { benchmarkBridgeLatency, renderLatencyReport } from './bridges/latencyBenchmark.js';
+import { auditBridgeReplays } from './bridges/eventReplayDetector.js';
+import { verifyBankAttestations } from './bridges/bankAttestationVerifier.js';
+import { auditBurnRedemptions, renderBurnReport } from './bridges/proofOfBurnValidator.js';
+import { auditTlsCiphers, renderCipherReport } from './security/tlsCipherAuditor.js';
+import { auditHsts, renderHstsBadges } from './security/hstsVerifier.js';
+import { auditEmergencyPause } from './bridges/emergencyPauseValidator.js';
+import { auditBridgeQuorum } from './bridges/bridgeQuorumAuditor.js';
 import { checkCollateralGovernance } from './security/collateral-governance.js';
 import { auditCors, renderCorsReport } from './security/corsAuditor.js';
 import { auditAssetSecurity, renderMimeReport } from './security/mimeScanner.js';
@@ -113,10 +153,18 @@ import { scanSsrf, renderSsrfReport, ssrfDiagnostics } from './security/ssrfScan
 import { StructuralRefactoringEngine, renderRefactorSummary } from './cst/structuralRefactoring.js';
 import { checkOverlayPeers } from './overlay/crawler.js';
 import { ArchiveGpgVerifier } from './overlay/archiveGpgVerifier.js';
-import { RangeProofVerifier } from './zk/rangeProofVerifier.js';
-import { Secp256k1BridgeVerifier } from './crypto/secp256k1Verifier.js';
-import { KzgCommitmentVerifier } from './crypto/kzgVerifier.js';
-import { OverlayHandshakeTester, parseValidatorEndpoints } from './overlay/handshakeTester.js';
+import { QuorumSetIntersectionAuditor } from './overlay/quorumIntersectionAuditor.js';
+import { ScpBallotTracer } from './overlay/scpBallotTracer.js';
+import { ArchiveProgressionVerifier } from './overlay/archiveProgressionVerifier.js';
+import { GeographicDiversityScorer } from './overlay/diversityScorer.js';
+import { parseValidatorEndpoints } from './overlay/handshakeTester.js';
+import {
+  FloodPropagationVerifier,
+  parseBurstProfile,
+  renderFloodPolicyReport,
+  type OverlayExchange,
+  type SubmissionEvent,
+} from './overlay/floodVerifier.js';
 import {
   ValidatorKeyRotationVerifier,
   renderKeyRotationReport,
@@ -130,6 +178,11 @@ import {
   OverlayHeartbeatWatchdog,
   renderHeartbeatReport,
 } from './overlay/heartbeatWatchdog.js';
+import {
+  Tier1QuorumAlignmentVerifier,
+  renderTier1AlignmentReport,
+} from './overlay/tier1AlignmentVerifier.js';
+import { DEFAULT_TIER1_CATALOG, parseTier1Catalog } from './overlay/tier1Catalog.js';
 import { OpenTelemetryTraceValidator, renderTraceAuditReport } from './telemetry/traceValidator.js';
 import { validateOfflinePwa, renderOfflineReport } from './wasm/swValidator.js';
 import { verifyEdgeCompatibility, renderEdgeReport } from './wasm/edgeRuntimeVerifier.js';
@@ -162,6 +215,7 @@ import {
   type IncidentSeverity,
 } from './gitops/incidentDispatcher.js';
 import { auditDockerfile, renderContainerReport } from './gitops/containerAuditor.js';
+import { DEFAULT_HORIZON_URL, SponsorshipPoolWatchdog } from './gitops/sponsorshipWatchdog.js';
 import {
   renderProvenanceReport,
   verifySlsaProvenance,
@@ -233,6 +287,7 @@ interface Cli {
   preset?: PresetName;
   maxWarnings?: number;
   checkNetwork: boolean;
+  auditK8sManifests?: string;
   followLinks: boolean;
   verifySep10: boolean;
   auditQuotes: boolean;
@@ -254,12 +309,23 @@ interface Cli {
   transactionId?: string;
   verifyFederationSrv: boolean;
   auditEsgDisclosures: boolean;
+  verifyPorFeed: boolean;
+  verifySolanaBridge: boolean;
+  auditErc4626Vaults: boolean;
+  auditBridgeReplays?: string;
+  verifyAttestations: boolean;
+  auditBurnRedemptions?: string;
+  auditHsts: boolean;
+  auditEmergencyPause: boolean;
+  auditBridgeQuorum: boolean;
   auditOpenTelemetry: boolean;
   auditOfflinePwa?: string;
   auditEdgeCompatibility?: string;
   crawlPeers: boolean;
   monitorHeartbeat: boolean;
   heartbeatTimeoutSeconds?: number;
+  verifyTier1Alignment: boolean;
+  tier1Catalog?: string;
   verifyDnssec: boolean;
   auditDnsTakeover: boolean;
   auditSecrets: boolean;
@@ -274,6 +340,7 @@ interface Cli {
   interactive?: boolean;
   checkContracts: boolean;
   auditEvents: boolean;
+  auditReentrancy: boolean;
   sorobanRpc?: string;
   graph?: GraphFormat;
   graphIncludeContracts?: boolean;
@@ -298,6 +365,7 @@ Validate a Stellar Info File (stellar.toml) against SEP-1 — offline.
 
 USAGE
   stellar-toml-lint [file...]            Lint local files (default: ./stellar.toml)
+  stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]
   stellar-toml-lint test-kms-signer --key-id <arn> --envelope <xdr>
                                          Sign a transaction envelope with a cloud
                                          KMS key and verify the signature and
@@ -328,6 +396,10 @@ USAGE
   stellar-toml-lint sync-directory --feed <url|file> [--format text|json]
                                          Diff a multi-tenant anchor directory feed
                                          against each anchor's live stellar.toml
+  stellar-toml-lint benchmark-bridge-latency --receipts <file.json> [--corridor <source-dest>]
+                                         Benchmark cross-chain bridge settlement latency (p99 SLA)
+  stellar-toml-lint verify-attestations --domain <domain>
+                                         Verify reserve attestation PDFs, checksums and freshness
   stellar-toml-lint verify-archive-gpg --url <archive-url> --pubkey <key-file>
                                          Verify the latest ledger checkpoint's detached GPG signature
   stellar-toml-lint refactor <file> [--deduplicate-assets] [--split]
@@ -337,6 +409,24 @@ USAGE
   stellar-toml-lint audit-wasm-simd --file <path.wasm> [--json]
                                          Audit a WASM binary for SIMD opcodes and
                                          unbounded memory growth
+  stellar-toml-lint verify-por-feed --domain <domain>
+                                         Check Chainlink Proof of Reserve feeds
+  stellar-toml-lint verify-solana-bridge --domain <domain>
+                                         Check Solana escrow covers Stellar supply
+  stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> [--guardian-set <file.json>]
+                                         [--format text|json]
+                                         Verify a Wormhole VAA's guardian quorum
+  stellar-toml-lint audit-wasm-memory --file <path.wasm> [--format text|json]
+                                         Audit a Soroban contract WASM for memory
+                                         growth, recursion, unbounded loops and
+                                         large stack frames
+  stellar-toml-lint auth-tree --xdr <txEnvelopeXdr> [--network <passphrase>]
+                              [--rpc-url <url>] [--format text|json]
+                                         Parse a Soroban transaction envelope and
+                                         render its authorization call tree
+  stellar-toml-lint audit-signature-replay --file <path.wasm> [--format text|json]
+                                         Detect signature verification that lacks
+                                         nonce, domain separation or expiration
   stellar-toml-lint verify-metrics --url <metrics_url> [--format text|json]
                                          Scrape a Prometheus/OpenMetrics endpoint and
                                          validate names, TYPE/HELP and anchor gauges
@@ -368,6 +458,7 @@ USAGE
                                          exit 1 when any entry is expiring,
                                          critical, or archived
   stellar-toml-lint audit-tls --domain <domain> [--format text|json]
+  stellar-toml-lint audit-flood-policy --host <host> [--admin-port <port>] [--format text|json]
                                          Audit SSL/TLS renewal and OCSP stapling health
   stellar-toml-lint audit-key-separation --domain <domain> [--horizon <url>]
                                          [--format text|json]
@@ -377,7 +468,7 @@ USAGE
   stellar-toml-lint audit-sep10-isolation --domain <domain>
                                          [--network public|testnet] [--format text|json]
                                          Verify the SEP-10 challenge commits to the target
-                                         network and reject cross-network signatures
+                                         network passphrase
   stellar-toml-lint audit-sep24-security --domain <domain> --sep10-token <jwt>
                                          Audit the SEP-24 interactive webview CSP, frame
                                          ancestors, HSTS, referrer policy and SRI
@@ -451,6 +542,9 @@ OPTIONS
       --check-network     Verify SIGNING_KEY, ACCOUNTS, HORIZON_URL, SEP-8
                           regulated issuer flags, and ANCHOR_QUOTE_SERVER
                           against the network
+      --audit-k8s-manifests <path>
+                          Audit Kubernetes Ingress, Certificate, Issuer, and
+                          ClusterIssuer YAML for cert-manager renewal issues
       --verify-sep10      Verify SEP-10 nonce uniqueness and replay resistance
       --audit-quotes      Book an ANCHOR_QUOTE_SERVER SEP-38 quote and execute it on
                           TRANSFER_SERVER to verify atomic price and fee execution
@@ -498,10 +592,37 @@ OPTIONS
       --verify-federation-srv
                           Check _stellar-federation._tcp.<domain> SRV records
                           against FEDERATION_SERVER (use with --domain)
+      --audit-bridge-replays <evidence.json>
+                          Match EVM lock event logs to Stellar mints and flag
+                          duplicate, unrecorded or replayable events
+      --verify-attestations
+                          Verify DOCUMENTATION.ATTESTATIONS checksums and age
+                          (downloads PDFs with --check-network)
+      --audit-burn-redemptions <evidence.json>
+                          Verify wrapped-asset redemptions burn supply
       --audit-esg-disclosures
                           Verify DOCUMENTATION.ORG_ESG disclosures, check the
                           attestation signature with --check-network, and print
                           a sustainability rating
+      --verify-por-feed   Check Chainlink Proof of Reserve feeds declared in
+                          DOCUMENTATION.PROOF_OF_RESERVES for freshness and
+                          collateralization (queries with --check-network)
+      --verify-solana-bridge
+                          Check that Solana escrow balances cover the Stellar
+                          supply of CURRENCIES[].solana_bridge assets
+      --audit-erc4626-vaults
+                          Audit CURRENCIES[].collateral_vaults ERC-4626 share
+                          prices and NAV backing (queries with --check-network)
+      --audit-hsts        Check Strict-Transport-Security on the domain and every
+                          host stellar.toml declares, against the Chromium
+                          preload criteria (use with --domain)
+      --audit-emergency-pause
+                          Check [[BRIDGES]] export pause methods, restrict pause
+                          authority and publish a 24/7 security contact
+      --audit-bridge-quorum
+                          Check [[BRIDGES]] relayer thresholds against the 2/3 BFT
+                          supermajority and staking evidence; also available as
+                          'audit-bridge-quorum --domain <domain>'
       --audit-opentelemetry
                           Probe declared SEP-6, SEP-24, SEP-31 and SEP-38 /info
                           endpoints with W3C trace context and inspect response evidence
@@ -530,6 +651,13 @@ OPTIONS
       --monitor-heartbeat  Establish an overlay session with every advertised validator
                           and report ping/pong latency, jitter and keepalive state
       --timeout <seconds> Monitoring window for --monitor-heartbeat (default: 10)
+      --verify-tier1-alignment
+                          Cross-reference the [QUORUM_SET] (or QUALITY-rated
+                          [[VALIDATORS]]) against the Tier-1 validator catalog and
+                          flag slices that can agree without the consensus core
+      --tier1-catalog <file.json>
+                          Tier-1 catalog for --verify-tier1-alignment (default:
+                          bundled snapshot; see docs/schemas/tier1-catalog.schema.json)
       --verify-dnssec     Compare A/AAAA answers across DNSSEC-validating DoH resolvers
        --audit-dns-takeover
                            Query CNAME/NS records for every referenced domain and
@@ -544,6 +672,9 @@ OPTIONS
       --follow-links      Fetch and lint the toml pointers in CURRENCIES
                           (implied by --domain)
       --check-contracts   Verify Soroban contract and WASM TTL liveliness
+      --audit-reentrancy  Statically audit each contract's WASM for missing
+                          reentrancy guards, non-atomic cross-contract writes,
+                          and recursive call graphs
       --audit-events      Verify the event schema and indexing topics of every
                           contract the file advertises, via its WASM spec and
                           simulated emissions
@@ -606,6 +737,31 @@ test-kms-signer OPTIONS
                           (e.g. eval "$(stellar-toml-lint --completion zsh)")
   -v, --version
   -h, --help
+
+init-ci OPTIONS
+  --matrix <envs>     Comma-separated environments: development, staging,
+                      testnet, public (aliases: dev, stage, prod, mainnet).
+                      Default: testnet,public
+  --node <versions>   Comma-separated Node.js versions; the first is primary
+                      and uploads SARIF and the scorecard. Default: 20,22
+  --file-pattern <p>  Tenant file path; {environment} is substituted.
+                      Default: environments/{environment}/stellar.toml
+  --file <env>=<path> Override one environment's path (repeatable)
+  --output <path>     Default: .github/workflows/stellar-toml-lint-matrix.yml
+  --check-network / --no-check-network
+                      Force live link, TLS and Horizon checks on or off for
+                      every environment (default: on for testnet and public)
+  --strict            Treat warnings as failures
+  --no-sarif          Skip code scanning upload
+  --no-pr-comment     Skip the pull request scorecard bot
+  --no-cache          Skip tool and remote asset caching
+  --stdout            Print the workflow instead of writing it
+  --force             Overwrite an existing workflow file
+
+ENVIRONMENT
+  STELLAR_TOML_LINT_ASSET_CACHE=<dir>
+                      Cache fetched logos, JSON schemas and IPFS content under
+                      <dir> for 24 hours (set automatically by init-ci workflows)
 
 CONFIG
   .stellartomlrc.json    Project defaults, discovered upward from the linted
@@ -763,6 +919,53 @@ async function runExtraAudits(
     out.push(...result.diagnostics);
     process.stderr.write(renderEsgReport(result.report));
   }
+  if (cli.verifyPorFeed) {
+    const result = await verifyPorFeeds(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
+    out.push(...result.diagnostics);
+  }
+  if (cli.verifySolanaBridge) {
+    const result = await verifySolanaBridges(parsed, fetchImpl, {
+      rules,
+      probe: cli.checkNetwork,
+    });
+    out.push(...result.diagnostics);
+  }
+  if (cli.auditErc4626Vaults) {
+    const result = await auditErc4626Vaults(parsed, fetchImpl, {
+      rules,
+      probe: cli.checkNetwork,
+    });
+    out.push(...result.diagnostics);
+  }
+  if (cli.auditBridgeReplays !== undefined) {
+    out.push(
+      ...auditBridgeReplays(await readEvidence(cli.auditBridgeReplays), { rules }).diagnostics,
+    );
+  }
+  if (cli.verifyAttestations) {
+    const result = await verifyBankAttestations(parsed, fetchImpl, {
+      rules,
+      download: cli.checkNetwork,
+    });
+    out.push(...result.diagnostics);
+  }
+  if (cli.auditBurnRedemptions !== undefined) {
+    const result = auditBurnRedemptions(parsed, await readEvidence(cli.auditBurnRedemptions), {
+      rules,
+    });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderBurnReport(result));
+  }
+  if (cli.auditHsts) {
+    const result = await auditHsts(parsed, fetchImpl, { rules, ...(domain ? { domain } : {}) });
+    out.push(...result.diagnostics);
+    process.stderr.write(renderHstsBadges(result));
+  }
+  if (cli.auditEmergencyPause) out.push(...auditEmergencyPause(parsed, { rules }).diagnostics);
+  if (cli.auditBridgeQuorum) {
+    const result = await auditBridgeQuorum(parsed, fetchImpl, { rules, probe: cli.checkNetwork });
+    out.push(...result.diagnostics);
+  }
   if (cli.auditDnsTakeover) {
     const report = await scanSubdomainTakeover(parsed, { rules, fetchImpl, domain });
     out.push(...takeoverDiagnostics(report, rules));
@@ -782,6 +985,15 @@ async function runExtraAudits(
     const result = await verifier.verify(parsed, rules);
     out.push(...result.diagnostics);
     process.stderr.write(renderTraceAuditReport(result));
+  }
+  if (cli.verifyTier1Alignment) {
+    const catalog =
+      cli.tier1Catalog === undefined
+        ? DEFAULT_TIER1_CATALOG
+        : parseTier1Catalog(JSON.parse(await readFile(cli.tier1Catalog, 'utf8')) as unknown);
+    const report = new Tier1QuorumAlignmentVerifier({ rules, catalog }).verify(parsed);
+    out.push(...report.diagnostics);
+    process.stderr.write(renderTier1AlignmentReport(report));
   }
   if (cli.monitorHeartbeat) {
     const endpoints = parseValidatorEndpoints(parsed);
@@ -836,6 +1048,67 @@ async function runExtraAudits(
     }
   }
   return out;
+}
+
+/** Recorded evidence files are JSON; an unreadable one is reported by the audit as invalid. */
+async function readEvidence(path: string): Promise<unknown> {
+  try {
+    return JSON.parse(await readFile(resolve(path), 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
+/** `stellar-toml-lint benchmark-bridge-latency --receipts <file> [--corridor <s-d>]` */
+async function benchmarkBridgeLatencyCommand(args: string[]): Promise<number> {
+  let receipts: string | undefined;
+  let corridor: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--receipts') receipts = requireValue(args, ++i, arg);
+    else if (arg === '--corridor') corridor = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for benchmark-bridge-latency\n`);
+      return 2;
+    }
+  }
+  if (receipts === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint benchmark-bridge-latency --receipts <file.json> [--corridor <source-dest>]\n',
+    );
+    return 2;
+  }
+  const result = benchmarkBridgeLatency(await readEvidence(receipts), { corridor });
+  process.stdout.write(renderLatencyReport(result.corridors));
+  for (const d of result.diagnostics)
+    process.stderr.write(`${d.severity}: ${d.message} [${d.rule}]\n`);
+  return result.diagnostics.some((d) => d.severity === 'error') ? 1 : 0;
+}
+
+/** `stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]` */
+async function auditCiphersCommand(args: string[]): Promise<number> {
+  let domain: string | undefined;
+  let port: number | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--domain') domain = requireValue(args, ++i, arg);
+    else if (arg === '--port') port = Number(requireValue(args, ++i, arg));
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-ciphers\n`);
+      return 2;
+    }
+  }
+  if (domain === undefined || (port !== undefined && !Number.isInteger(port))) {
+    process.stderr.write('Usage: stellar-toml-lint audit-ciphers --domain <domain> [--port <n>]\n');
+    return 2;
+  }
+  const host = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  const result = await auditTlsCiphers(host, port === undefined ? {} : { port });
+  process.stdout.write(renderCipherReport(result.report));
+  for (const d of result.diagnostics) {
+    process.stdout.write(`${d.severity}: ${d.message} [${d.rule}]\n`);
+  }
+  return result.report.grade === 'F' || result.report.grade === null ? 1 : 0;
 }
 
 /**
@@ -1224,6 +1497,168 @@ async function auditWasmSimd(args: string[]): Promise<number> {
   }
 }
 
+/** `stellar-toml-lint audit-wasm-memory --file <path.wasm> [--json]` */
+async function auditWasmMemory(args: string[]): Promise<number> {
+  let file: string | undefined;
+  let json = false;
+  let maxInitialPages: number | undefined;
+  let maxStackSlots: number | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--json' || arg === '--format') {
+      if (arg === '--json') json = true;
+      else {
+        const format = requireValue(args, ++i, arg);
+        if (format !== 'text' && format !== 'json') {
+          process.stderr.write(`Unknown format ${format} for audit-wasm-memory\n`);
+          return 2;
+        }
+        json = format === 'json';
+      }
+    } else if (arg === '--max-initial-pages') {
+      maxInitialPages = Number(requireValue(args, ++i, arg));
+    } else if (arg === '--max-stack-slots') {
+      maxStackSlots = Number(requireValue(args, ++i, arg));
+    } else {
+      process.stderr.write(`Unknown option ${arg} for audit-wasm-memory\n`);
+      return 2;
+    }
+  }
+
+  if (file === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-wasm-memory --file <path.wasm> [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const bytes = new Uint8Array(await readFile(resolve(file)));
+    const report = analyzeWasmMemory(bytes, {
+      file,
+      ...(maxInitialPages !== undefined ? { maxInitialPages } : {}),
+      ...(maxStackSlots !== undefined ? { maxStackSlots } : {}),
+    });
+    process.stdout.write(
+      json ? `${JSON.stringify(report, null, 2)}\n` : renderMemoryHazardReport(report),
+    );
+    return report.findings.some((finding) => finding.severity === 'error') ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint auth-tree --xdr <txEnvelopeXdr> [--format text|json]` */
+async function authTreeCommand(args: string[]): Promise<number> {
+  let envelope: string | undefined;
+  let file: string | undefined;
+  let networkPassphrase: string | undefined;
+  let rpcUrl: string | undefined;
+  let latestLedger: number | undefined;
+  let json = false;
+  const authorizedIdentities: string[] = [];
+  const allowedContracts: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--xdr') envelope = requireValue(args, ++i, arg);
+    else if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--network') networkPassphrase = requireValue(args, ++i, arg);
+    else if (arg === '--rpc-url') rpcUrl = requireValue(args, ++i, arg);
+    else if (arg === '--latest-ledger') latestLedger = Number(requireValue(args, ++i, arg));
+    else if (arg === '--signing-key' || arg === '--authorized-identity') {
+      authorizedIdentities.push(requireValue(args, ++i, arg));
+    } else if (arg === '--allow-contract') allowedContracts.push(requireValue(args, ++i, arg));
+    else if (arg === '--json' || arg === '--format') {
+      if (arg === '--json') json = true;
+      else {
+        const format = requireValue(args, ++i, arg);
+        if (format !== 'text' && format !== 'json') {
+          process.stderr.write(`Unknown format ${format} for auth-tree\n`);
+          return 2;
+        }
+        json = format === 'json';
+      }
+    } else {
+      process.stderr.write(`Unknown option ${arg} for auth-tree\n`);
+      return 2;
+    }
+  }
+
+  if (envelope === undefined && file === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint auth-tree --xdr <txEnvelopeXdr> [--network <passphrase>] [--rpc-url <url>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const source = envelope ?? (await readFile(resolve(file as string), 'utf8')).trim();
+    const simulator = new AuthTreeSimulator({
+      ...(networkPassphrase !== undefined ? { networkPassphrase } : {}),
+      ...(rpcUrl !== undefined ? { rpcUrl } : {}),
+      ...(latestLedger !== undefined ? { latestLedger } : {}),
+      authorizedIdentities,
+      allowedContracts,
+    });
+    const report = await simulator.simulate(source);
+    process.stdout.write(
+      json ? `${JSON.stringify(report, null, 2)}\n` : renderAuthTreeReport(report),
+    );
+    return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint audit-signature-replay --file <path.wasm> [--json]` */
+async function auditSignatureReplayCommand(args: string[]): Promise<number> {
+  let file: string | undefined;
+  let json = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--json' || arg === '--format') {
+      if (arg === '--json') json = true;
+      else {
+        const format = requireValue(args, ++i, arg);
+        if (format !== 'text' && format !== 'json') {
+          process.stderr.write(`Unknown format ${format} for audit-signature-replay\n`);
+          return 2;
+        }
+        json = format === 'json';
+      }
+    } else {
+      process.stderr.write(`Unknown option ${arg} for audit-signature-replay\n`);
+      return 2;
+    }
+  }
+
+  if (file === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-signature-replay --file <path.wasm> [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const bytes = new Uint8Array(await readFile(resolve(file)));
+    const report = auditSignatureReplay(bytes, { file });
+    process.stdout.write(
+      json ? `${JSON.stringify(report, null, 2)}\n` : renderSignatureReplayReport(report),
+    );
+    return report.findings.some((finding) => finding.severity === 'error') ? 1 : 0;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 const VERIFY_PROVENANCE_USAGE = `stellar-toml-lint verify-provenance --artifact <file> --provenance <file> [options]
 
 Verify an in-toto / Sigstore provenance document against an artifact and grade
@@ -1427,6 +1862,217 @@ async function auditCoopCoep(args: string[]): Promise<number> {
     const report = await new CrossOriginIsolationAuditor().audit(url);
     process.stdout.write(renderIsolationReport(report));
     return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint audit-quorum [--file <path>] [--format text|json]` */
+async function auditQuorumCommand(args: string[]): Promise<number> {
+  let file = 'stellar.toml';
+  let format: 'text' | 'json' = 'text';
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--format') {
+      const val = requireValue(args, ++i, arg);
+      if (val === 'text' || val === 'json') format = val;
+      else {
+        process.stderr.write('--format expects text or json\n');
+        return 2;
+      }
+    } else if (arg === '--json') format = 'json';
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-quorum\n`);
+      return 2;
+    }
+  }
+
+  try {
+    const content = await readFile(resolve(file), 'utf8');
+    const auditor = new QuorumSetIntersectionAuditor();
+    const result = auditor.audit(content);
+    if (format === 'json') {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    } else {
+      process.stdout.write(
+        `Quorum Intersection: ${result.hasQuorumIntersection ? 'PASS' : 'FAIL'}\n`,
+      );
+      process.stdout.write(`Minimal Quorums: ${result.minimalQuorums.length}\n`);
+      process.stdout.write(`Split-Brain Risk: ${result.hasSplitBrainRisk ? 'DETECTED' : 'NONE'}\n`);
+      process.stdout.write(`Fragmentation: ${result.isFragmented ? 'FRAGMENTED' : 'HEALTHY'}\n`);
+      if (result.intersectionNodes.length > 0) {
+        process.stdout.write(`Common Intersection Nodes: ${result.intersectionNodes.join(', ')}\n`);
+      }
+      for (const w of result.warnings) {
+        process.stdout.write(`Warning: ${w}\n`);
+      }
+    }
+    return result.hasQuorumIntersection && !result.hasSplitBrainRisk ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint verify-archive-lag [--file <path>] [--horizon <url>] [--live-ledger <num>] [--format text|json]` */
+async function verifyArchiveLagCommand(args: string[]): Promise<number> {
+  let file = 'stellar.toml';
+  let horizonUrl: string | undefined;
+  let liveLedger: number | undefined;
+  let format: 'text' | 'json' = 'text';
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--horizon') horizonUrl = requireValue(args, ++i, arg);
+    else if (arg === '--live-ledger') liveLedger = Number(requireValue(args, ++i, arg));
+    else if (arg === '--format') {
+      const val = requireValue(args, ++i, arg);
+      if (val === 'text' || val === 'json') format = val;
+      else {
+        process.stderr.write('--format expects text or json\n');
+        return 2;
+      }
+    } else if (arg === '--json') format = 'json';
+    else {
+      process.stderr.write(`Unknown option ${arg} for verify-archive-lag\n`);
+      return 2;
+    }
+  }
+
+  try {
+    const content = await readFile(resolve(file), 'utf8');
+    const verifier = new ArchiveProgressionVerifier({
+      horizonUrl,
+      liveLedger,
+    });
+    const report = await verifier.verify(content);
+    if (format === 'json') {
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    } else {
+      process.stdout.write(`Archive Progression: ${report.ok ? 'HEALTHY' : 'LAGGING'}\n`);
+      if (report.liveLedger !== undefined) {
+        process.stdout.write(`Live Ledger: ${report.liveLedger}\n`);
+      }
+      for (const a of report.archives) {
+        process.stdout.write(
+          `Archive: ${a.archiveUrl} (current: ${a.currentLedger ?? 'unknown'}, checkpoint: ${a.checkpointHeight ?? 'unknown'}, lag: ${a.checkpointLag ?? 0} cp)\n`,
+        );
+      }
+      for (const err of report.errors) {
+        process.stdout.write(`Error: ${err}\n`);
+      }
+    }
+    return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint score-diversity [--file <path>] [--format text|json]` */
+async function scoreDiversityCommand(args: string[]): Promise<number> {
+  let file = 'stellar.toml';
+  let format: 'text' | 'json' = 'text';
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--format') {
+      const val = requireValue(args, ++i, arg);
+      if (val === 'text' || val === 'json') format = val;
+      else {
+        process.stderr.write('--format expects text or json\n');
+        return 2;
+      }
+    } else if (arg === '--json') format = 'json';
+    else {
+      process.stderr.write(`Unknown option ${arg} for score-diversity\n`);
+      return 2;
+    }
+  }
+
+  try {
+    const content = await readFile(resolve(file), 'utf8');
+    const scorer = new GeographicDiversityScorer();
+    const report = await scorer.score(content);
+    if (format === 'json') {
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    } else {
+      process.stdout.write(
+        `Validators Resolved: ${report.resolvedValidators}/${report.totalValidators}\n`,
+      );
+      process.stdout.write(
+        `ASN Diversity: Simpson=${report.asnDiversity.simpsonIndex}, Shannon=${report.asnDiversity.shannonEntropy}\n`,
+      );
+      process.stdout.write(
+        `Datacenter Diversity: Simpson=${report.datacenterDiversity.simpsonIndex}, Shannon=${report.datacenterDiversity.shannonEntropy}\n`,
+      );
+      process.stdout.write(
+        `Concentration Risk: ASN=${report.hasAsnConcentrationRisk ? 'HIGH' : 'LOW'}, Datacenter=${report.hasDatacenterConcentrationRisk ? 'HIGH' : 'LOW'}\n`,
+      );
+      for (const w of report.warnings) {
+        process.stdout.write(`Warning: ${w}\n`);
+      }
+    }
+    return !report.hasAsnConcentrationRisk && !report.hasDatacenterConcentrationRisk ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint trace-scp --file <xdr-file> [--timeout <ms>] [--format text|json]` */
+async function traceScpCommand(args: string[]): Promise<number> {
+  let file: string | undefined;
+  let timeoutMs: number | undefined;
+  let format: 'text' | 'json' = 'text';
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--file') file = requireValue(args, ++i, arg);
+    else if (arg === '--timeout') timeoutMs = Number(requireValue(args, ++i, arg));
+    else if (arg === '--format') {
+      const val = requireValue(args, ++i, arg);
+      if (val === 'text' || val === 'json') format = val;
+      else {
+        process.stderr.write('--format expects text or json\n');
+        return 2;
+      }
+    } else if (arg === '--json') format = 'json';
+    else {
+      process.stderr.write(`Unknown option ${arg} for trace-scp\n`);
+      return 2;
+    }
+  }
+
+  if (file === undefined) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint trace-scp --file <xdr-file> [--timeout <ms>] [--format text|json]\n',
+    );
+    return 2;
+  }
+
+  try {
+    const raw = await readFile(resolve(file));
+    const tracer = new ScpBallotTracer({ stallTimeoutMs: timeoutMs });
+    tracer.record(raw);
+    const traces = tracer.getAllTraces();
+    const stalls = tracer.detectStalls();
+
+    if (format === 'json') {
+      process.stdout.write(`${JSON.stringify({ traces, stalls }, null, 2)}\n`);
+    } else {
+      process.stdout.write(`Slots Traced: ${traces.length}\n`);
+      process.stdout.write(`Consensus Stalls: ${stalls.length}\n`);
+      for (const stall of stalls) {
+        process.stdout.write(`Stall at Slot ${stall.slotIndex}: ${stall.reason}\n`);
+      }
+    }
+    return stalls.length === 0 ? 0 : 1;
   } catch (error) {
     process.stderr.write(`${message(error)}\n`);
     return 2;
@@ -1823,6 +2469,159 @@ function parseQuorumPeers(value: unknown): QuorumPeerConfig[] {
   });
 }
 
+const AUDIT_FLOOD_POLICY_USAGE = `Usage: stellar-toml-lint audit-flood-policy [--host <host>] [options]
+
+Checks transaction flood propagation and mempool eviction policy. Metrics come
+from a stellar-core admin endpoint (--host) or saved files; transaction bursts
+are simulated locally against the node's configured queue, never submitted.
+
+Options:
+  --host <host>             stellar-core admin host; reads /info and /metrics over HTTP
+  --admin-port <port>       Admin HTTP port (default: 11626)
+  --metrics-file <file>     Saved stellar-core /metrics JSON (instead of --host)
+  --info-file <file>        Saved stellar-core /info JSON (instead of --host)
+  --exchanges-file <file>   JSON array of {request, response} base64 StellarMessage XDR
+                            (GET_TX_SET / TX_SET / DONT_HAVE / TRANSACTION frames)
+  --submissions-file <file> Observed submission log to check for fair queueing
+  --profile <spec>          Burst per fee tier, e.g. low=300,medium=150,high=60,priority=15
+                            (default: 150% of queue capacity)
+  --capacity <ops>          Queue capacity in operations (default: maxTxSetSize x 2)
+  --seed <n>                Burst shuffle seed (default: 1)
+  --format text|json        Output format (default: text)
+`;
+
+function parseSubmissionLog(input: unknown): SubmissionEvent[] {
+  if (!Array.isArray(input)) throw new Error('submissions file must be a JSON array');
+  return input.map((raw: unknown, index) => {
+    const entry = raw as Record<string, unknown>;
+    const tx = (entry?.tx ?? {}) as Record<string, unknown>;
+    if (
+      typeof tx.id !== 'string' ||
+      typeof tx.account !== 'string' ||
+      typeof tx.operations !== 'number' ||
+      (typeof tx.fee !== 'string' && typeof tx.fee !== 'number') ||
+      (entry.status !== 'accepted' && entry.status !== 'rejected') ||
+      typeof entry.occupancyOps !== 'number'
+    ) {
+      throw new Error(`submissions[${index}] is not a valid submission event`);
+    }
+    return {
+      tx: {
+        id: tx.id,
+        account: tx.account,
+        operations: tx.operations,
+        fee: BigInt(tx.fee),
+        ...(typeof tx.tier === 'string' ? { tier: tx.tier as 'low' } : {}),
+      },
+      status: entry.status,
+      ...(typeof entry.reason === 'string' ? { reason: entry.reason as 'insufficient-fee' } : {}),
+      evicted: Array.isArray(entry.evicted) ? entry.evicted.map(String) : [],
+      ...(typeof entry.replaced === 'string' ? { replaced: entry.replaced } : {}),
+      ...(Array.isArray(entry.removed) ? { removed: entry.removed.map(String) } : {}),
+      occupancyOps: entry.occupancyOps,
+    };
+  });
+}
+
+async function fetchJson(url: string): Promise<unknown> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status} from ${url}`);
+  return (await response.json()) as unknown;
+}
+
+/** `stellar-toml-lint audit-flood-policy --host <host>` */
+async function auditFloodPolicyCommand(args: string[]): Promise<number> {
+  let host: string | undefined;
+  let adminPort = 11626;
+  let format = 'text';
+  const files: Record<string, string> = {};
+  const options: {
+    capacityOps?: number;
+    seed?: number;
+    profile?: ReturnType<typeof parseBurstProfile>;
+  } = {};
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] as string;
+      if (arg === '--host') host = requireValue(args, ++i, arg);
+      else if (arg === '--admin-port') adminPort = Number(requireValue(args, ++i, arg));
+      else if (arg === '--format') format = requireValue(args, ++i, arg);
+      else if (
+        arg === '--metrics-file' ||
+        arg === '--info-file' ||
+        arg === '--exchanges-file' ||
+        arg === '--submissions-file'
+      ) {
+        files[arg] = requireValue(args, ++i, arg);
+      } else if (arg === '--profile')
+        options.profile = parseBurstProfile(requireValue(args, ++i, arg));
+      else if (arg === '--capacity') options.capacityOps = Number(requireValue(args, ++i, arg));
+      else if (arg === '--seed') options.seed = Number(requireValue(args, ++i, arg));
+      else if (arg === '--help' || arg === '-h') {
+        process.stdout.write(AUDIT_FLOOD_POLICY_USAGE);
+        return 0;
+      } else {
+        process.stderr.write(`Unknown option ${arg} for audit-flood-policy\n`);
+        return 2;
+      }
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+  if (
+    (format !== 'text' && format !== 'json') ||
+    !Number.isInteger(adminPort) ||
+    adminPort < 1 ||
+    adminPort > 65535
+  ) {
+    process.stderr.write(AUDIT_FLOOD_POLICY_USAGE);
+    return 2;
+  }
+
+  try {
+    const readJson = async (flag: string) =>
+      files[flag] === undefined
+        ? undefined
+        : (JSON.parse(await readFile(resolve(files[flag] as string), 'utf8')) as unknown);
+    let metrics = await readJson('--metrics-file');
+    let info = await readJson('--info-file');
+    if (host !== undefined) {
+      const base = `http://${host}:${adminPort}`;
+      for (const [name, assign] of [
+        ['metrics', (value: unknown) => (metrics ??= value)],
+        ['info', (value: unknown) => (info ??= value)],
+      ] as const) {
+        try {
+          assign(await fetchJson(`${base}/${name}`));
+        } catch (error) {
+          process.stderr.write(`Could not read ${base}/${name}: ${message(error)}\n`);
+        }
+      }
+    }
+    const exchanges = (await readJson('--exchanges-file')) as OverlayExchange[] | undefined;
+    if (exchanges !== undefined && !Array.isArray(exchanges)) {
+      throw new Error('exchanges file must be a JSON array of {request, response}');
+    }
+    const submissions = await readJson('--submissions-file');
+    const report = new FloodPropagationVerifier(options).verify({
+      ...(metrics === undefined ? {} : { metrics }),
+      ...(info === undefined ? {} : { info }),
+      ...(exchanges === undefined ? {} : { exchanges }),
+      ...(submissions === undefined ? {} : { observed: parseSubmissionLog(submissions) }),
+    });
+    process.stdout.write(
+      format === 'json'
+        ? `${JSON.stringify(report, (_key, value: unknown) => (typeof value === 'bigint' ? value.toString() : value), 2)}\n`
+        : renderFloodPolicyReport(report),
+    );
+    return report.ok ? 0 : 1;
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
 /** `stellar-toml-lint audit-validator-rotation --domain <domain> [--format text|json]` */
 async function auditValidatorRotationCommand(args: string[]): Promise<number> {
   let domain: string | undefined;
@@ -1930,6 +2729,59 @@ async function verifyBrowserBundleCommand(args: string[]): Promise<number> {
     process.stderr.write(`${message(error)}\n`);
     return 2;
   }
+}
+
+/** `stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> [--guardian-set <file>] [--format text|json]` */
+async function auditWormholeVaaCommand(args: string[]): Promise<number> {
+  let vaa: string | undefined;
+  let setFile: string | undefined;
+  let format = 'text';
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === '--vaa') vaa = requireValue(args, ++i, arg);
+    else if (arg === '--guardian-set') setFile = requireValue(args, ++i, arg);
+    else if (arg === '--format') format = requireValue(args, ++i, arg);
+    else {
+      process.stderr.write(`Unknown option ${arg} for audit-wormhole-vaa\n`);
+      return 2;
+    }
+  }
+  if (vaa === undefined || (format !== 'text' && format !== 'json')) {
+    process.stderr.write(
+      'Usage: stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> ' +
+        '[--guardian-set <file.json>] [--format text|json]\n',
+    );
+    return 2;
+  }
+  let guardianSet;
+  if (setFile !== undefined) {
+    try {
+      guardianSet = parseGuardianSet(JSON.parse(await readFile(resolve(setFile), 'utf8')));
+    } catch (error) {
+      process.stderr.write(`${message(error)}\n`);
+      return 2;
+    }
+    if (guardianSet === undefined) {
+      process.stderr.write('Guardian set must be { "index": n, "keys": ["0x..."] }\n');
+      return 2;
+    }
+  }
+  const result = new WormholeVaaAuditor(guardianSet ? { guardianSet } : {}).audit(vaa);
+  if (format === 'json') {
+    const replacer = (_key: string, value: unknown): unknown =>
+      typeof value === 'bigint'
+        ? value.toString()
+        : value instanceof Uint8Array
+          ? `0x${Buffer.from(value).toString('hex')}`
+          : value;
+    process.stdout.write(`${JSON.stringify(result, replacer, 2)}\n`);
+  } else {
+    process.stdout.write(renderVaaReport(result));
+    for (const d of result.diagnostics) {
+      process.stdout.write(`${d.severity}: ${d.message} [${d.rule}]\n`);
+    }
+  }
+  return result.diagnostics.some((d) => d.severity === 'error') ? 1 : 0;
 }
 
 /**
@@ -2677,6 +3529,277 @@ async function allowKeysFor(cli: Cli, path: string): Promise<string[]> {
   return [...(config.knownKeys ?? []), ...(cli.allowKeys ?? [])];
 }
 
+/**
+ * `init-ci`: writes a GitHub Actions workflow validating one stellar.toml per
+ * environment across a Node.js matrix. Exit codes: 0 written, 1 the target
+ * exists (without --force), 2 bad usage.
+ */
+async function initCiCommand(args: string[]): Promise<number> {
+  const files: NonNullable<CiMatrixWorkflowOptions['files']> = {};
+  const options: CiMatrixWorkflowOptions = { toolVersion: VERSION, files };
+  let toStdout = false;
+  let force = false;
+
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] as string;
+      switch (arg) {
+        case '-h':
+        case '--help':
+          process.stdout.write(USAGE);
+          return 0;
+        case '--matrix':
+          options.environments = parseCiMatrix(requireValue(args, ++i, arg));
+          break;
+        case '--node':
+          options.nodeVersions = requireValue(args, ++i, arg)
+            .split(',')
+            .map((v) => v.trim())
+            .filter((v) => v !== '');
+          break;
+        case '--file-pattern':
+          options.filePattern = requireValue(args, ++i, arg);
+          break;
+        case '--file': {
+          const value = requireValue(args, ++i, arg);
+          const eq = value.indexOf('=');
+          const env = eq > 0 ? resolveCiEnvironment(value.slice(0, eq)) : undefined;
+          if (env === undefined) throw new Error('--file expects <environment>=<path>');
+          files[env] = value.slice(eq + 1);
+          break;
+        }
+        case '-o':
+        case '--output':
+          options.workflowPath = requireValue(args, ++i, arg);
+          break;
+        case '--check-network':
+          options.checkNetwork = true;
+          break;
+        case '--no-check-network':
+          options.checkNetwork = false;
+          break;
+        case '--strict':
+          options.strict = true;
+          break;
+        case '--no-sarif':
+          options.sarif = false;
+          break;
+        case '--no-pr-comment':
+          options.prComment = false;
+          break;
+        case '--no-cache':
+          options.cache = false;
+          break;
+        case '--stdout':
+          toStdout = true;
+          break;
+        case '--force':
+          force = true;
+          break;
+        default:
+          throw new Error(`Unknown option "${arg}" for init-ci`);
+      }
+    }
+    const matrix = options.environments ?? ['testnet', 'public'];
+    for (const env of Object.keys(files)) {
+      if (!matrix.includes(env as (typeof matrix)[number])) {
+        throw new Error(`--file names "${env}", which is not in --matrix`);
+      }
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  let generator: CiMatrixWorkflowGenerator;
+  try {
+    generator = new CiMatrixWorkflowGenerator(options);
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  const yaml = generator.generate();
+  if (toStdout) {
+    process.stdout.write(yaml);
+    return 0;
+  }
+
+  const target = resolve(generator.workflowPath);
+  try {
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, yaml, { encoding: 'utf8', flag: force ? 'w' : 'wx' });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      process.stderr.write(`${generator.workflowPath} already exists; pass --force to overwrite\n`);
+      return 1;
+    }
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  const listed = Object.entries(generator.files).map(([env, file]) => `  ${env}: ${file}`);
+  process.stdout.write(
+    `Wrote ${generator.workflowPath}\nValidating:\n${listed.join('\n')}\n` +
+      'Commit it, then enable code scanning to see SARIF alerts in the Security tab.\n',
+  );
+  return 0;
+}
+
+/**
+ * `ci-report`: turns one matrix cell's linter output into the environment
+ * report, SARIF file and scorecard fragment. It exits 0 once inputs are valid —
+ * pass/fail is published as `ok=` on $GITHUB_OUTPUT so the workflow can upload
+ * results before failing the job.
+ */
+async function ciReportCommand(args: string[]): Promise<number> {
+  let environment: string | undefined;
+  let file: string | undefined;
+  let lintJsonPath: string | undefined;
+  let lintExitCode = 0;
+  let node: string | undefined;
+  let outDir = 'reports';
+  let checkNetwork = false;
+  let strict = false;
+
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] as string;
+      if (arg === '--environment') environment = requireValue(args, ++i, arg);
+      else if (arg === '--file') file = requireValue(args, ++i, arg);
+      else if (arg === '--lint-json') lintJsonPath = requireValue(args, ++i, arg);
+      else if (arg === '--lint-exit-code') {
+        lintExitCode = Number(requireValue(args, ++i, arg));
+        if (!Number.isInteger(lintExitCode) || lintExitCode < 0) {
+          throw new Error('--lint-exit-code expects a non-negative integer');
+        }
+      } else if (arg === '--node') node = requireValue(args, ++i, arg);
+      else if (arg === '--out-dir') outDir = requireValue(args, ++i, arg);
+      else if (arg === '--check-network') checkNetwork = true;
+      else if (arg === '--strict') strict = true;
+      else throw new Error(`Unknown option "${arg}" for ci-report`);
+    }
+    if (environment === undefined || file === undefined) {
+      throw new Error(
+        'Usage: stellar-toml-lint ci-report --environment <env> --file <path> ' +
+          '[--lint-json <file>] [--lint-exit-code <n>] [--node <v>] [--out-dir <dir>]',
+      );
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  const env = resolveCiEnvironment(environment);
+  if (env === undefined) {
+    process.stderr.write(`Unknown environment "${environment}"\n`);
+    return 2;
+  }
+
+  const source = await readFile(resolve(file), 'utf8').catch(() => undefined);
+  const lintJson =
+    lintJsonPath === undefined
+      ? undefined
+      : await readFile(resolve(lintJsonPath), 'utf8').catch(() => undefined);
+  const report = buildCiReport({
+    environment: env,
+    file,
+    ...(node === undefined ? {} : { node }),
+    checkNetwork,
+    strict,
+    lintExitCode,
+    ...(lintJson === undefined ? {} : { lintJson }),
+    isolation: source === undefined ? [] : checkNetworkIsolation(source, env),
+  });
+  if (source === undefined && report.error === undefined) {
+    report.error = `could not read ${file}`;
+    report.ok = false;
+  }
+
+  const markdown = formatEnvironmentScorecard(report);
+  try {
+    const dir = resolve(outDir);
+    await mkdir(dir, { recursive: true });
+    await writeFile(resolve(dir, `${env}.json`), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    await writeFile(
+      resolve(dir, `${env}.sarif`),
+      formatCiSarif([report], VERSION, source === undefined ? {} : { [file]: source }),
+      'utf8',
+    );
+    await writeFile(resolve(dir, `${env}.md`), markdown, 'utf8');
+    if (process.env.GITHUB_OUTPUT) {
+      await writeFile(process.env.GITHUB_OUTPUT, `ok=${report.ok}\n`, { flag: 'a' });
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  process.stdout.write(markdown);
+  return 0;
+}
+
+/** Reads every CI report under `dir`, up to two levels of artifact folders deep. */
+async function readCiReports(dir: string): Promise<CiEnvironmentReport[]> {
+  const reports: CiEnvironmentReport[] = [];
+  const visit = async (path: string, depth: number): Promise<void> => {
+    const entries = await readdir(path, { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = resolve(path, entry.name);
+      if (entry.isDirectory() && depth < 2) await visit(full, depth + 1);
+      else if (entry.isFile() && entry.name.endsWith('.json')) {
+        try {
+          const parsed: unknown = JSON.parse(await readFile(full, 'utf8'));
+          if (isCiEnvironmentReport(parsed)) reports.push(parsed);
+        } catch {
+          // Not a report; artifacts may carry other JSON.
+        }
+      }
+    }
+  };
+  await visit(dir, 0);
+  return reports;
+}
+
+/** `ci-scorecard`: combines the matrix's reports into the PR comment body. */
+async function ciScorecardCommand(args: string[]): Promise<number> {
+  let input: string | undefined;
+  let output: string | undefined;
+  let runUrl: string | undefined;
+  let commit: string | undefined;
+  try {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] as string;
+      if (arg === '--input') input = requireValue(args, ++i, arg);
+      else if (arg === '--output') output = requireValue(args, ++i, arg);
+      else if (arg === '--run-url') runUrl = requireValue(args, ++i, arg);
+      else if (arg === '--commit') commit = requireValue(args, ++i, arg);
+      else throw new Error(`Unknown option "${arg}" for ci-scorecard`);
+    }
+    if (input === undefined) {
+      throw new Error('Usage: stellar-toml-lint ci-scorecard --input <dir> [--output <file>]');
+    }
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+
+  let reports: CiEnvironmentReport[];
+  try {
+    reports = await readCiReports(resolve(input));
+  } catch (error) {
+    process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+  const markdown = formatCiScorecard(reports, {
+    ...(runUrl ? { runUrl } : {}),
+    ...(commit ? { commit } : {}),
+  });
+  if (output === undefined) process.stdout.write(markdown);
+  else await writeFile(resolve(output), markdown, 'utf8');
+  return 0;
+}
+
 async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'test-kms-signer') {
     try {
@@ -2692,6 +3815,20 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-promotions') {
     argv = ['--verify-promotions', '--check-network', ...argv.slice(1)];
   }
+  // `verify-por-feed` / `verify-solana-bridge --domain <domain>` are the flag forms with RPC queries.
+  if (argv[0] === 'verify-por-feed' || argv[0] === 'verify-solana-bridge') {
+    const flag = argv[0] === 'verify-por-feed' ? '--verify-por-feed' : '--verify-solana-bridge';
+    argv = [flag, '--check-network', ...argv.slice(1)];
+  }
+  if (argv[0] === 'audit-wormhole-vaa') return auditWormholeVaaCommand(argv.slice(1));
+  if (argv[0] === 'verify-attestations') {
+    argv = ['--verify-attestations', '--check-network', ...argv.slice(1)];
+  }
+  if (argv[0] === 'benchmark-bridge-latency') return benchmarkBridgeLatencyCommand(argv.slice(1));
+  if (argv[0] === 'audit-bridge-quorum') {
+    argv = ['--audit-bridge-quorum', '--check-network', ...argv.slice(1)];
+  }
+  if (argv[0] === 'audit-ciphers') return auditCiphersCommand(argv.slice(1));
   // `sep38-volatility --domain <domain>` books live quotes, so network is implied.
   if (argv[0] === 'sep38-volatility') {
     argv = ['--audit-sep38-volatility', '--check-network', ...argv.slice(1)];
@@ -2710,12 +3847,23 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === 'verify-browser-bundle') return verifyBrowserBundleCommand(argv.slice(1));
   if (argv[0] === 'sync-directory') return syncDirectory(argv.slice(1));
   if (argv[0] === 'verify-archive-gpg') return verifyArchiveGpgCommand(argv.slice(1));
+  if (argv[0] === 'audit-quorum') return auditQuorumCommand(argv.slice(1));
+  if (argv[0] === 'verify-archive-lag') return verifyArchiveLagCommand(argv.slice(1));
+  if (argv[0] === 'score-diversity') return scoreDiversityCommand(argv.slice(1));
+  if (argv[0] === 'trace-scp') return traceScpCommand(argv.slice(1));
   if (argv[0] === 'audit-wasm-simd') return auditWasmSimd(argv.slice(1));
-  if (argv[0] === 'profile-wasm-heap') return runHeapProfileCommand(argv.slice(1));
+  if (argv[0] === 'audit-wasm-memory') return auditWasmMemory(argv.slice(1));
+  if (argv[0] === 'auth-tree') return authTreeCommand(argv.slice(1));
+  if (argv[0] === 'audit-signature-replay' || argv[0] === '--audit-signature-replay') {
+    return auditSignatureReplayCommand(argv.slice(1));
+  }
+  if (argv[0] === 'verify-provenance') return verifyProvenance(argv.slice(1));
+  if (argv[0] === 'audit-dockerfile') return auditContainer(argv.slice(1));
   if (argv[0] === 'migrate') return migrateCommand(argv.slice(1), shouldUseColor());
   if (argv[0] === 'verify-metrics') return verifyMetricsCommand(argv.slice(1));
   if (argv[0] === 'probe-sla') return probeSlaCommand(argv.slice(1));
   if (argv[0] === 'calculate-uptime') return calculateUptimeCommand(argv.slice(1));
+  if (argv[0] === 'monitor-sponsor') return monitorSponsor(argv.slice(1));
   if (argv[0] === 'audit-error-taxonomy') return auditErrorTaxonomyCommand(argv.slice(1));
   if (argv.includes('--audit-error-taxonomy')) return auditErrorTaxonomyCommand(argv);
   if (argv[0] === 'audit-key-separation') return auditKeySeparationCommand(argv.slice(1));
@@ -2726,11 +3874,17 @@ async function main(argv: string[]): Promise<number> {
   if (argv[0] === '--audit-sep24-security') {
     return auditSep24SecurityCommand(argv.slice(1));
   }
+  if (argv[0] === 'init-ci') return initCiCommand(argv.slice(1));
+  if (argv[0] === 'ci-report') return ciReportCommand(argv.slice(1));
+  if (argv[0] === 'ci-scorecard') return ciScorecardCommand(argv.slice(1));
   if (argv[0] === 'audit-validator-rotation') return auditValidatorRotationCommand(argv.slice(1));
   if (argv[0] === 'verify-rate-headers') return verifyRateHeadersCommand(argv.slice(1));
+  if (argv[0] === 'audit-flood-policy') return auditFloodPolicyCommand(argv.slice(1));
   if (argv[0] === 'audit-tls') return auditTlsCommand(argv.slice(1));
   if (argv[0] === 'detect-drift') return detectDriftCommand(argv.slice(1));
   if (argv[0] === 'soroban-ttl') return sorobanTtlCommand(argv.slice(1));
+  if (argv[0] === 'verify-provenance') return verifyProvenance(argv.slice(1));
+  if (argv[0] === 'audit-dockerfile') return auditContainer(argv.slice(1));
   if (argv[0] === 'format') return formatCommand(argv.slice(1));
   if (argv[0] === 'diff') return diffCommand(argv.slice(1));
   let cli: Cli;
@@ -2814,10 +3968,29 @@ async function main(argv: string[]): Promise<number> {
     try {
       // Fixture mode replaces the transport for every network-bound check, so a
       // hermetic run can never reach the internet by accident.
+      const assetCache = process.env[ASSET_CACHE_ENV];
       const fetchImpl =
-        cli.mockFixtures !== undefined ? createFixtureFetch(cli.mockFixtures) : fetch;
+        cli.mockFixtures !== undefined
+          ? createFixtureFetch(cli.mockFixtures)
+          : assetCache
+            ? createAssetCacheFetch(fetch, resolve(assetCache))
+            : fetch;
 
-      if (cli.domain && cli.paths.length === 0) {
+      if (cli.auditK8sManifests !== undefined) {
+        const files = await manifestFiles(cli.auditK8sManifests);
+        if (files.length === 0) {
+          throw new Error(`No Kubernetes YAML manifests found at ${cli.auditK8sManifests}.`);
+        }
+
+        const auditor = new K8sIngressCertManagerAuditor();
+        for (const file of files) {
+          const source = await readFile(file, 'utf8');
+          results.push({
+            name: file,
+            result: auditor.audit(source, { strict: cli.strict, rules: cli.rules }),
+          });
+        }
+      } else if (cli.domain && cli.paths.length === 0) {
         const config = await loadConfig(process.cwd(), pluginRuleIds);
         strict = strict || config.strict;
         maxWarnings ??= config.maxWarnings;
@@ -2968,6 +4141,7 @@ async function main(argv: string[]): Promise<number> {
             fileResult.parsed &&
             (cli.checkNetwork ||
               cli.checkContracts ||
+              cli.auditReentrancy ||
               cli.auditEvents ||
               cli.followLinks ||
               cli.domain !== undefined)
@@ -3040,6 +4214,7 @@ async function main(argv: string[]): Promise<number> {
                 })),
                 ...(await checkContracts(fileResult.parsed, fetchImpl, {
                   rules,
+                  ...(cli.auditReentrancy ? { auditReentrancy: true } : {}),
                   ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                 })),
                 ...(await auditTomlAuthTree(fileResult.parsed, fetchImpl, {
@@ -3063,6 +4238,17 @@ async function main(argv: string[]): Promise<number> {
               networkDiagnostics.push(
                 ...(await checkContracts(fileResult.parsed, fetchImpl, {
                   rules,
+                  ...(cli.auditReentrancy ? { auditReentrancy: true } : {}),
+                  ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
+                })),
+              );
+            }
+
+            if (cli.auditReentrancy && !cli.checkNetwork && !cli.checkContracts) {
+              networkDiagnostics.push(
+                ...(await checkContracts(fileResult.parsed, fetchImpl, {
+                  rules,
+                  auditReentrancy: true,
                   ...(cli.sorobanRpc !== undefined ? { rpcUrl: cli.sorobanRpc } : {}),
                 })),
               );
@@ -3495,9 +4681,17 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     sep10Tokens: [],
     verifyFederationSrv: false,
     auditEsgDisclosures: false,
+    verifyPorFeed: false,
+    verifySolanaBridge: false,
+    auditErc4626Vaults: false,
+    verifyAttestations: false,
+    auditHsts: false,
+    auditEmergencyPause: false,
+    auditBridgeQuorum: false,
     auditOpenTelemetry: false,
     crawlPeers: false,
     monitorHeartbeat: false,
+    verifyTier1Alignment: false,
     verifyDnssec: false,
     auditDnsTakeover: false,
     auditSecrets: false,
@@ -3505,6 +4699,7 @@ function parseArgs(argv: string[]): Cli | 'handled' {
     auditVaultSecrets: false,
     checkContracts: false,
     auditEvents: false,
+    auditReentrancy: false,
     graphIncludeContracts: false,
     graphIncludeValidators: false,
     graphColorByProtocol: false,
@@ -3608,6 +4803,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.checkNetwork = true;
         break;
 
+      case '--audit-k8s-manifests':
+        cli.auditK8sManifests = requireValue(argv, ++i, arg);
+        break;
+
       case '--verify-sep10':
         cli.verifySep10 = true;
         break;
@@ -3684,8 +4883,44 @@ function parseArgs(argv: string[]): Cli | 'handled' {
         cli.verifyFederationSrv = true;
         break;
 
+      case '--audit-bridge-replays':
+        cli.auditBridgeReplays = requireValue(argv, ++i, arg);
+        break;
+
+      case '--verify-attestations':
+        cli.verifyAttestations = true;
+        break;
+
+      case '--audit-burn-redemptions':
+        cli.auditBurnRedemptions = requireValue(argv, ++i, arg);
+        break;
+
       case '--audit-esg-disclosures':
         cli.auditEsgDisclosures = true;
+        break;
+
+      case '--verify-por-feed':
+        cli.verifyPorFeed = true;
+        break;
+
+      case '--verify-solana-bridge':
+        cli.verifySolanaBridge = true;
+        break;
+
+      case '--audit-erc4626-vaults':
+        cli.auditErc4626Vaults = true;
+        break;
+
+      case '--audit-hsts':
+        cli.auditHsts = true;
+        break;
+
+      case '--audit-emergency-pause':
+        cli.auditEmergencyPause = true;
+        break;
+
+      case '--audit-bridge-quorum':
+        cli.auditBridgeQuorum = true;
         break;
 
       case '--audit-opentelemetry':
@@ -3710,6 +4945,14 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--monitor-heartbeat':
         cli.monitorHeartbeat = true;
+        break;
+
+      case '--verify-tier1-alignment':
+        cli.verifyTier1Alignment = true;
+        break;
+
+      case '--tier1-catalog':
+        cli.tier1Catalog = requireValue(argv, ++i, arg);
         break;
 
       case '--timeout': {
@@ -3751,6 +4994,10 @@ function parseArgs(argv: string[]): Cli | 'handled' {
 
       case '--audit-events':
         cli.auditEvents = true;
+        break;
+
+      case '--audit-reentrancy':
+        cli.auditReentrancy = true;
         break;
 
       case '--soroban-rpc':
@@ -3928,6 +5175,27 @@ function listRules(): string {
   return `${allRules.length} rules\n\n${lines.join('\n')}\n`;
 }
 
+/** Expands a file or directory into the YAML manifests the auditor should read. */
+async function manifestFiles(path: string): Promise<string[]> {
+  const info = await stat(path);
+  if (info.isFile()) return [path];
+  if (!info.isDirectory()) return [];
+
+  const entries = await readdir(path, { withFileTypes: true });
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+
+  const files: string[] = [];
+  for (const entry of entries) {
+    const child = join(path, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await manifestFiles(child)));
+    } else if (entry.isFile() && /\.ya?ml$/i.test(entry.name)) {
+      files.push(child);
+    }
+  }
+  return files;
+}
+
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
@@ -4092,6 +5360,107 @@ async function runHeapProfileCommand(argv: string[]): Promise<number> {
     return profile.leaked ? 1 : 0;
   } catch (error) {
     process.stderr.write(`${message(error)}\n`);
+    return 2;
+  }
+}
+
+/** `stellar-toml-lint monitor-sponsor --account <pubkey> [--horizon <url>] [--surge-txs <n>] [--buffer <xlm>] [--slack <url>] [--discord <url>] [--pagerduty <url>] [--pagerduty-key <key>]` */
+async function monitorSponsor(argv: string[]): Promise<number> {
+  let account: string | undefined;
+  let horizon = DEFAULT_HORIZON_URL;
+  let surgeTxs = '10000';
+  let buffer = '100';
+  const targets: {
+    slack?: string;
+    discord?: string;
+    pagerduty?: string;
+    pagerdutyRoutingKey?: string;
+  } = {};
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string;
+    if (arg === '-h' || arg === '--help') {
+      process.stdout.write(
+        `Usage: stellar-toml-lint monitor-sponsor --account <pubkey> [--horizon <url>] [--surge-txs <count>] [--buffer <xlm>] [--slack <url>] [--discord <url>] [--pagerduty <url>] [--pagerduty-key <key>]\n`,
+      );
+      return 0;
+    } else if (arg === '--account') {
+      account = requireValue(argv, ++i, arg);
+    } else if (arg === '--horizon') {
+      horizon = requireValue(argv, ++i, arg);
+    } else if (arg === '--surge-txs') {
+      surgeTxs = requireValue(argv, ++i, arg);
+    } else if (arg === '--buffer') {
+      buffer = requireValue(argv, ++i, arg);
+    } else if (arg === '--slack') {
+      targets.slack = requireValue(argv, ++i, arg);
+    } else if (arg === '--discord') {
+      targets.discord = requireValue(argv, ++i, arg);
+    } else if (arg === '--pagerduty') {
+      targets.pagerduty = requireValue(argv, ++i, arg);
+    } else if (arg === '--pagerduty-key') {
+      targets.pagerdutyRoutingKey = requireValue(argv, ++i, arg);
+    } else {
+      process.stderr.write(`Unknown option "${arg}".\n`);
+      return 2;
+    }
+  }
+
+  if (account === undefined) {
+    process.stderr.write('monitor-sponsor requires --account <pubkey>.\n');
+    return 2;
+  }
+
+  const surgeCount = Number.parseInt(surgeTxs, 10);
+  const balanceBuffer = Number.parseFloat(buffer);
+  if (!Number.isFinite(surgeCount) || surgeCount < 1) {
+    process.stderr.write('--surge-txs must be a positive integer.\n');
+    return 2;
+  }
+  if (!Number.isFinite(balanceBuffer) || balanceBuffer < 0) {
+    process.stderr.write('--buffer must be a non-negative number.\n');
+    return 2;
+  }
+
+  try {
+    process.stdout.write(`Querying Horizon for sponsor account: ${account}...\n`);
+    const watchdog = new SponsorshipPoolWatchdog({
+      horizonUrl: horizon,
+      balanceBufferXlm: balanceBuffer,
+      targets,
+    });
+    const result = await watchdog.monitor(account, { surgeTransactionCount: surgeCount });
+
+    process.stdout.write('\n--- Sponsorship Pool Watchdog Report ---\n');
+    process.stdout.write(`Account ID               : ${result.state.accountId}\n`);
+    process.stdout.write(`Spendable Balance (XLM)  : ${result.state.balanceXlm.toFixed(4)}\n`);
+    process.stdout.write(`Sponsored Entries        : ${result.state.sponsoredEntriesCount}\n`);
+    process.stdout.write(`Surge Simulation Txs     : ${result.simulation.surgeTransactionCount}\n`);
+    process.stdout.write(
+      `Projected Post-Surge XLM : ${result.simulation.projectedBalanceAfterSurgeXlm.toFixed(4)}\n`,
+    );
+    process.stdout.write(
+      `Depletion Timeline (hrs) : ${result.simulation.depletionHours !== null ? result.simulation.depletionHours.toFixed(2) : 'N/A'}\n`,
+    );
+    process.stdout.write(`Health Status            : ${result.severity.toUpperCase()}\n`);
+    process.stdout.write(`Alert Deliveries Sent    : ${result.deliveries.length}\n`);
+
+    if (result.severity === 'critical') {
+      process.stderr.write(
+        '\n[!] CRITICAL: Sponsorship pool reserve is critically low or exhausted!\n',
+      );
+      return 1;
+    }
+    if (result.severity === 'warning') {
+      process.stderr.write(
+        '\n[!] WARNING: Sponsorship pool reserve is approaching warning threshold.\n',
+      );
+      return 0;
+    }
+    process.stdout.write('\n[✓] Sponsor account reserve is healthy.\n');
+    return 0;
+  } catch (error) {
+    process.stderr.write(`Error monitoring sponsor account: ${message(error)}\n`);
     return 2;
   }
 }

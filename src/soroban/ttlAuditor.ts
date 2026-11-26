@@ -607,7 +607,7 @@ export async function auditTomlStorageTtl(
 ): Promise<Diagnostic[]> {
   const rpcUrl =
     options.rpcUrl ??
-    rpcUrlForPassphrase(
+    sorobanRpcUrlForNetwork(
       typeof doc.NETWORK_PASSPHRASE === 'string' ? doc.NETWORK_PASSPHRASE : undefined,
     );
   if (!rpcUrl) return [];
@@ -647,11 +647,11 @@ export function contractTargetsOf(doc: Record<string, unknown>): { id: string; p
 }
 
 /**
- * Maps a passphrase to the public Soroban RPC, mirroring the rest of the
- * network checks. Unknown or absent passphrases yield `undefined`, which keeps
- * the audit silent offline.
+ * Maps a network passphrase (public, not a secret) to the public Soroban RPC,
+ * mirroring the rest of the network checks. Unknown or absent passphrases
+ * yield `undefined`, which keeps the audit silent offline.
  */
-function rpcUrlForPassphrase(passphrase: string | undefined): string | undefined {
+function sorobanRpcUrlForNetwork(passphrase: string | undefined): string | undefined {
   switch (passphrase) {
     case 'Public Global Stellar Network ; September 2015':
       return 'https://soroban-rpc.mainnet.stellar.org';

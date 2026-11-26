@@ -146,7 +146,10 @@ VALIDATORS = [{ ALIAS = "validator1", PUBLIC_KEY = "GCCCCCCCCCCCCCCCCCCCCCCCCCCC
     const fs = await import('node:fs/promises');
     const os = await import('node:os');
     const path = await import('node:path');
-    const tmpPath = path.join(os.tmpdir(), 'test-policy.json');
+    const tmpPath = path.join(
+      os.tmpdir(),
+      `test-policy-${Date.now()}-${Math.random().toString(36).slice(2)}.json`,
+    );
     await fs.writeFile(tmpPath, json);
 
     const loaded = await loadPolicy(tmpPath);
