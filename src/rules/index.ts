@@ -72,6 +72,8 @@ import { tier1AlignmentRules } from '../overlay/tier1AlignmentVerifier.js';
 import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
 import { gitopsRules } from '../gitops/k8sIngressAuditor.js';
 
+export const IAC_DEPLOYMENT_RULE = 'gitops/iac-deployment';
+
 /** Every rule, in report order. */
 export const allRules: Rule[] = [
   ...generalRules,
@@ -148,6 +150,13 @@ export const allRules: Rule[] = [
   ...tier1AlignmentRules,
   ...sep31Sep12Rules,
   ...gitopsRules,
+  {
+    id: IAC_DEPLOYMENT_RULE,
+    category: 'gitops',
+    severity: 'warning',
+    description: 'Terraform and Ansible anchor deployment configuration',
+    run() {},
+  },
 ];
 
 /** Rule ids, sorted, for `--list-rules` and docs generation. */

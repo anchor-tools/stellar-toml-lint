@@ -201,6 +201,7 @@ and only `--write` changes the file. `--split` instead emits modular partials gr
 | `--audit-bridge-replays <file>`   | Match EVM lock event logs to Stellar mints and flag duplicate, unrecorded or replayable events                                        |
 | `--verify-attestations`           | Verify reserve attestation checksums and age; with `--check-network` download the PDFs (also `verify-attestations --domain <domain>`) |
 | `--audit-burn-redemptions <file>` | Verify wrapped-asset redemptions burn supply and flag pseudo-burns                                                                    |
+| `--audit-iac <path>`              | Audit Terraform and Ansible files for anchor deployment configuration issues                                                          |
 | `--audit-k8s-manifests <path>`    | Audit Kubernetes Ingress, Certificate, Issuer and ClusterIssuer YAML for cert-manager renewal problems                                |
 
 ### Options

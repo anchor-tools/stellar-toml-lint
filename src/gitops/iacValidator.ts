@@ -27,18 +27,17 @@ export class IacDeploymentValidator {
 
     for (const file of files) {
       const ext = path.extname(file).toLowerCase();
-      const content = fs.readFileSync(file, 'utf8');
 
       if (ext === '.tf' || file.endsWith('.tfvars')) {
         foundTfOrYaml = true;
-        this.auditTerraformContent(content, file, issues);
+        this.auditTerraformContent(fs.readFileSync(file, 'utf8'), file, issues);
       } else if (ext === '.yml' || ext === '.yaml') {
         foundTfOrYaml = true;
-        this.auditAnsibleContent(content, file, issues);
+        this.auditAnsibleContent(fs.readFileSync(file, 'utf8'), file, issues);
       }
     }
 
-    if (!foundTfOrYaml && files.length > 0) {
+    if (!foundTfOrYaml) {
       issues.push({
         severity: 'warning',
         category: 'security',
@@ -58,12 +57,12 @@ export class IacDeploymentValidator {
     const list = fs.readdirSync(dir);
     for (const file of list) {
       const filePath = path.join(dir, file);
-      const stat = fs.statSync(filePath);
-      if (stat && stat.isDirectory()) {
-        if (!filePath.includes('node_modules') && !filePath.includes('.git')) {
+      const stat = fs.lstatSync(filePath);
+      if (stat.isDirectory()) {
+        if (file !== 'node_modules' && file !== '.git') {
           results = results.concat(this.walkDir(filePath));
         }
-      } else {
+      } else if (stat.isFile()) {
         results.push(filePath);
       }
     }
