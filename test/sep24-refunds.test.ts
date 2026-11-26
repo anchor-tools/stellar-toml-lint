@@ -277,6 +277,17 @@ describe('Sep24RefundAuditor', () => {
     expect(noToken.diagnostics[0]?.rule).toBe('sep24/refund-unverifiable');
   });
 
+  it('does not transmit the token to an HTTP transfer server', async () => {
+    const result = await auditSep24Refunds(
+      { TRANSFER_SERVER_SEP0024: 'http://anchor.test/sep24' },
+      async () => {
+        throw new Error('unexpected request');
+      },
+      { transactionId: 'tx-1', token: TOKEN },
+    );
+    expect(result.diagnostics[0]?.message).toContain('must use HTTPS');
+  });
+
   it('reports a failed transaction lookup', async () => {
     const result = await audit({ transactionStatus: 500 });
     expect(result.diagnostics[0]?.message).toContain('HTTP 500');

@@ -15,7 +15,13 @@
  */
 
 import type { Diagnostic, Rule, RuleCategory, RuleOverrides, Severity } from '../types.js';
-import { fetchWithTimeout, isRecord, severityFor, toScaled } from './verifierSupport.js';
+import {
+  fetchWithTimeout,
+  isRecord,
+  severityFor,
+  toScaled,
+  trimTrailingSlashes,
+} from './verifierSupport.js';
 
 const UNVERIFIABLE_RULE = 'sep38/delivery-unverifiable';
 const INVALID_METHOD_RULE = 'sep38/delivery-method-invalid';
@@ -254,7 +260,7 @@ export class Sep38DeliveryMethodVerifier {
       return { report, diagnostics };
     }
 
-    const base = quoteServer.replace(/\/+$/, '');
+    const base = trimTrailingSlashes(quoteServer);
     let info: Record<string, unknown>;
     try {
       const response = await fetchWithTimeout(

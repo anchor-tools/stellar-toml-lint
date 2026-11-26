@@ -2182,8 +2182,8 @@ async function verifySep31Sep12Command(args: string[]): Promise<number> {
 
 /** Fetches the well-known document for the audit subcommands. */
 async function fetchStellarTomlDocument(domain: string): Promise<Record<string, unknown>> {
-  const host = domain.replace(/^https?:\/\//, '').replace(/\/+$/, '');
-  const url = `https://${host}/.well-known/stellar.toml`;
+  const host = new URL(domain.includes('://') ? domain : 'https://' + domain).host;
+  const url = 'https://' + host + '/.well-known/stellar.toml';
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Could not fetch ${url}: HTTP ${response.status}`);
   return parseToml(await response.text()) as Record<string, unknown>;

@@ -18,7 +18,13 @@
  */
 
 import type { Diagnostic, Rule, RuleCategory, RuleOverrides, Severity } from '../types.js';
-import { fetchWithTimeout, isRecord, severityFor, toScaled } from './verifierSupport.js';
+import {
+  fetchWithTimeout,
+  isRecord,
+  severityFor,
+  toScaled,
+  trimTrailingSlashes,
+} from './verifierSupport.js';
 
 const UNVERIFIABLE_RULE = 'sep24/refund-unverifiable';
 const SCHEMA_RULE = 'sep24/refund-schema-invalid';
@@ -247,7 +253,7 @@ export class Sep24RefundAuditor {
           ? doc.TRANSFER_SERVER
           : undefined);
     const transactionId = this.options.transactionId;
-    const horizonUrl = (this.options.horizonUrl ?? DEFAULT_HORIZON).replace(/\/+$/, '');
+    const horizonUrl = trimTrailingSlashes(this.options.horizonUrl ?? DEFAULT_HORIZON);
 
     const report: Sep24RefundReport = {
       transferServer: transferServer ?? '',
@@ -291,15 +297,17 @@ export class Sep24RefundAuditor {
       return { report, diagnostics };
     }
 
-    const url = new URL(`${transferServer.replace(/\/+$/, '')}/transaction`);
-    url.searchParams.set('id', transactionId);
     let transaction: Record<string, unknown>;
     try {
+      const url = new URL(trimTrailingSlashes(transferServer) + '/transaction');
+      if (url.protocol !== 'https:') throw new Error('The SEP-24 transfer server must use HTTPS');
+      url.searchParams.set('id', transactionId);
       const response = await fetchWithTimeout(
         this.fetchImpl,
         url.toString(),
         {
           method: 'GET',
+          redirect: 'error',
           headers: {
             accept: 'application/json',
             authorization: `Bearer ${this.options.token}`,
@@ -498,7 +506,7 @@ export class Sep24RefundAuditor {
     payment: RefundPayment,
     expectation: RefundExpectation,
   ): Promise<PaymentVerification> {
-    const base = this.options.horizonUrl?.replace(/\/+$/, '') ?? DEFAULT_HORIZON;
+    const base = trimTrailingSlashes(this.options.horizonUrl ?? DEFAULT_HORIZON);
     try {
       const txResponse = await fetchWithTimeout(
         this.fetchImpl,

@@ -45,7 +45,7 @@ function mockServer(options: ServerOptions = {}) {
       return Response.json(
         options.missingUrl === true
           ? { id: '1' }
-          : { url: 'https://anchor.test/interactive/abc', id: '1' },
+          : { url: 'https://anchor.test/interactive/abc?session=example', id: '1' },
       );
     }
     if (url.pathname === '/interactive/abc') {
@@ -108,6 +108,7 @@ describe('Sep24WebviewSecurityValidator', () => {
     expect(result.diagnostics).toEqual([]);
     expect(result.report.ok).toBe(true);
     expect(result.report.interactiveUrl).toBe('https://anchor.test/interactive/abc');
+    expect(JSON.stringify(result.report)).not.toContain('session=example');
     expect(result.report.headers.frameAncestors).toEqual(['https://wallet.test']);
     expect(calls).toEqual(['POST /sep24/transactions/deposit/interactive', 'GET /interactive/abc']);
     expect(renderSep24SecurityReport(result.report)).toContain('PASS');
@@ -200,6 +201,15 @@ describe('Sep24WebviewSecurityValidator', () => {
 
     const noToken = await auditSep24WebviewSecurity(DOC, fetchImpl, {});
     expect(noToken.diagnostics.map((d) => d.rule)).toEqual(['sep24/webview-unverifiable']);
+  });
+
+  it('does not transmit the token to an HTTP transfer server', async () => {
+    const { fetchImpl, calls } = mockServer();
+    const result = await new Sep24WebviewSecurityValidator(fetchImpl, { token: TOKEN }).audit({
+      TRANSFER_SERVER_SEP0024: 'http://anchor.test/sep24',
+    });
+    expect(result.diagnostics[0]?.message).toContain('must use HTTPS');
+    expect(calls).toEqual([]);
   });
 
   it('reports a failed interactive session request', async () => {

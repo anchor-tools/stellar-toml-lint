@@ -15,7 +15,7 @@
  */
 
 import type { Diagnostic, Rule, RuleCategory, RuleOverrides, Severity } from '../types.js';
-import { fetchWithTimeout, isRecord, severityFor } from './verifierSupport.js';
+import { fetchWithTimeout, isRecord, severityFor, trimTrailingSlashes } from './verifierSupport.js';
 
 const UNVERIFIABLE_RULE = 'sep24/webview-unverifiable';
 const MISSING_CSP_RULE = 'sep24/webview-missing-csp';
@@ -224,13 +224,19 @@ export class Sep24WebviewSecurityValidator {
     }
 
     const kind = this.options.withdraw === true ? 'withdraw' : 'deposit';
-    let interactiveUrl: string | undefined;
+    let interactiveUrl: URL;
     try {
+      const endpoint = new URL(
+        trimTrailingSlashes(transferServer) + '/transactions/' + kind + '/interactive',
+      );
+      if (endpoint.protocol !== 'https:')
+        throw new Error('The SEP-24 transfer server must use HTTPS');
       const response = await fetchWithTimeout(
         this.fetchImpl,
-        `${transferServer.replace(/\/+$/, '')}/transactions/${kind}/interactive`,
+        endpoint.href,
         {
           method: 'POST',
+          redirect: 'error',
           headers: {
             'content-type': 'application/json',
             authorization: `Bearer ${token}`,
@@ -255,8 +261,8 @@ export class Sep24WebviewSecurityValidator {
         return { report, diagnostics };
       }
       const body: unknown = await response.json();
-      interactiveUrl = isRecord(body) && typeof body.url === 'string' ? body.url : undefined;
-      if (interactiveUrl === undefined) {
+      const rawUrl = isRecord(body) && typeof body.url === 'string' ? body.url : undefined;
+      if (rawUrl === undefined) {
         add(
           ruleDiagnostics(
             UNVERIFIABLE_RULE,
@@ -268,7 +274,10 @@ export class Sep24WebviewSecurityValidator {
         );
         return { report, diagnostics };
       }
-      report.interactiveUrl = interactiveUrl;
+      interactiveUrl = new URL(rawUrl);
+      if (interactiveUrl.protocol !== 'https:')
+        throw new Error('The SEP-24 webview must use HTTPS');
+      report.interactiveUrl = interactiveUrl.origin + interactiveUrl.pathname;
     } catch (error) {
       add(
         ruleDiagnostics(
@@ -285,7 +294,7 @@ export class Sep24WebviewSecurityValidator {
     try {
       const page = await fetchWithTimeout(
         this.fetchImpl,
-        interactiveUrl,
+        interactiveUrl.href,
         { method: 'GET', headers: { accept: 'text/html' } },
         this.options.timeoutMs ?? 8000,
       );
