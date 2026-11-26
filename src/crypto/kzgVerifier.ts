@@ -118,7 +118,9 @@ export class KzgCommitmentVerifier {
    */
   loadSrs(srs: SrsData): void {
     if (!srs.g1 || srs.g1.length === 0 || !srs.g2 || srs.g2.length < 2) {
-      throw new Error('Invalid SRS: must contain G1 powers and at least 2 G2 powers ([1]_2 and [x]_2)');
+      throw new Error(
+        'Invalid SRS: must contain G1 powers and at least 2 G2 powers ([1]_2 and [x]_2)',
+      );
     }
 
     this.g1Powers = srs.g1.map((hex) => parseG1Point(hex));
@@ -128,7 +130,10 @@ export class KzgCommitmentVerifier {
   /**
    * Evaluates a polynomial P(X) = sum(a_i * X^i) at point z in Fr.
    */
-  static evaluatePolynomial(coefficients: Array<bigint | number>, z: bigint | number | string): bigint {
+  static evaluatePolynomial(
+    coefficients: Array<bigint | number>,
+    z: bigint | number | string,
+  ): bigint {
     const zFr = toFr(z);
     let result = 0n;
     let currentZPower = 1n;
@@ -181,7 +186,9 @@ export class KzgCommitmentVerifier {
       throw new Error('Cannot commit: SRS not loaded');
     }
     if (coefficients.length > this.g1Powers.length) {
-      throw new Error(`Polynomial degree ${coefficients.length - 1} exceeds SRS max degree ${this.g1Powers.length - 1}`);
+      throw new Error(
+        `Polynomial degree ${coefficients.length - 1} exceeds SRS max degree ${this.g1Powers.length - 1}`,
+      );
     }
 
     let commitment = G1.ZERO;
@@ -266,7 +273,9 @@ export class KzgCommitmentVerifier {
         z: zStr,
         y: yStr,
         proof: opening.proof,
-        error: valid ? undefined : 'KZG pairing check e(C - [y]_1, [1]_2) == e(proof, [x - z]_2) did not hold',
+        error: valid
+          ? undefined
+          : 'KZG pairing check e(C - [y]_1, [1]_2) == e(proof, [x - z]_2) did not hold',
       };
     } catch (err) {
       return {
@@ -287,7 +296,8 @@ export class KzgCommitmentVerifier {
   auditToml(doc: Record<string, unknown>): Diagnostic[] {
     const diagnostics: Diagnostic[] = [];
 
-    const kzgSection = (doc.KZG ?? doc.SOROBAN_STATE ?? doc.COMMITMENTS) as Record<string, unknown> | undefined;
+    const kzgSection = (doc.KZG ?? doc.SOROBAN_STATE ?? doc.COMMITMENTS) as
+      Record<string, unknown> | undefined;
     if (!kzgSection || typeof kzgSection !== 'object') {
       return diagnostics;
     }
@@ -323,9 +333,11 @@ export class KzgCommitmentVerifier {
             rule: KZG_SRS_UNLOADED,
             severity: 'error',
             category: 'security',
-            message: 'KZG verification requested but no structured reference string (SRS) was loaded',
+            message:
+              'KZG verification requested but no structured reference string (SRS) was loaded',
             path,
-            suggestion: 'Configure a trusted setup SRS (powers-of-tau) for the KZG commitment verifier.',
+            suggestion:
+              'Configure a trusted setup SRS (powers-of-tau) for the KZG commitment verifier.',
           });
           return;
         }
@@ -376,7 +388,8 @@ export const kzgRules: Rule[] = [
     id: KZG_SRS_UNLOADED,
     category: 'security',
     severity: 'error',
-    description: 'A structured reference string (SRS / powers-of-tau) must be loaded to verify KZG commitments',
+    description:
+      'A structured reference string (SRS / powers-of-tau) must be loaded to verify KZG commitments',
     run() {},
   },
   {

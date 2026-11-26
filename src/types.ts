@@ -21,7 +21,8 @@ export type RuleCategory =
   | 'network'
   | 'security'
   | 'policy'
-  | 'sep12';
+  | 'sep12'
+  | 'gitops';
 
 /** A 1-based position in the source file. */
 export interface Position {

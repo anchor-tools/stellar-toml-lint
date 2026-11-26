@@ -129,7 +129,7 @@ function checkStaticDoc(
       counts,
       SANCTIONS_RULE_IDS.licensesAbsent,
       'warning',
-      'stellar.toml does not declare ORG_LICENSES — regulators and partners cannot determine the anchor\'s compliance jurisdiction',
+      "stellar.toml does not declare ORG_LICENSES — regulators and partners cannot determine the anchor's compliance jurisdiction",
       'Add ORG_LICENSES under [DOCUMENTATION] with the applicable money-transmitter licence identifiers.',
       SEP1_SPEC,
       'DOCUMENTATION.ORG_LICENSES',
@@ -144,7 +144,7 @@ function checkStaticDoc(
       SANCTIONS_RULE_IDS.contactAbsent,
       'warning',
       'stellar.toml does not declare ORG_OFFICIAL_EMAIL — parties cannot reach a dispute-resolution contact for blocked transactions',
-      'Add ORG_OFFICIAL_EMAIL under [DOCUMENTATION] with the anchor\'s official compliance contact address.',
+      "Add ORG_OFFICIAL_EMAIL under [DOCUMENTATION] with the anchor's official compliance contact address.",
       SEP1_SPEC,
       'DOCUMENTATION.ORG_OFFICIAL_EMAIL',
       rules,
@@ -368,8 +368,7 @@ export const sep31SanctionsRules: Rule[] = [
     id: SANCTIONS_RULE_IDS.licensesAbsent,
     category: 'sep12',
     severity: 'warning',
-    description:
-      'stellar.toml should declare ORG_LICENSES for sanctions compliance transparency',
+    description: 'stellar.toml should declare ORG_LICENSES for sanctions compliance transparency',
     run() {},
   },
   {
@@ -392,16 +391,14 @@ export const sep31SanctionsRules: Rule[] = [
     id: SANCTIONS_RULE_IDS.pendingStatusAbsent,
     category: 'sep12',
     severity: 'warning',
-    description:
-      'SEP-31 /info should declare pending KYC hold statuses so senders can handle them',
+    description: 'SEP-31 /info should declare pending KYC hold statuses so senders can handle them',
     run() {},
   },
   {
     id: SANCTIONS_RULE_IDS.disputeContactAbsent,
     category: 'sep12',
     severity: 'warning',
-    description:
-      'SEP-31 "blocked" status description should include a dispute-resolution contact',
+    description: 'SEP-31 "blocked" status description should include a dispute-resolution contact',
     run() {},
   },
   {

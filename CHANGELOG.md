@@ -9,6 +9,93 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `--verify-por-feed` / `stellar-toml-lint verify-por-feed --domain <domain>`
+  (`src/bridges/chainlinkPorVerifier.ts`): validates Chainlink Proof of Reserve feeds declared in
+  `[DOCUMENTATION.PROOF_OF_RESERVES]` or `CURRENCIES[].chainlink_por` (`por/invalid-feed`) and, under
+  `--check-network`, reads `decimals()` and `latestRoundData()` over EVM JSON-RPC
+  (`por/rpc-unavailable`, `por/invalid-answer`, `por/incomplete-round`, `por/stale-feed` beyond a
+  heartbeat of at most 86400s), compares the reserve with the Horizon supply
+  (`por/supply-unavailable`, `por/undercollateralized`) and reports the ratio
+  (`por/collateralization`).
+
+- `stellar-toml-lint audit-wormhole-vaa --vaa <hex|base64> [--guardian-set <file.json>]`
+  (`src/bridges/wormholeVaaAuditor.ts`): parses VAA headers, signatures, bodies and token transfer
+  payloads (`wormhole/malformed-vaa`, `wormhole/unsupported-version`, `wormhole/malformed-payload`),
+  recovers each guardian signature with a dependency-free Keccak-256 / secp256k1 implementation
+  (`src/bridges/evmCrypto.ts`) and enforces the two-thirds quorum (`wormhole/invalid-guardian-index`,
+  `wormhole/invalid-signature`, `wormhole/insufficient-quorum`, `wormhole/guardian-set-mismatch`,
+  `wormhole/expired-guardian-set`, `wormhole/unverified-signatures`).
+
+- `--verify-solana-bridge` / `stellar-toml-lint verify-solana-bridge --domain <domain>`
+  (`src/bridges/solanaEscrowVerifier.ts`): validates `CURRENCIES[].solana_bridge` base58 addresses
+  (`solbridge/invalid-config`) and, under `--check-network`, checks the escrow is an SPL token account
+  for the declared mint (`solbridge/escrow-mismatch`), reads `getTokenAccountBalance`
+  (`solbridge/rpc-unavailable`) and requires locked >= minted with exact decimal normalization
+  (`solbridge/supply-unavailable`, `solbridge/reserve-deficit`).
+
+- `--audit-erc4626-vaults` (`src/bridges/erc4626VaultAuditor.ts`): validates
+  `CURRENCIES[].collateral_vaults` (`erc4626/invalid-vault`) and, under `--check-network`, calls
+  `asset()`, `decimals()`, `totalAssets()` and `convertToAssets()` (`erc4626/rpc-unavailable`) to flag
+  inconsistent accounting (`erc4626/inconsistent-accounting`), share prices below par or drifting from
+  the declared `share_price` (`erc4626/share-price-below-par`, `erc4626/share-price-drift`) and NAV
+  that does not cover the Stellar supply (`erc4626/supply-unavailable`, `erc4626/insufficient-nav`).
+- `stellar-toml-lint benchmark-bridge-latency --receipts <file> [--corridor <source-dest>]`
+  (`src/bridges/latencyBenchmark.ts`): pairs origin-chain lock/burn receipts with Stellar
+  mint/release receipts, normalises every timestamp to UTC (zone-less times are rejected, block
+  numbers are placed by per-chain checkpoint interpolation) and reports mean, standard deviation and
+  p99 latency per corridor with an SLA rating (`bridgelatency/invalid-receipt`,
+  `bridgelatency/negative-latency`, `bridgelatency/sla-breach`,
+  `bridgelatency/congested-corridor`, `bridgelatency/stalled-transfer`).
+
+- `--audit-bridge-replays <evidence.json>` (`src/bridges/eventReplayDetector.ts`): parses EVM
+  `Locked` logs, compares 32-byte hex values strictly and checks each final lock maps to exactly one
+  Stellar mint with the same amount and recipient, with reorg and confirmation-depth handling
+  (`bridgereplay/duplicate-mint`, `bridgereplay/unrecorded-lock`,
+  `bridgereplay/missing-replay-id`, `bridgereplay/orphan-mint`,
+  `bridgereplay/reorged-event-minted`, `bridgereplay/premature-mint`,
+  `bridgereplay/amount-mismatch`, `bridgereplay/recipient-mismatch`).
+
+- `--verify-attestations` / `stellar-toml-lint verify-attestations --domain <domain>`
+  (`src/bridges/bankAttestationVerifier.ts`): checks `[[DOCUMENTATION.ATTESTATIONS]]` and
+  `attestation_of_reserve` links, SHA-256 checksums and the 90 day freshness limit and, under
+  `--check-network`, downloads each PDF over verified HTTPS, hashes it and reads its metadata
+  without crashing on corrupted files (`attestation/invalid-url`, `attestation/missing-checksum`,
+  `attestation/expired`, `attestation/checksum-mismatch`, `attestation/corrupted-document`,
+  `attestation/unreachable`, `attestation/under-reserved`).
+
+- `--audit-burn-redemptions <evidence.json>` (`src/bridges/proofOfBurnValidator.ts`): verifies
+  wrapped-asset redemptions pay the issuer, a locked account or call the SAC `burn` function, that
+  supply falls by exactly the redeemed amount, and flags pseudo-burns (`burn/pseudo-burn`,
+  `burn/supply-mismatch`, `burn/invalid-redemption`, `burn/undeclared-asset`,
+  `burn/missing-withdraw-endpoint`).
+- `stellar-toml-lint audit-ciphers --domain <domain>` (`src/security/tlsCipherAuditor.ts`): pins a
+  native `node:tls` handshake to each of TLS 1.0, 1.1, 1.2 and 1.3, requires TLS 1.0/1.1 to be
+  rejected, checks the negotiated suites for forward secrecy and AEAD and prints an A+/A/B/F grade
+  (`tlscipher/legacy-protocol-accepted`, `tlscipher/no-modern-protocol`,
+  `tlscipher/no-forward-secrecy`, `tlscipher/non-aead-cipher`, `tlscipher/weak-cipher`,
+  `tlscipher/unreachable`). Sockets are destroyed on every path.
+
+- `--audit-hsts` (`src/security/hstsVerifier.ts`): reads `Strict-Transport-Security` on the domain
+  and every host `stellar.toml` declares and applies the Chromium preload criteria
+  (`hsts/missing-header`, `hsts/invalid-header`, `hsts/short-max-age`,
+  `hsts/missing-include-subdomains`, `hsts/missing-preload`, `hsts/unreachable`), printing a
+  compliance badge per host to stderr.
+
+- `--audit-emergency-pause` (`src/bridges/emergencyPauseValidator.ts`): checks `[[BRIDGES]]` for an
+  exported pause method, multisig or circuit breaker pause authority separate from unpause, a
+  timelocked unpause and a 24/7 `SECURITY_CONTACT` or `ORG_OFFICIAL_EMAIL`
+  (`bridgepause/invalid-bridge`, `bridgepause/missing-pause-method`,
+  `bridgepause/missing-unpause-method`, `bridgepause/unrestricted-pause-authority`,
+  `bridgepause/shared-pause-unpause-authority`, `bridgepause/missing-unpause-timelock`,
+  `bridgepause/missing-security-contact`, `bridgepause/contact-not-24x7`).
+
+- `--audit-bridge-quorum` / `stellar-toml-lint audit-bridge-quorum --domain <domain>`
+  (`src/bridges/bridgeQuorumAuditor.ts`): checks `[[BRIDGES]]` relayer keys and `THRESHOLD` against
+  the 2/3 BFT supermajority with integer math, relayer set rotations and, under `--check-network`,
+  staking bonds and slashing conditions from `STAKING_EVIDENCE_URL`
+  (`bridgequorum/below-supermajority`, `bridgequorum/minority-threshold`,
+  `bridgequorum/small-validator-set`, `bridgequorum/abrupt-rotation`,
+  `bridgequorum/insufficient-stake`, `bridgequorum/missing-slashing` and others).
 - Rule plugins, so a team can write the check SEP-1 does not define
   (`src/engine/semanticRuleEngine.ts`, `src/engine/ruleLoader.ts`, `--rules-dir <dir>`,
   `--plugin <spec>`). A module exports one rule as its `default` or a list as `rules`, and the rule
@@ -163,6 +250,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the pass is idempotent, and a file that does not parse is reported and left untouched (exit 1).
   `--dry-run` prints a unified diff instead of writing and exits 1 when a file is not already
   canonical, which is the CI gate; `--sort-keys -` sorts stdin to stdout.
+
+> > > > > > > maintainer/restore-main-ci-20261123
 
 - `--audit-esg-disclosures` (`src/protocols/esgComplianceVerifier.ts`): checks
   `[DOCUMENTATION.ORG_ESG]` for a carbon accounting methodology, renewable energy certificates, PUE

@@ -124,6 +124,15 @@ describe('cli', () => {
     expect(code).toBe(0);
   });
 
+  it('documents --audit-sep38-spreads and accepts it without a network run', async () => {
+    const { stdout } = await cli(['--help']);
+    expect(stdout).toContain('--audit-sep38-spreads');
+
+    const { code, stdout: runOut } = await cli([fixture('valid.toml'), '--audit-sep38-spreads']);
+    expect(code).toBe(0);
+    expect(runOut).not.toContain('sep38/spread-exceeds-tolerance');
+  });
+
   it('runs the OpenTelemetry trace audit with hermetic fixtures', async () => {
     const { code, stderr } = await cli([
       fixture('valid.toml'),
@@ -454,5 +463,36 @@ describe('cli -f markdown', () => {
     const { code, stdout } = await cli([fixture('valid.toml'), '-f', 'markdown']);
     expect(code).toBe(0);
     expect(stdout).toContain('No SEP-1 issues found');
+  });
+
+  it('wires the cross-chain bridge verifiers', async () => {
+    const { stdout } = await cli(['--help']);
+    for (const flag of [
+      '--verify-por-feed',
+      '--verify-solana-bridge',
+      '--audit-erc4626-vaults',
+      'audit-wormhole-vaa',
+    ]) {
+      expect(stdout).toContain(flag);
+    }
+    const rules = await cli(['--list-rules']);
+    expect(rules.stdout).toContain('por/stale-feed');
+    expect(rules.stdout).toContain('wormhole/insufficient-quorum');
+    const clean = await cli([
+      fixture('valid.toml'),
+      '--verify-por-feed',
+      '--verify-solana-bridge',
+      '--audit-erc4626-vaults',
+    ]);
+    expect(clean.code).toBe(0);
+  });
+
+  it('audits a truncated Wormhole VAA and rejects bad usage', async () => {
+    const truncated = await cli(['audit-wormhole-vaa', '--vaa', '0x0100000004']);
+    expect(truncated.code).toBe(1);
+    expect(truncated.stdout).toContain('wormhole/malformed-vaa');
+    const json = await cli(['audit-wormhole-vaa', '--vaa', '0x01', '--format', 'json']);
+    expect(JSON.parse(json.stdout).diagnostics[0].rule).toBe('wormhole/malformed-vaa');
+    expect((await cli(['audit-wormhole-vaa'])).code).toBe(2);
   });
 });

@@ -53,11 +53,9 @@ describe('BlsSignatureVerifier', () => {
     const pub1 = bls12_381.G1.Point.fromPrivateKey(priv1);
     const corruptSig = new Uint8Array(96).fill(0x55);
 
-    const verifyResult = verifier.verifyAggregate(
-      corruptSig,
-      msg,
-      [Buffer.from(pub1.toRawBytes(true)).toString('hex')],
-    );
+    const verifyResult = verifier.verifyAggregate(corruptSig, msg, [
+      Buffer.from(pub1.toRawBytes(true)).toString('hex'),
+    ]);
     expect(verifyResult.valid).toBe(false);
   });
 });

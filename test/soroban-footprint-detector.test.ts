@@ -11,7 +11,10 @@ const BALANCE_KEY = 'balance:GCUSTOMER';
 const COUNTER_KEY = 'counter:global';
 const ADMIN_KEY = 'admin:config';
 
-function makeTemplate(name: string, keys: Array<{ id: string; writable: boolean }>): TransactionTemplate {
+function makeTemplate(
+  name: string,
+  keys: Array<{ id: string; writable: boolean }>,
+): TransactionTemplate {
   return { name, footprint: keys };
 }
 

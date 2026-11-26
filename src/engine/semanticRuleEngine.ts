@@ -189,6 +189,7 @@ export const KNOWN_CATEGORIES = [
   'security',
   'policy',
   'sep12',
+  'gitops',
 ] as const satisfies readonly RuleCategory[];
 
 const SEVERITIES: readonly string[] = ['error', 'warning', 'info'];

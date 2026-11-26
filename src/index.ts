@@ -10,6 +10,13 @@
  * ```
  */
 export { lint, lintDomain } from './lint.js';
+export {
+  K8sIngressCertManagerAuditor,
+  auditK8sManifests,
+  gitopsRules,
+} from './gitops/k8sIngressAuditor.js';
+export { parseYamlDocuments } from './gitops/yaml.js';
+export type { YamlDocument, YamlParseError, YamlParseResult } from './gitops/yaml.js';
 export { lspMain } from './lsp.js';
 export { allRules, ruleIds } from './rules/index.js';
 export { PRESETS, PRESET_NAMES, resolvePreset } from './presets.js';
@@ -325,6 +332,106 @@ export type {
   DiscordIncidentPayload,
   PagerDutyIncidentPayload,
 } from './gitops/incidentDispatcher.js';
+export {
+  CiMatrixWorkflowGenerator,
+  DEFAULT_PINNED_ACTIONS,
+  DEFAULT_WORKFLOW_PATH,
+  DEFAULT_FILE_PATTERN,
+  SCORECARD_MARKER,
+  validateWorkflow,
+} from './gitops/ciWorkflowGenerator.js';
+export type {
+  CiActionName,
+  CiMatrixWorkflowOptions,
+  PinnedAction,
+} from './gitops/ciWorkflowGenerator.js';
+export {
+  CI_ENVIRONMENTS,
+  CI_ENVIRONMENT_NAMES,
+  checkNetworkIsolation,
+  parseCiMatrix,
+  resolveCiEnvironment,
+} from './gitops/ciEnvironments.js';
+export type { CiEnvironmentName, CiEnvironmentProfile } from './gitops/ciEnvironments.js';
+export {
+  CI_REPORT_SCHEMA,
+  buildCiReport,
+  formatCiSarif,
+  isCiEnvironmentReport,
+  sarifCategory,
+  validateSarif,
+} from './gitops/ciSarif.js';
+export type { BuildCiReportInput, CiEnvironmentReport } from './gitops/ciSarif.js';
+export {
+  formatCiScorecard,
+  formatEnvironmentScorecard,
+  gradeFor,
+  scoreReport,
+} from './gitops/ciScorecard.js';
+export type { CiScorecardOptions } from './gitops/ciScorecard.js';
+export {
+  ASSET_CACHE_ENV,
+  createAssetCacheFetch,
+  isCacheableAssetUrl,
+} from './gitops/ciAssetCache.js';
+export type { AssetCacheOptions } from './gitops/ciAssetCache.js';
+export {
+  ContainerSecurityAuditor,
+  auditDockerfile,
+  analyzeDockerignore,
+  classifyBaseImage,
+  parseDockerfile,
+  parseDockerStages,
+  parseFrom,
+  renderContainerReport,
+  resolveUserStage,
+  DEFAULT_IMAGE_SIZE_BUDGET,
+} from './gitops/containerAuditor.js';
+export type {
+  BaseImageFamily,
+  ContainerAuditOptions,
+  ContainerAuditReport,
+  ContainerFinding,
+  ContainerFindingCode,
+  ContainerSeverity,
+  DockerInstruction,
+  DockerfileAnalysis,
+  DockerfileStage,
+  DockerignoreAnalysis,
+} from './gitops/containerAuditor.js';
+export {
+  HOSTED_BUILDER_PATTERNS,
+  SlsaProvenanceError,
+  SlsaProvenanceVerifier,
+  certificateChainTrusted,
+  dssePae,
+  normalizeProvenance,
+  parseAttestationDocument,
+  parseProvenanceDocuments,
+  predicateTypeOf,
+  renderProvenanceReport,
+  subjectsOf,
+  verifyEnvelopeSignature,
+  verifySlsaProvenance,
+} from './gitops/slsaVerifier.js';
+export type {
+  AttestationFormat,
+  DsseEnvelope,
+  DsseSignature,
+  NormalizedProvenance,
+  ParsedAttestation,
+  ProvenanceMaterial,
+  ProvenanceSubject,
+  SigstoreBundle,
+  SignatureVerification,
+  SlsaFinding,
+  SlsaFindingCode,
+  SlsaLevel,
+  SlsaSecurityAttestation,
+  SlsaSeverity,
+  SlsaVerificationOptions,
+  SlsaVerificationReport,
+} from './gitops/slsaVerifier.js';
 export { SPEC_URL } from './spec.js';
 export { applyFixes, computeFixEdits } from './fix.js';
 export type { OffsetTextEdit } from './fix.js';
@@ -386,6 +493,87 @@ export {
   UNAUTHORIZED_CROSS_CONTRACT_RULE,
   UNBOUNDED_AUTH_GRANT_RULE,
 } from './soroban/auth-tree-simulator.js';
+export {
+  AuthTreeSimulator,
+  renderAuthTreeDiagram,
+  renderAuthTreeReport,
+  authTreeCredentialRules,
+  authTreeRules,
+  authTreeRuleIds,
+  AUTH_CREDENTIAL_UNBOUND_RULE,
+  AUTH_NONCE_REUSED_RULE,
+  AUTH_SIGNATURE_MISSING_RULE,
+  AUTH_SIGNATURE_EXPIRED_RULE,
+  AUTH_EXPIRATION_UNBOUNDED_RULE,
+  DEFAULT_MAX_AUTH_LIFETIME_LEDGERS,
+} from './soroban/authTreeSimulator.js';
+export type {
+  AuthTreeOperation as AuthTreeEnvelopeOperation,
+  AuthTreeEnvelope,
+  AuthTreeSimulatorOptions,
+  AuthTreeSimulationReport,
+} from './soroban/authTreeSimulator.js';
+export {
+  analyzeWasmMemory,
+  renderMemoryHazardReport,
+  recursionCycles,
+  wasmMemoryRules,
+  wasmMemoryRuleIds,
+  WasmMemoryHazardAnalyzer,
+  DEFAULT_MAX_INITIAL_PAGES,
+  DEFAULT_MAX_STACK_SLOTS,
+  WASM_PAGE_BYTES as WASM_MEMORY_PAGE_BYTES,
+} from './soroban/wasmMemoryAnalyzer.js';
+export type {
+  MemoryHazardCode,
+  MemoryHazardFinding,
+  MemoryHazardOptions,
+  MemoryHazardReport,
+  MemoryLimitsReport,
+  FunctionHazardReport,
+  RecursionCycle,
+} from './soroban/wasmMemoryAnalyzer.js';
+export {
+  auditSignatureReplay,
+  renderSignatureReplayReport,
+  signatureReplayRules,
+  signatureReplayRuleIds,
+  SignatureReplayAuditor,
+  CRYPTO_VERIFIERS,
+  SIGNATURE_WITHOUT_NONCE_RULE,
+  SIGNATURE_WITHOUT_DOMAIN_RULE,
+  SIGNATURE_WITHOUT_EXPIRATION_RULE,
+} from './soroban/signatureReplayAuditor.js';
+export type {
+  SignatureReplayCode,
+  SignatureReplayFinding,
+  SignatureReplayOptions,
+  SignatureReplayReport,
+  SignatureVerificationRoutine,
+} from './soroban/signatureReplayAuditor.js';
+export {
+  parseWasmModule,
+  importedFunction,
+  importedFunctionNames,
+  functionByIndex,
+  printableStrings,
+  WasmModuleError,
+} from './soroban/wasmModule.js';
+export type {
+  WasmModule,
+  WasmFunction,
+  WasmFuncType,
+  WasmLimits,
+  WasmImport,
+  WasmExport,
+  WasmInstruction,
+  WasmCall,
+  WasmLoop,
+  WasmDataSegment,
+  WasmImportKind,
+  WasmExportKind,
+  WasmValueType,
+} from './soroban/wasmModule.js';
 export { WasiSandboxRunner, SANDBOX_SYSCALLS, WASI_ERRNO } from './wasm/wasiRunner.js';
 export type {
   SandboxFileSnapshot,
@@ -630,6 +818,33 @@ export type {
   Sep38Pair,
 } from './protocols/sep38CircuitBreaker.js';
 export {
+  DEFAULT_MAX_QUOTE_LIFETIME_SECONDS,
+  DEFAULT_QUOTE_TIERS,
+  DEFAULT_SPREAD_TOLERANCE_BPS,
+  RATE_SCALE,
+  Sep38QuoteDiscrepancyAuditor,
+  advertisedFeeBps,
+  auditSep38QuoteDiscrepancies,
+  feeBps,
+  formatScaledDecimal,
+  indicativePriceFrom,
+  parseScaledDecimal,
+  quoteFeeTotal,
+  rateSpreadBps,
+  sep38DiscrepancyRuleIds,
+  sep38DiscrepancyRules,
+  systemSleep,
+  systemWallClock,
+} from './protocols/sep38Discrepancy.js';
+export type {
+  ExpiredQuoteVerdict,
+  MonotonicWallClock,
+  QuoteTier,
+  QuoteTierObservation,
+  Sep38DiscrepancyResult,
+  Sep38QuoteDiscrepancyOptions,
+} from './protocols/sep38Discrepancy.js';
+export {
   DEFAULT_POLLING_INTERVALS_MS,
   SEP6_TRANSACTION_STATUSES,
   Sep6PollingIdempotencyVerifier,
@@ -703,6 +918,188 @@ export type {
   EsgReport,
   EsgResult,
 } from './protocols/esgComplianceVerifier.js';
+export {
+  ChainlinkPorVerifier,
+  MAX_HEARTBEAT_SECONDS,
+  chainlinkPorRuleIds,
+  chainlinkPorRules,
+  collectPorFeeds,
+  decodeLatestRoundData,
+  verifyPorFeeds,
+} from './bridges/chainlinkPorVerifier.js';
+export type {
+  ChainlinkPorOptions,
+  ChainlinkPorResult,
+  PorFeed,
+  PorFeedReport,
+  PorRound,
+} from './bridges/chainlinkPorVerifier.js';
+export {
+  WORMHOLE_CHAINS,
+  WormholeVaaAuditor,
+  auditWormholeVaa,
+  decodeVaaInput,
+  parseGuardianSet,
+  parseVaa,
+  quorumFor,
+  renderVaaReport,
+  wormholeRuleIds,
+  wormholeRules,
+} from './bridges/wormholeVaaAuditor.js';
+export type {
+  GuardianSet,
+  ParsedVaa,
+  TokenTransfer,
+  VaaSignature,
+  WormholeAuditOptions,
+  WormholeAuditResult,
+} from './bridges/wormholeVaaAuditor.js';
+export {
+  DEFAULT_SOLANA_RPC,
+  SPL_TOKEN_PROGRAMS,
+  SolanaEscrowInvariantVerifier,
+  base58Decode,
+  isSolanaAddress,
+  solanaEscrowRuleIds,
+  solanaEscrowRules,
+  verifySolanaBridges,
+} from './bridges/solanaEscrowVerifier.js';
+export type {
+  SolanaBridge,
+  SolanaBridgeReport,
+  SolanaEscrowOptions,
+  SolanaEscrowResult,
+} from './bridges/solanaEscrowVerifier.js';
+export {
+  Erc4626VaultAuditor,
+  auditErc4626Vaults,
+  erc4626RuleIds,
+  erc4626Rules,
+  erc4626Selectors,
+} from './bridges/erc4626VaultAuditor.js';
+export type {
+  CurrencyNav,
+  Erc4626Options,
+  Erc4626Result,
+  VaultReport,
+} from './bridges/erc4626VaultAuditor.js';
+export { keccak256, publicKeyToAddress, recoverPublicKey } from './bridges/evmCrypto.js';
+export {
+  BridgeSettlementLatencyBenchmark,
+  benchmarkBridgeLatency,
+  blockToMillis,
+  bridgeLatencyRuleIds,
+  bridgeLatencyRules,
+  percentile,
+  renderLatencyReport,
+  toUtcMillis,
+} from './bridges/latencyBenchmark.js';
+export type {
+  BlockCheckpoint,
+  CorridorBenchmark,
+  CorridorRating,
+  LatencyOptions,
+  LatencyResult,
+} from './bridges/latencyBenchmark.js';
+export {
+  BridgeEventReplayDetector,
+  accountToBytes32,
+  auditBridgeReplays,
+  bridgeReplayRuleIds,
+  bridgeReplayRules,
+  normalizeBytes32,
+  parseLockEvent,
+} from './bridges/eventReplayDetector.js';
+export type { LockEvent, ReplayOptions, ReplayResult } from './bridges/eventReplayDetector.js';
+export {
+  BankAttestationVerifier,
+  bankAttestationRuleIds,
+  bankAttestationRules,
+  collectAttestations,
+  parsePdfDate,
+  readPdfMetadata,
+  verifyBankAttestations,
+} from './bridges/bankAttestationVerifier.js';
+export type {
+  AttestationEntry,
+  AttestationOptions,
+  AttestationResult,
+  PdfMetadata,
+} from './bridges/bankAttestationVerifier.js';
+export {
+  ProofOfBurnValidator,
+  auditBurnRedemptions,
+  classifyBurn,
+  isLockedAccount,
+  proofOfBurnRuleIds,
+  proofOfBurnRules,
+  renderBurnReport,
+} from './bridges/proofOfBurnValidator.js';
+export type {
+  BurnKind,
+  BurnOptions,
+  BurnResult,
+  LockedAccount,
+  RedemptionVerdict,
+} from './bridges/proofOfBurnValidator.js';
+export {
+  TlsCipherSecurityAuditor,
+  auditTlsCiphers,
+  hasForwardSecrecy,
+  isAeadCipher,
+  nodeTlsProbe,
+  renderCipherReport,
+  tlsCipherRuleIds,
+  tlsCipherRules,
+} from './security/tlsCipherAuditor.js';
+export type {
+  CipherGrade,
+  HandshakeProbe,
+  HandshakeResult as TlsHandshakeResult,
+  TlsCipherOptions,
+  TlsCipherReport,
+  TlsCipherResult,
+  TlsVersion,
+} from './security/tlsCipherAuditor.js';
+export {
+  HstsSecurityVerifier,
+  auditHsts,
+  collectHosts,
+  hstsRuleIds,
+  hstsRules,
+  parseHsts,
+  renderHstsBadges,
+} from './security/hstsVerifier.js';
+export type {
+  HstsHostResult,
+  HstsOptions,
+  HstsPolicy,
+  HstsResult,
+} from './security/hstsVerifier.js';
+export {
+  BridgeEmergencyPauseValidator,
+  auditEmergencyPause,
+  emergencyPauseRuleIds,
+  emergencyPauseRules,
+} from './bridges/emergencyPauseValidator.js';
+export type {
+  EmergencyPauseOptions,
+  EmergencyPauseResult,
+} from './bridges/emergencyPauseValidator.js';
+export {
+  BridgeQuorumAuditor,
+  auditBridgeQuorum,
+  bridgeQuorumRuleIds,
+  bridgeQuorumRules,
+  requiredThreshold,
+  rotationContinuity,
+} from './bridges/bridgeQuorumAuditor.js';
+export type {
+  BridgeQuorumOptions,
+  BridgeQuorumResult,
+  BridgeQuorumSummary,
+  StakingEvidence,
+} from './bridges/bridgeQuorumAuditor.js';
 export {
   CorsSecurityAuditor,
   REQUESTING_ORIGIN as CORS_REQUESTING_ORIGIN,
@@ -823,12 +1220,48 @@ export type {
 export { PluginLoadError, loadPluginRules } from './engine/ruleLoader.js';
 export type { PluginSources } from './engine/ruleLoader.js';
 
-// DID & Verifiable Credentials (Issue #507)
+export { QuorumSetIntersectionAuditor } from './overlay/quorumIntersectionAuditor.js';
+export type {
+  QuorumSetDefinition,
+  ValidatorQuorumDefinition,
+  QuorumIntersectionResult,
+  FragmentationDetails,
+} from './overlay/quorumIntersectionAuditor.js';
+
+export { ScpBallotTracer, DEFAULT_STALL_TIMEOUT_MS } from './overlay/scpBallotTracer.js';
+export type {
+  ScpPhase,
+  ScpBallotInfo,
+  ScpStatementData,
+  ScpTraceEvent,
+  SlotConsensusTrace,
+  ConsensusStall,
+  ScpBallotTracerOptions,
+} from './overlay/scpBallotTracer.js';
+
 export {
-  DidResolutionVerifier,
-  decodeBase58,
-  encodeBase58,
-} from './crypto/didVerifier.js';
+  ArchiveProgressionVerifier,
+  CHECKPOINT_FREQUENCY,
+  formatCheckpointLedgerHex,
+} from './overlay/archiveProgressionVerifier.js';
+export type {
+  StellarHistoryJson,
+  ArchiveProgressionStatus,
+  ArchiveProgressionReport,
+  ArchiveProgressionVerifierOptions,
+} from './overlay/archiveProgressionVerifier.js';
+
+export { GeographicDiversityScorer, parseHostPort } from './overlay/diversityScorer.js';
+export type {
+  ValidatorLocation,
+  DiversityMetrics,
+  GeographicDiversityReport,
+  GeoDnsResolver,
+  GeoLookupResolver,
+  GeographicDiversityScorerOptions,
+} from './overlay/diversityScorer.js';
+// DID & Verifiable Credentials (Issue #507)
+export { DidResolutionVerifier, decodeBase58, encodeBase58 } from './crypto/didVerifier.js';
 export type {
   DidDocument,
   VerificationMethod,
@@ -843,11 +1276,7 @@ export type {
 } from './crypto/didVerifier.js';
 
 // BLS12-381 Multi-Signature & Pairing (Issue #508)
-export {
-  BlsSignatureVerifier,
-  BLS12_381_R,
-  BLS12_381_P,
-} from './crypto/blsVerifier.js';
+export { BlsSignatureVerifier, BLS12_381_R, BLS12_381_P } from './crypto/blsVerifier.js';
 export type {
   BlsGroup,
   SerializationFormat,
@@ -859,10 +1288,7 @@ export type {
 } from './crypto/blsVerifier.js';
 
 // Post-Quantum Readiness (Issue #509)
-export {
-  PostQuantumReadinessAuditor,
-  ML_DSA_SPECS,
-} from './crypto/postQuantumAuditor.js';
+export { PostQuantumReadinessAuditor, ML_DSA_SPECS } from './crypto/postQuantumAuditor.js';
 export type {
   MlDsaParameterSet,
   MlDsaSpec,
@@ -872,9 +1298,7 @@ export type {
 } from './crypto/postQuantumAuditor.js';
 
 // Hash Agility & Collision Resistance (Issue #510)
-export {
-  HashAgilityAuditor,
-} from './crypto/hashAgilityAuditor.js';
+export { HashAgilityAuditor } from './crypto/hashAgilityAuditor.js';
 export type {
   HashAlgorithm,
   HashFieldInspection,
@@ -963,4 +1387,205 @@ export type {
   OverlayTransport,
   HandshakeTesterOptions,
 } from './overlay/handshakeTester.js';
+export {
+  FloodPropagationVerifier,
+  TransactionQueueModel,
+  analyzeSubmissions,
+  analyzeExchanges,
+  simulateBurst,
+  buildBurst,
+  defaultBurstProfile,
+  parseBurstProfile,
+  parseCoreMetrics,
+  parseCoreInfo,
+  compareFeeRate,
+  tierForFeeRate,
+  renderFloodPolicyReport,
+  floodPropagationRules,
+  floodPropagationRuleIds,
+  FEE_TIERS,
+  FEE_TIER_MULTIPLIERS,
+  DEFAULT_QUEUE_SIZE_MULTIPLIER,
+  FLOOD_PRIORITY_INVERSION,
+  FLOOD_PREMATURE_DROP,
+  FLOOD_QUEUE_SATURATED,
+  FLOOD_QUEUE_PRESSURE,
+  FLOOD_TXSET_UNAVAILABLE,
+  FLOOD_DONT_HAVE_MISMATCH,
+  FLOOD_DUPLICATE_OVERHEAD,
+  FLOOD_STALE_PENDING,
+  FLOOD_MALFORMED_FRAME,
+  FLOOD_METRICS_UNAVAILABLE,
+} from './overlay/floodVerifier.js';
+export type {
+  FeeTier,
+  QueuedTransaction,
+  SubmissionEvent,
+  SubmissionStatus,
+  RejectReason,
+  BurstProfile,
+  QueueAnalysis,
+  TierOutcome,
+  FairnessViolation,
+  PropagationMetrics,
+  OverlayExchange,
+  ExchangeAnalysis,
+  FloodPolicyInput,
+  FloodVerifierOptions,
+  FloodPolicyReport,
+} from './overlay/floodVerifier.js';
 
+// Validator Key Rotation Verifier (Issue #522)
+export {
+  ValidatorKeyRotationVerifier,
+  detectRotationMarkers,
+  hasRotationMarkers,
+  keyRotationPayload,
+  signKeyRotationPayload,
+  verifyCrossSignatures,
+  renderKeyRotationReport,
+  validatorKeyRotationRules,
+  validatorKeyRotationRuleIds,
+  DEFAULT_ROTATION_GRACE_PERIOD_MS,
+  KEY_ROTATION_MARKERS_INCOMPLETE,
+  KEY_ROTATION_KEY_INVALID,
+  KEY_ROTATION_SAME_KEY,
+  KEY_ROTATION_TRANSITION_DATE_INVALID,
+  KEY_ROTATION_CROSS_SIGNATURE_MISSING,
+  KEY_ROTATION_CROSS_SIGNATURE_INVALID,
+  KEY_ROTATION_QUORUM_NOT_ADOPTED,
+  KEY_ROTATION_RETIRED_KEY_TRUSTED,
+  KEY_ROTATION_RETIRED_KEY_ADVERTISED,
+  KEY_ROTATION_TRANSITION_ACTIVE,
+} from './overlay/keyRotationVerifier.js';
+export type {
+  KeyRotationMarkers,
+  KeyRotationAttestation,
+  QuorumPeerConfig,
+  KeyRotationVerifierOptions,
+  CrossSignatureVerification,
+  QuorumRecognition,
+  KeyRotationCheck,
+  RotationPhase,
+  KeyRotationReport,
+} from './overlay/keyRotationVerifier.js';
+export {
+  ConnectionFloodingDefenseTester,
+  renderFloodingDefenseReport,
+  tcpConnector,
+  helloHandshake,
+  floodingDefenseRules,
+  floodingDefenseRuleIds,
+  MAX_BURST_CONNECTIONS,
+  MIN_CONNECTION_INTERVAL_MS,
+  MAX_HOLD_MS,
+  MAX_RECOVERY_WINDOW_MS,
+  PEER_PORT_UNREACHABLE,
+  PEER_UNRESPONSIVE_AFTER_BURST,
+  PEER_SLOW_RECOVERY,
+  PEER_HANDSHAKE_DROPPED,
+  PEER_LATENCY_DEGRADED,
+  PEER_NO_THROTTLING_OBSERVED,
+  PEER_HANDSHAKE_UNVERIFIED,
+} from './overlay/floodingTester.js';
+export type {
+  ConnectStatus,
+  ConnectOutcome,
+  PeerConnector,
+  PeerHandshake,
+  FloodingTesterOptions,
+  BurstStats,
+  FloodingDefenseReport,
+} from './overlay/floodingTester.js';
+
+// Overlay Heartbeat Watchdog (Issue #523)
+export {
+  OverlayHeartbeatWatchdog,
+  TcpHeartbeatChannel,
+  evaluateKeepalive,
+  encodeHeartbeatProbe,
+  decodeHeartbeatPong,
+  heartbeatProbeId,
+  renderHeartbeatReport,
+  overlayHeartbeatRules,
+  overlayHeartbeatRuleIds,
+  HeartbeatConnectionClosedError,
+  DEFAULT_HEARTBEAT_TIMEOUT_MS,
+  DEFAULT_HEARTBEAT_INTERVAL_MS,
+  DEFAULT_KEEPALIVE_INITIAL_DELAY_MS,
+  HEARTBEAT_UNRESPONSIVE,
+  HEARTBEAT_ERRATIC,
+  HEARTBEAT_KEEPALIVE_DISABLED,
+  HEARTBEAT_KEEPALIVE_DELAY,
+  HEARTBEAT_UNACKNOWLEDGED_SOCKET,
+  HEARTBEAT_SUDDEN_CLOSURE,
+} from './overlay/heartbeatWatchdog.js';
+export type {
+  HeartbeatEndpoint,
+  HeartbeatChannel,
+  SocketKeepaliveSnapshot,
+  HeartbeatProbe,
+  HeartbeatMetrics,
+  KeepaliveCheck,
+  HeartbeatReport,
+  HeartbeatWatchdogOptions,
+} from './overlay/heartbeatWatchdog.js';
+export {
+  Tier1QuorumAlignmentVerifier,
+  parseQuorumConfig,
+  isSatisfied,
+  thresholdFromPercent,
+  renderTier1AlignmentReport,
+  tier1AlignmentRules,
+  tier1AlignmentRuleIds,
+  DEFAULT_THRESHOLD_PERCENT,
+  TIER1_INDEPENDENT_QUORUM,
+  TIER1_SPLIT_QUORUM,
+  TIER1_NARROW_AGREEMENT,
+  TIER1_LOW_REPRESENTATION,
+  TIER1_PARTIAL_ORGANIZATION,
+  TIER1_UNVERIFIED_VALIDATOR,
+  TIER1_UNRESOLVED_VALIDATOR,
+  TIER1_THRESHOLD_INVALID,
+  TIER1_QUORUM_UNDECLARED,
+} from './overlay/tier1AlignmentVerifier.js';
+export type {
+  QuorumSetNode,
+  DeclaredValidator,
+  ParsedQuorumConfig,
+  Tier1OrganizationCoverage,
+  QuorumSetCoverage,
+  Tier1AlignmentReport,
+  Tier1AlignmentOptions,
+} from './overlay/tier1AlignmentVerifier.js';
+export {
+  DEFAULT_TIER1_CATALOG,
+  TIER1_CATALOG_VERSION,
+  MAX_TIER1_ORGANIZATIONS,
+  parseTier1Catalog,
+} from './overlay/tier1Catalog.js';
+export type { Tier1Catalog, Tier1Organization, Tier1Validator } from './overlay/tier1Catalog.js';
+
+export { detectFootprintCollisions } from './soroban/footprintDetector.js';
+export type {
+  Contention,
+  FootprintDetectorOptions,
+  FootprintKey,
+  FootprintReport,
+  TransactionTemplate,
+} from './soroban/footprintDetector.js';
+export { analyzeWasmBinary, auditWasmOptimization } from './soroban/wasmOptimizationVerifier.js';
+export type {
+  WasmOptimizationOptions,
+  WasmOptimizationReport,
+  WasmSizeInfo,
+} from './soroban/wasmOptimizationVerifier.js';
+export {
+  analyzeSanctionsCompliance,
+  verifySanctionsCompliance,
+} from './protocols/sep31Sanctions.js';
+export type {
+  CorridorCompliance,
+  SanctionsComplianceReport,
+  SanctionsValidatorOptions,
+} from './protocols/sep31Sanctions.js';
