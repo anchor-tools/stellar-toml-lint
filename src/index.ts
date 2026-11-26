@@ -1582,3 +1582,27 @@ export {
   parseTier1Catalog,
 } from './overlay/tier1Catalog.js';
 export type { Tier1Catalog, Tier1Organization, Tier1Validator } from './overlay/tier1Catalog.js';
+
+export { detectFootprintCollisions } from './soroban/footprintDetector.js';
+export type {
+  Contention,
+  FootprintDetectorOptions,
+  FootprintKey,
+  FootprintReport,
+  TransactionTemplate,
+} from './soroban/footprintDetector.js';
+export { analyzeWasmBinary, auditWasmOptimization } from './soroban/wasmOptimizationVerifier.js';
+export type {
+  WasmOptimizationOptions,
+  WasmOptimizationReport,
+  WasmSizeInfo,
+} from './soroban/wasmOptimizationVerifier.js';
+export {
+  analyzeSanctionsCompliance,
+  verifySanctionsCompliance,
+} from './protocols/sep31Sanctions.js';
+export type {
+  CorridorCompliance,
+  SanctionsComplianceReport,
+  SanctionsValidatorOptions,
+} from './protocols/sep31Sanctions.js';

@@ -70,6 +70,8 @@ import { floodingDefenseRules } from '../overlay/floodingTester.js';
 import { overlayHeartbeatRules } from '../overlay/heartbeat-rules.js';
 import { tier1AlignmentRules } from '../overlay/tier1AlignmentVerifier.js';
 import { sep31Sep12Rules } from '../protocols/sep31Sep12Consistency.js';
+import { sep31SanctionsRules } from '../protocols/sep31Sanctions.js';
+import { footprintDetectorRules } from '../soroban/footprintDetector.js';
 import { gitopsRules } from '../gitops/k8sIngressAuditor.js';
 
 export const IAC_DEPLOYMENT_RULE = 'gitops/iac-deployment';
@@ -149,6 +151,8 @@ export const allRules: Rule[] = [
   ...overlayHeartbeatRules,
   ...tier1AlignmentRules,
   ...sep31Sep12Rules,
+  ...sep31SanctionsRules,
+  ...footprintDetectorRules,
   ...gitopsRules,
   {
     id: IAC_DEPLOYMENT_RULE,
